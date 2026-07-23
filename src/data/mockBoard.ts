@@ -1,0 +1,277 @@
+import type { Board } from '../types/board'
+
+const now = new Date()
+const iso = (daysFromNow: number, hour = 12) => {
+  const d = new Date(now)
+  d.setDate(d.getDate() + daysFromNow)
+  d.setHours(hour, 0, 0, 0)
+  return d.toISOString()
+}
+
+export const mockBoard: Board = {
+  id: 'board-1',
+  title: 'Projetos Internos',
+  members: [
+    { id: 'm1', name: 'Ana Silva', initials: 'AS', avatarColor: 'bg-sky-600' },
+    { id: 'm2', name: 'Marcos Rocha', initials: 'MR', avatarColor: 'bg-emerald-600' },
+    { id: 'm3', name: 'Julia Lima', initials: 'JL', avatarColor: 'bg-amber-600' },
+    { id: 'm4', name: 'Pedro Costa', initials: 'PC', avatarColor: 'bg-violet-600' },
+  ],
+  labels: [
+    { id: 'l1', name: 'Urgente', color: 'red' },
+    { id: 'l2', name: 'Design', color: 'purple' },
+    { id: 'l3', name: 'Backend', color: 'blue' },
+    { id: 'l4', name: 'Frontend', color: 'sky' },
+    { id: 'l5', name: 'Comercial', color: 'orange' },
+    { id: 'l6', name: 'Bug', color: 'yellow' },
+  ],
+  columns: [
+    { id: 'backlog', title: 'Backlog', position: 0 },
+    { id: 'in-progress', title: 'Em andamento', position: 1 },
+    { id: 'planning', title: 'Em Planejamento', position: 2 },
+    { id: 'waiting', title: 'Aguardando Terceiros', position: 3 },
+    { id: 'done', title: 'Concluído', position: 4, isDoneColumn: true },
+    { id: 'commercial', title: 'Comercial & B2C', position: 5 },
+  ],
+  cards: [
+    {
+      id: 'c1',
+      columnId: 'backlog',
+      title: 'Mapear fluxos do onboarding B2C',
+      description:
+        'Documentar o funil atual e identificar gargalos.\n\n- Entrevistar CS\n- Revisar métricas do mês',
+      labelIds: ['l5', 'l2'],
+      memberIds: ['m1'],
+      dueDate: iso(5),
+      checklists: [
+        {
+          id: 'cl1',
+          title: 'Checklist',
+          items: [
+            { id: 'ci1', text: 'Entrevistar time de CS', completed: true },
+            { id: 'ci2', text: 'Montar diagrama de fluxo', completed: false },
+            { id: 'ci3', text: 'Validar com produto', completed: false },
+          ],
+        },
+      ],
+      comments: [
+        {
+          id: 'cm1',
+          authorId: 'm1',
+          body: 'Já tenho as notas da primeira entrevista.',
+          createdAt: iso(-2),
+        },
+      ],
+      attachments: [],
+      completed: false,
+      position: 0,
+      createdAt: iso(-10),
+      updatedAt: iso(-1),
+    },
+    {
+      id: 'c2',
+      columnId: 'backlog',
+      title: 'Corrigir bug de upload de anexos',
+      description: 'Arquivos maiores que 5MB falham no mobile.',
+      labelIds: ['l1', 'l6', 'l4'],
+      memberIds: ['m4', 'm2'],
+      dueDate: iso(-1),
+      checklists: [],
+      comments: [
+        {
+          id: 'cm2',
+          authorId: 'm4',
+          body: 'Reproduzido no iOS 17.',
+          createdAt: iso(-1, 9),
+        },
+        {
+          id: 'cm3',
+          authorId: 'm2',
+          body: 'Suspeito do limite do proxy.',
+          createdAt: iso(-1, 14),
+        },
+      ],
+      attachments: [
+        {
+          id: 'a1',
+          name: 'screenshot-erro.png',
+          url: '#',
+          mimeType: 'image/png',
+          sizeBytes: 240_000,
+          createdAt: iso(-1),
+        },
+      ],
+      completed: false,
+      position: 1,
+      createdAt: iso(-4),
+      updatedAt: iso(-1),
+    },
+    {
+      id: 'c3',
+      columnId: 'in-progress',
+      title: 'API de webhooks para Sheets',
+      description:
+        '## Objetivo\n\nPreparar endpoint que recebe o card concluído e envia para o Google Sheets.\n\n```ts\nPOST /api/sheets/export\n```',
+      labelIds: ['l3'],
+      memberIds: ['m2'],
+      dueDate: iso(2),
+      checklists: [
+        {
+          id: 'cl2',
+          title: 'Implementação',
+          items: [
+            { id: 'ci4', text: 'Contrato do payload', completed: true },
+            { id: 'ci5', text: 'Auth da Edge Function', completed: true },
+            { id: 'ci6', text: 'Teste E2E', completed: false },
+          ],
+        },
+      ],
+      comments: [],
+      attachments: [
+        {
+          id: 'a2',
+          name: 'payload-example.json',
+          url: '#',
+          mimeType: 'application/json',
+          sizeBytes: 1280,
+          createdAt: iso(-3),
+        },
+      ],
+      completed: false,
+      position: 0,
+      createdAt: iso(-8),
+      updatedAt: iso(0),
+    },
+    {
+      id: 'c4',
+      columnId: 'planning',
+      title: 'Redesenhar painel de detalhes do card',
+      description: 'Side panel com markdown, etiquetas e comentários.',
+      labelIds: ['l2', 'l4'],
+      memberIds: ['m3', 'm1'],
+      dueDate: iso(10),
+      checklists: [
+        {
+          id: 'cl3',
+          title: 'UI',
+          items: [
+            { id: 'ci7', text: 'Wireframe', completed: true },
+            { id: 'ci8', text: 'Protótipo dark', completed: false },
+          ],
+        },
+      ],
+      comments: [],
+      attachments: [],
+      completed: false,
+      position: 0,
+      createdAt: iso(-6),
+      updatedAt: iso(-2),
+    },
+    {
+      id: 'c5',
+      columnId: 'waiting',
+      title: 'Aguardar aprovação jurídica do contrato',
+      description: 'Contrato de integração com parceiro B2B.',
+      labelIds: ['l5'],
+      memberIds: ['m1'],
+      dueDate: iso(14),
+      checklists: [],
+      comments: [
+        {
+          id: 'cm4',
+          authorId: 'm1',
+          body: 'Enviado para o jurídico na segunda.',
+          createdAt: iso(-3),
+        },
+      ],
+      attachments: [
+        {
+          id: 'a3',
+          name: 'contrato-v2.pdf',
+          url: '#',
+          mimeType: 'application/pdf',
+          sizeBytes: 512_000,
+          createdAt: iso(-5),
+        },
+      ],
+      completed: false,
+      position: 0,
+      createdAt: iso(-12),
+      updatedAt: iso(-3),
+    },
+    {
+      id: 'c6',
+      columnId: 'done',
+      title: 'Setup inicial do projeto Vue + Tailwind',
+      description: 'Casca visual do board entregue.',
+      labelIds: ['l4'],
+      memberIds: ['m4'],
+      dueDate: iso(-2),
+      checklists: [
+        {
+          id: 'cl4',
+          title: 'Entrega',
+          items: [
+            { id: 'ci9', text: 'Header/Footer', completed: true },
+            { id: 'ci10', text: 'Colunas', completed: true },
+          ],
+        },
+      ],
+      comments: [],
+      attachments: [],
+      completed: true,
+      position: 0,
+      createdAt: iso(-7),
+      updatedAt: iso(-2),
+    },
+    {
+      id: 'c7',
+      columnId: 'commercial',
+      title: 'Campanha de reativação de leads frios',
+      description: 'Segmentar base e montar sequência de e-mails.',
+      labelIds: ['l5', 'l1'],
+      memberIds: ['m3', 'm1'],
+      dueDate: iso(7),
+      checklists: [],
+      comments: [],
+      attachments: [],
+      completed: false,
+      position: 0,
+      createdAt: iso(-5),
+      updatedAt: iso(-1),
+    },
+    {
+      id: 'c8',
+      columnId: 'in-progress',
+      title: 'Realtime do quadro com Supabase',
+      description: 'Preparar channels para colaboração multi-usuário.',
+      labelIds: ['l3', 'l4'],
+      memberIds: ['m2', 'm4'],
+      dueDate: iso(0, 18),
+      checklists: [
+        {
+          id: 'cl5',
+          title: 'Realtime',
+          items: [
+            { id: 'ci11', text: 'Schema SQL', completed: false },
+            { id: 'ci12', text: 'Subscribe cards', completed: false },
+            { id: 'ci13', text: 'Presence avatars', completed: false },
+          ],
+        },
+      ],
+      comments: [
+        {
+          id: 'cm5',
+          authorId: 'm2',
+          body: 'Vamos usar a Fase 5 para isso.',
+          createdAt: iso(0, 10),
+        },
+      ],
+      attachments: [],
+      completed: false,
+      position: 1,
+      createdAt: iso(-3),
+      updatedAt: iso(0),
+    },
+  ],
+}

@@ -1,0 +1,126 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-board: #0e1318;
+  --color-board-elevated: #151b22;
+  --color-column: #1a222c;
+  --color-column-hover: #1f2833;
+  --color-card: #232c38;
+  --color-card-hover: #2a3442;
+  --color-surface: #1c2430;
+  --color-border-subtle: #2a3544;
+  --color-text-primary: #e8eef5;
+  --color-text-secondary: #9aabbc;
+  --color-text-muted: #6f8194;
+  --color-accent: #579dff;
+  --color-accent-hover: #85b8ff;
+  --color-danger: #f87171;
+  --color-success: #4ade80;
+  --font-sans: 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #app {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    background-color: var(--color-board);
+    color: var(--color-text-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  /* Scrollbar discreto no estilo board */
+  .board-scroll::-webkit-scrollbar {
+    height: 10px;
+  }
+
+  .board-scroll::-webkit-scrollbar-track {
+    background: transparent;
+    margin-inline: 12px;
+  }
+
+  .board-scroll::-webkit-scrollbar-thumb {
+    background: #3a4656;
+    border-radius: 8px;
+  }
+
+  .board-scroll::-webkit-scrollbar-thumb:hover {
+    background: #4a586c;
+  }
+}
+
+@layer components {
+  .card-ghost {
+    opacity: 0.45;
+  }
+
+  .card-drag {
+    opacity: 1 !important;
+    transform: rotate(2deg);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  }
+
+  .column-ghost {
+    opacity: 0.4;
+  }
+
+  .markdown-body {
+    line-height: 1.55;
+  }
+
+  .markdown-body p {
+    margin: 0 0 0.75em;
+  }
+
+  .markdown-body p:last-child {
+    margin-bottom: 0;
+  }
+
+  .markdown-body ul,
+  .markdown-body ol {
+    margin: 0 0 0.75em;
+    padding-left: 1.25rem;
+  }
+
+  .markdown-body code {
+    border-radius: 4px;
+    background: var(--color-surface);
+    padding: 0.1em 0.35em;
+    font-size: 0.9em;
+  }
+
+  .markdown-body pre {
+    overflow-x: auto;
+    border-radius: 8px;
+    background: var(--color-surface);
+    padding: 0.75rem 1rem;
+    margin: 0 0 0.75em;
+  }
+
+  .markdown-body pre code {
+    padding: 0;
+    background: transparent;
+  }
+
+  .markdown-body h1,
+  .markdown-body h2,
+  .markdown-body h3 {
+    color: var(--color-text-primary);
+    margin: 0 0 0.5em;
+    font-weight: 600;
+  }
+}
