@@ -43,6 +43,7 @@ export const mockBoard: Board = {
         'Documentar o funil atual e identificar gargalos.\n\n- Entrevistar CS\n- Revisar métricas do mês',
       labelIds: ['l5', 'l2'],
       memberIds: ['m2'],
+      startDate: null,
       dueDate: iso(5),
       checklists: [
         {
@@ -76,6 +77,7 @@ export const mockBoard: Board = {
       description: 'Arquivos maiores que 5MB falham no mobile.',
       labelIds: ['l1', 'l6', 'l4'],
       memberIds: ['m5', 'm3'],
+      startDate: null,
       dueDate: iso(-1),
       checklists: [],
       comments: [
@@ -115,6 +117,7 @@ export const mockBoard: Board = {
         '## Objetivo\n\nPreparar endpoint que recebe o card concluído e envia para o Google Sheets.\n\n```ts\nPOST /api/sheets/export\n```',
       labelIds: ['l3'],
       memberIds: ['m3'],
+      startDate: null,
       dueDate: iso(2),
       checklists: [
         {
@@ -150,6 +153,7 @@ export const mockBoard: Board = {
       description: 'Side panel com markdown, etiquetas e comentários.',
       labelIds: ['l2', 'l4'],
       memberIds: ['m4', 'm1'],
+      startDate: null,
       dueDate: iso(10),
       checklists: [
         {
@@ -175,6 +179,7 @@ export const mockBoard: Board = {
       description: 'Contrato de integração com parceiro B2B.',
       labelIds: ['l5'],
       memberIds: ['m1'],
+      startDate: null,
       dueDate: iso(14),
       checklists: [],
       comments: [
@@ -207,6 +212,7 @@ export const mockBoard: Board = {
       description: 'Casca visual do board entregue.',
       labelIds: ['l4'],
       memberIds: ['m3'],
+      startDate: null,
       dueDate: iso(-2),
       checklists: [
         {
@@ -232,6 +238,7 @@ export const mockBoard: Board = {
       description: 'Segmentar base e montar sequência de e-mails.',
       labelIds: ['l5', 'l1'],
       memberIds: ['m2', 'm4'],
+      startDate: null,
       dueDate: iso(7),
       checklists: [],
       comments: [],
@@ -248,6 +255,7 @@ export const mockBoard: Board = {
       description: 'Preparar channels para colaboração multi-usuário.',
       labelIds: ['l3', 'l4'],
       memberIds: ['m5', 'm3'],
+      startDate: null,
       dueDate: iso(0, 18),
       checklists: [
         {

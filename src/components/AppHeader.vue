@@ -5,6 +5,7 @@ import { useBoardStore } from '../stores/board'
 import { useAuthStore } from '../stores/auth'
 import MembersManager from './MembersManager.vue'
 import MemberFilterSelect from './MemberFilterSelect.vue'
+import NotificationCenter from './NotificationCenter.vue'
 import logoSxB2c from '../assets/brand/sx-b2c.svg'
 
 const board = useBoardStore()
@@ -100,11 +101,13 @@ onBeforeUnmount(() => {
       <MemberFilterSelect compact />
     </div>
 
-    <!-- Direita: filtro mini (mobile) + avatar -->
+    <!-- Direita: filtro mini (mobile) + notificações + avatar -->
     <div class="relative z-20 ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
       <div class="md:hidden">
         <MemberFilterSelect mini />
       </div>
+
+      <NotificationCenter />
 
       <label
         class="group relative flex size-8 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 text-[10px] font-semibold text-white transition-colors hover:border-accent"

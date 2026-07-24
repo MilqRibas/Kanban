@@ -5,6 +5,7 @@ import type {
   Attachment,
   Card,
   Checklist,
+  ChecklistItem,
   Column,
   Comment,
   Label,
@@ -21,7 +22,17 @@ function createId(prefix: string) {
 
 function asChecklists(value: Json): Checklist[] {
   if (!Array.isArray(value)) return []
-  return value as unknown as Checklist[]
+  return (value as unknown as Checklist[]).map((list) => ({
+    ...list,
+    items: (list.items ?? []).map((item) => ({
+      ...item,
+      assigneeId: item.assigneeId ?? null,
+    })),
+  }))
+}
+
+function createNotificationId() {
+  return `ntf-${crypto.randomUUID().slice(0, 8)}`
 }
 
 export const useBoardStore = defineStore('board', () => {
@@ -145,23 +156,25 @@ export const useBoardStore = defineStore('board', () => {
             id: string
             column_id: string
             title: string
-            description: string
-            due_date: string | null
-            checklists: Json
-            completed: boolean
-            position: number
-            created_at: string
-            updated_at: string
-          }>
-          card_labels: Array<{ card_id: string; label_id: string }>
-          card_members: Array<{ card_id: string; member_id: string }>
-          comments: Array<{
-            id: string
-            card_id: string
-            author_id: string
-            body: string
-            created_at: string
-          }>
+          description: string
+          due_date: string | null
+          start_date: string | null
+          checklists: Json
+          completed: boolean
+          position: number
+          created_at: string
+          updated_at: string
+        }>
+        card_labels: Array<{ card_id: string; label_id: string }>
+        card_members: Array<{ card_id: string; member_id: string }>
+        comments: Array<{
+          id: string
+          card_id: string
+          author_id: string
+          body: string
+          created_at: string
+          updated_at: string | null
+        }>
           attachments: Array<{
             id: string
             card_id: string
@@ -242,6 +255,7 @@ export const useBoardStore = defineStore('board', () => {
             authorId: row.author_id,
             body: row.body,
             createdAt: row.created_at,
+            updatedAt: (row as { updated_at?: string | null }).updated_at ?? null,
           })
           commentsByCard.set(row.card_id, list)
         }
@@ -268,6 +282,7 @@ export const useBoardStore = defineStore('board', () => {
           description: row.description,
           labelIds: labelsByCard.get(row.id) ?? [],
           memberIds: membersByCard.get(row.id) ?? [],
+          startDate: row.start_date ?? null,
           dueDate: row.due_date,
           checklists: asChecklists(row.checklists),
           comments: commentsByCard.get(row.id) ?? [],
@@ -608,6 +623,7 @@ export const useBoardStore = defineStore('board', () => {
       description: '',
       labelIds: [],
       memberIds: memberFilterId.value ? [memberFilterId.value] : [],
+      startDate: null,
       dueDate: null,
       checklists: [],
       comments: [],
@@ -625,6 +641,7 @@ export const useBoardStore = defineStore('board', () => {
       column_id: card.columnId,
       title: card.title,
       description: card.description,
+      start_date: null,
       due_date: null,
       completed: false,
       position: card.position,
@@ -664,6 +681,7 @@ export const useBoardStore = defineStore('board', () => {
     }
     if (patch.title !== undefined) dbPatch.title = patch.title
     if (patch.description !== undefined) dbPatch.description = patch.description
+    if (patch.startDate !== undefined) dbPatch.start_date = patch.startDate
     if (patch.dueDate !== undefined) dbPatch.due_date = patch.dueDate
     if (patch.completed !== undefined) dbPatch.completed = patch.completed
     if (patch.columnId !== undefined) dbPatch.column_id = patch.columnId
@@ -710,6 +728,7 @@ export const useBoardStore = defineStore('board', () => {
       authorId: resolvedAuthor,
       body: body.trim(),
       createdAt: new Date().toISOString(),
+      updatedAt: null,
     }
     card.comments.push(comment)
     card.updatedAt = new Date().toISOString()
@@ -721,6 +740,228 @@ export const useBoardStore = defineStore('board', () => {
       body: comment.body,
       created_at: comment.createdAt,
     })
+
+    const mentionIds = extractMentionMemberIds(comment.body)
+    await notifyMentions({
+      cardId,
+      actorMemberId: resolvedAuthor,
+      mentionedMemberIds: mentionIds,
+      commentBody: comment.body,
+    })
+  }
+
+  async function updateComment(cardId: string, commentId: string, body: string) {
+    const card = cards.value.find((item) => item.id === cardId)
+    if (!card) return false
+    const comment = card.comments.find((item) => item.id === commentId)
+    if (!comment) return false
+    const auth = useAuthStore()
+    if (comment.authorId !== auth.memberId && !auth.isAdmin) {
+      error.value = 'Só o autor pode editar este comentário.'
+      return false
+    }
+    const previousMentions = extractMentionMemberIds(comment.body)
+    const nextBody = body.trim()
+    if (!nextBody) return false
+    comment.body = nextBody
+    comment.updatedAt = new Date().toISOString()
+    quietRealtime()
+    await supabase
+      .from('comments')
+      .update({ body: nextBody, updated_at: comment.updatedAt })
+      .eq('id', commentId)
+
+    const nextMentions = extractMentionMemberIds(nextBody)
+    const freshMentions = nextMentions.filter((id) => !previousMentions.includes(id))
+    if (freshMentions.length) {
+      await notifyMentions({
+        cardId,
+        actorMemberId: comment.authorId,
+        mentionedMemberIds: freshMentions,
+        commentBody: nextBody,
+      })
+    }
+    return true
+  }
+
+  async function deleteComment(cardId: string, commentId: string) {
+    const card = cards.value.find((item) => item.id === cardId)
+    if (!card) return false
+    const comment = card.comments.find((item) => item.id === commentId)
+    if (!comment) return false
+    const auth = useAuthStore()
+    if (comment.authorId !== auth.memberId && !auth.isAdmin) {
+      error.value = 'Só o autor pode apagar este comentário.'
+      return false
+    }
+    card.comments = card.comments.filter((item) => item.id !== commentId)
+    quietRealtime()
+    await supabase.from('comments').delete().eq('id', commentId)
+    return true
+  }
+
+  function extractMentionMemberIds(text: string) {
+    const ids = new Set<string>()
+    for (const member of members.value) {
+      const pattern = new RegExp(
+        `@${member.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
+        'i',
+      )
+      if (pattern.test(text)) ids.add(member.id)
+    }
+    return [...ids]
+  }
+
+  async function notifyMentions(params: {
+    cardId: string
+    actorMemberId: string
+    mentionedMemberIds: string[]
+    commentBody: string
+  }) {
+    const card = cards.value.find((item) => item.id === params.cardId)
+    const actor = getMemberById(params.actorMemberId)
+    const recipients = params.mentionedMemberIds.filter(
+      (id) => id !== params.actorMemberId,
+    )
+    if (!recipients.length) return
+
+    const rows = recipients.map((recipientId) => ({
+      id: createNotificationId(),
+      board_id: BOARD_ID,
+      recipient_member_id: recipientId,
+      actor_member_id: params.actorMemberId,
+      card_id: params.cardId,
+      type: 'mention' as const,
+      title: `${actor?.name ?? 'Alguém'} mencionou você`,
+      body: `${card?.title ?? 'Cartão'}: ${params.commentBody.slice(0, 140)}`,
+      meta: { kind: 'mention' },
+    }))
+
+    await supabase.from('notifications').insert(rows)
+  }
+
+  async function notifyChecklistAssign(params: {
+    cardId: string
+    actorMemberId: string
+    assigneeId: string
+    itemText: string
+  }) {
+    if (!params.assigneeId || params.assigneeId === params.actorMemberId) return
+    const card = cards.value.find((item) => item.id === params.cardId)
+    const actor = getMemberById(params.actorMemberId)
+    await supabase.from('notifications').insert({
+      id: createNotificationId(),
+      board_id: BOARD_ID,
+      recipient_member_id: params.assigneeId,
+      actor_member_id: params.actorMemberId,
+      card_id: params.cardId,
+      type: 'checklist_assign',
+      title: `${actor?.name ?? 'Alguém'} atribuiu uma tarefa`,
+      body: `${card?.title ?? 'Cartão'}: ${params.itemText.slice(0, 140)}`,
+      meta: { kind: 'checklist_assign' },
+    })
+  }
+
+  async function addChecklist(cardId: string, title = 'Lista de verificação') {
+    const card = cards.value.find((item) => item.id === cardId)
+    if (!card) return
+    const list = {
+      id: createId('cl'),
+      title,
+      items: [] as ChecklistItem[],
+    }
+    await updateCard(cardId, { checklists: [...card.checklists, list] })
+  }
+
+  async function addChecklistItem(cardId: string, listId: string, text: string) {
+    const card = cards.value.find((item) => item.id === cardId)
+    if (!card || !text.trim()) return
+    const checklists = card.checklists.map((list) => {
+      if (list.id !== listId) return list
+      return {
+        ...list,
+        items: [
+          ...list.items,
+          {
+            id: createId('cli'),
+            text: text.trim(),
+            completed: false,
+            assigneeId: null,
+          },
+        ],
+      }
+    })
+    await updateCard(cardId, { checklists })
+  }
+
+  async function toggleChecklistItem(
+    cardId: string,
+    listId: string,
+    itemId: string,
+  ) {
+    const card = cards.value.find((item) => item.id === cardId)
+    if (!card) return
+    const checklists = card.checklists.map((list) => {
+      if (list.id !== listId) return list
+      return {
+        ...list,
+        items: list.items.map((item) =>
+          item.id === itemId ? { ...item, completed: !item.completed } : item,
+        ),
+      }
+    })
+    await updateCard(cardId, { checklists })
+  }
+
+  async function setChecklistItemAssignee(
+    cardId: string,
+    listId: string,
+    itemId: string,
+    assigneeId: string | null,
+  ) {
+    const card = cards.value.find((item) => item.id === cardId)
+    if (!card) return
+    const auth = useAuthStore()
+    let previousAssignee: string | null = null
+    let itemText = ''
+    const checklists = card.checklists.map((list) => {
+      if (list.id !== listId) return list
+      return {
+        ...list,
+        items: list.items.map((item) => {
+          if (item.id !== itemId) return item
+          previousAssignee = item.assigneeId ?? null
+          itemText = item.text
+          return { ...item, assigneeId }
+        }),
+      }
+    })
+    await updateCard(cardId, { checklists })
+    if (assigneeId && assigneeId !== previousAssignee && auth.memberId) {
+      await notifyChecklistAssign({
+        cardId,
+        actorMemberId: auth.memberId,
+        assigneeId,
+        itemText,
+      })
+    }
+  }
+
+  async function removeChecklistItem(
+    cardId: string,
+    listId: string,
+    itemId: string,
+  ) {
+    const card = cards.value.find((item) => item.id === cardId)
+    if (!card) return
+    const checklists = card.checklists.map((list) => {
+      if (list.id !== listId) return list
+      return {
+        ...list,
+        items: list.items.filter((item) => item.id !== itemId),
+      }
+    })
+    await updateCard(cardId, { checklists })
   }
 
   async function uploadAttachment(cardId: string, file: File) {
@@ -961,6 +1202,13 @@ export const useBoardStore = defineStore('board', () => {
     addCard,
     updateCard,
     addComment,
+    updateComment,
+    deleteComment,
+    addChecklist,
+    addChecklistItem,
+    toggleChecklistItem,
+    setChecklistItemAssignee,
+    removeChecklistItem,
     uploadAttachment,
     addLinkAttachment,
     removeAttachment,

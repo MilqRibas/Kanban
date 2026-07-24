@@ -8,6 +8,8 @@ import {
   Link2,
   MessageSquare,
   Paperclip,
+  Pencil,
+  Plus,
   Tag,
   Trash2,
   Users,
@@ -23,6 +25,9 @@ const auth = useAuthStore()
 const draftTitle = ref('')
 const draftDescription = ref('')
 const commentBody = ref('')
+const commentInputRef = ref<HTMLTextAreaElement | null>(null)
+const editingCommentId = ref<string | null>(null)
+const editingCommentBody = ref('')
 const isEditingDescription = ref(false)
 const modalRef = ref<HTMLElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -31,13 +36,21 @@ const showLinkForm = ref(false)
 const linkUrl = ref('')
 const linkTitle = ref('')
 const attachmentError = ref<string | null>(null)
+const newItemText = ref<Record<string, string>>({})
+const mentionOpen = ref(false)
+const mentionQuery = ref('')
+const mentionStart = ref(-1)
 
 const card = computed(() => board.selectedCard)
 const currentMember = computed(() => {
   if (auth.memberId) {
     return board.getMemberById(auth.memberId) ?? null
   }
-  return board.members.find((member) => member.userId === auth.user?.id) ?? board.members[0] ?? null
+  return (
+    board.members.find((member) => member.userId === auth.user?.id) ??
+    board.members[0] ??
+    null
+  )
 })
 const fallbackMember = {
   name: 'Usuário',
@@ -48,6 +61,10 @@ const fallbackMember = {
 
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape' && board.selectedCardId) {
+    if (mentionOpen.value) {
+      mentionOpen.value = false
+      return
+    }
     board.closeCard()
   }
 }
@@ -64,6 +81,7 @@ watch(
     draftTitle.value = value.title
     draftDescription.value = value.description
     commentBody.value = ''
+    editingCommentId.value = null
     isEditingDescription.value = !value.description.trim()
     document.body.style.overflow = 'hidden'
     window.addEventListener('keydown', onKeydown)
@@ -77,7 +95,6 @@ onBeforeUnmount(() => {
   document.body.style.overflow = ''
   window.removeEventListener('keydown', onKeydown)
 })
-
 
 const labels = computed(() => (card.value ? board.getLabelsForCard(card.value) : []))
 const members = computed(() =>
@@ -98,18 +115,59 @@ const checklistStats = computed(() => {
   return card.value.checklists.map((list) => {
     const total = list.items.length
     const done = list.items.filter((item) => item.completed).length
-    return { ...list, done, total, percent: total ? Math.round((done / total) * 100) : 0 }
+    return {
+      ...list,
+      done,
+      total,
+      percent: total ? Math.round((done / total) * 100) : 0,
+    }
   })
 })
 
-const dueLabel = computed(() => {
-  if (!card.value?.dueDate) return null
-  return new Intl.DateTimeFormat('pt-BR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  }).format(new Date(card.value.dueDate))
+const startDateInput = computed({
+  get: () => toDateInput(card.value?.startDate ?? null),
+  set: (value: string) => {
+    if (!card.value) return
+    board.updateCard(card.value.id, {
+      startDate: value ? fromDateInput(value) : null,
+    })
+  },
 })
+
+const dueDateInput = computed({
+  get: () => toDateInput(card.value?.dueDate ?? null),
+  set: (value: string) => {
+    if (!card.value) return
+    board.updateCard(card.value.id, {
+      dueDate: value ? fromDateInput(value) : null,
+    })
+  },
+})
+
+const mentionCandidates = computed(() => {
+  const query = mentionQuery.value.trim().toLowerCase()
+  return board.members.filter((member) => {
+    if (!query) return true
+    return (
+      member.name.toLowerCase().includes(query) ||
+      (member.email ?? '').toLowerCase().includes(query)
+    )
+  })
+})
+
+function toDateInput(iso: string | null) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function fromDateInput(value: string) {
+  const [y, m, d] = value.split('-').map(Number)
+  return new Date(y, m - 1, d, 12, 0, 0).toISOString()
+}
 
 function saveTitle() {
   if (!card.value) return
@@ -127,10 +185,83 @@ function saveDescription() {
   isEditingDescription.value = false
 }
 
-function submitComment() {
+function onCommentInput() {
+  const el = commentInputRef.value
+  if (!el) return
+  const cursor = el.selectionStart ?? commentBody.value.length
+  const before = commentBody.value.slice(0, cursor)
+  const match = before.match(/@([^\s@]*)$/)
+  if (!match) {
+    mentionOpen.value = false
+    mentionQuery.value = ''
+    mentionStart.value = -1
+    return
+  }
+  mentionOpen.value = true
+  mentionQuery.value = match[1] ?? ''
+  mentionStart.value = cursor - match[0].length
+}
+
+function insertMention(memberName: string) {
+  if (mentionStart.value < 0) return
+  const el = commentInputRef.value
+  const cursor = el?.selectionStart ?? commentBody.value.length
+  const before = commentBody.value.slice(0, mentionStart.value)
+  const after = commentBody.value.slice(cursor)
+  commentBody.value = `${before}@${memberName} ${after}`
+  mentionOpen.value = false
+  mentionQuery.value = ''
+  mentionStart.value = -1
+  nextTick(() => {
+    const pos = before.length + memberName.length + 2
+    el?.focus()
+    el?.setSelectionRange(pos, pos)
+  })
+}
+
+async function submitComment() {
   if (!card.value || !commentBody.value.trim()) return
-  board.addComment(card.value.id, commentBody.value)
+  await board.addComment(card.value.id, commentBody.value)
   commentBody.value = ''
+  mentionOpen.value = false
+}
+
+function startEditComment(commentId: string, body: string) {
+  editingCommentId.value = commentId
+  editingCommentBody.value = body
+}
+
+async function saveEditComment() {
+  if (!card.value || !editingCommentId.value) return
+  const ok = await board.updateComment(
+    card.value.id,
+    editingCommentId.value,
+    editingCommentBody.value,
+  )
+  if (ok) editingCommentId.value = null
+}
+
+async function removeComment(commentId: string) {
+  if (!card.value) return
+  if (!window.confirm('Apagar este comentário?')) return
+  await board.deleteComment(card.value.id, commentId)
+}
+
+function canManageComment(authorId: string) {
+  return auth.isAdmin || authorId === auth.memberId
+}
+
+async function ensureChecklist() {
+  if (!card.value) return
+  await board.addChecklist(card.value.id)
+}
+
+async function addItem(listId: string) {
+  if (!card.value) return
+  const text = (newItemText.value[listId] ?? '').trim()
+  if (!text) return
+  await board.addChecklistItem(card.value.id, listId, text)
+  newItemText.value[listId] = ''
 }
 
 async function onPickAttachment(event: Event) {
@@ -204,6 +335,21 @@ function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function renderCommentBody(body: string) {
+  let html = body
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  for (const member of board.members) {
+    const escaped = member.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    html = html.replace(
+      new RegExp(`@${escaped}\\b`, 'gi'),
+      `<span class="font-semibold text-accent">@${member.name}</span>`,
+    )
+  }
+  return html
 }
 </script>
 
@@ -288,15 +434,30 @@ function formatBytes(bytes: number) {
                 />
               </div>
             </div>
+          </section>
 
-            <div v-if="dueLabel">
-              <h3 class="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">
-                <Calendar :size="13" />
-                Prazo
-              </h3>
-              <span class="rounded-md bg-surface px-2.5 py-1 text-sm text-text-primary">
-                {{ dueLabel }}
-              </span>
+          <section>
+            <h3 class="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">
+              <Calendar :size="13" />
+              Datas
+            </h3>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <label class="block text-xs text-text-muted">
+                Data de início
+                <input
+                  v-model="startDateInput"
+                  type="date"
+                  class="mt-1 w-full rounded-lg border border-border-subtle bg-column px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                />
+              </label>
+              <label class="block text-xs text-text-muted">
+                Data de conclusão
+                <input
+                  v-model="dueDateInput"
+                  type="date"
+                  class="mt-1 w-full rounded-lg border border-border-subtle bg-column px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                />
+              </label>
             </div>
           </section>
 
@@ -361,19 +522,33 @@ function formatBytes(bytes: number) {
             />
           </section>
 
-          <section v-if="checklistStats.length">
+          <section>
+            <div class="mb-2 flex items-center justify-between gap-2">
+              <h3 class="flex items-center gap-1.5 text-sm font-semibold text-text-primary">
+                <CheckSquare :size="16" />
+                Lista de verificação
+              </h3>
+              <button
+                type="button"
+                class="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-text-secondary hover:bg-white/10 hover:text-text-primary"
+                @click="ensureChecklist"
+              >
+                <Plus :size="12" />
+                {{ card.checklists.length ? 'Nova lista' : 'Criar lista' }}
+              </button>
+            </div>
+
             <div
               v-for="list in checklistStats"
               :key="list.id"
               class="mb-4 last:mb-0"
             >
-              <h3 class="mb-2 flex items-center gap-1.5 text-sm font-semibold text-text-primary">
-                <CheckSquare :size="16" />
+              <h4 class="mb-2 flex items-center gap-1.5 text-sm font-medium text-text-primary">
                 {{ list.title }}
                 <span class="ml-auto text-xs font-normal text-text-muted">
-                  {{ list.done }}/{{ list.total }}
+                  {{ list.done }} de {{ list.total }} itens concluídos
                 </span>
-              </h3>
+              </h4>
               <div class="mb-2 h-1.5 overflow-hidden rounded-full bg-surface">
                 <div
                   class="h-full rounded-full bg-success transition-all"
@@ -388,21 +563,75 @@ function formatBytes(bytes: number) {
                 >
                   <input
                     type="checkbox"
-                    class="mt-0.5 accent-accent"
+                    class="mt-1 accent-accent"
                     :checked="item.completed"
-                    disabled
-                  />
-                  <span
-                    :class="
-                      item.completed
-                        ? 'text-text-muted line-through'
-                        : 'text-text-primary'
+                    @change="
+                      board.toggleChecklistItem(card.id, list.id, item.id)
                     "
-                  >
-                    {{ item.text }}
-                  </span>
+                  />
+                  <div class="min-w-0 flex-1">
+                    <p
+                      :class="
+                        item.completed
+                          ? 'text-text-muted line-through'
+                          : 'text-text-primary'
+                      "
+                    >
+                      {{ item.text }}
+                    </p>
+                    <div class="mt-1 flex flex-wrap items-center gap-2">
+                      <select
+                        class="rounded-md border border-border-subtle bg-column px-2 py-1 text-[11px] text-text-secondary outline-none focus:border-accent"
+                        :value="item.assigneeId ?? ''"
+                        @change="
+                          board.setChecklistItemAssignee(
+                            card.id,
+                            list.id,
+                            item.id,
+                            ($event.target as HTMLSelectElement).value || null,
+                          )
+                        "
+                      >
+                        <option value="">Sem responsável</option>
+                        <option
+                          v-for="member in board.members"
+                          :key="member.id"
+                          :value="member.id"
+                        >
+                          {{ member.name }}
+                        </option>
+                      </select>
+                      <button
+                        type="button"
+                        class="rounded p-1 text-text-muted hover:bg-danger/15 hover:text-danger"
+                        title="Remover item"
+                        @click="
+                          board.removeChecklistItem(card.id, list.id, item.id)
+                        "
+                      >
+                        <Trash2 :size="12" />
+                      </button>
+                    </div>
+                  </div>
                 </li>
               </ul>
+              <form
+                class="mt-2 flex items-center gap-2"
+                @submit.prevent="addItem(list.id)"
+              >
+                <input
+                  v-model="newItemText[list.id]"
+                  type="text"
+                  placeholder="Adicionar um item"
+                  class="flex-1 rounded-lg border border-border-subtle bg-column px-3 py-1.5 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+                />
+                <button
+                  type="submit"
+                  class="rounded-lg bg-accent px-2.5 py-1.5 text-xs font-medium text-board hover:bg-accent-hover"
+                >
+                  Add
+                </button>
+              </form>
             </div>
           </section>
 
@@ -510,7 +739,8 @@ function formatBytes(bytes: number) {
                       Link · {{ formatDate(file.createdAt) }}
                     </template>
                     <template v-else>
-                      {{ formatBytes(file.sizeBytes) }} · {{ formatDate(file.createdAt) }}
+                      {{ formatBytes(file.sizeBytes) }} ·
+                      {{ formatDate(file.createdAt) }}
                     </template>
                   </p>
                 </div>
@@ -533,15 +763,32 @@ function formatBytes(bytes: number) {
               Comentários
             </h3>
 
-            <form class="mb-4 flex gap-2" @submit.prevent="submitComment">
+            <form class="relative mb-4 flex gap-2" @submit.prevent="submitComment">
               <MemberAvatar :member="currentMember ?? fallbackMember" size="lg" />
-              <div class="flex-1">
+              <div class="relative flex-1">
                 <textarea
+                  ref="commentInputRef"
                   v-model="commentBody"
                   rows="2"
-                  placeholder="Escreva um comentário…"
+                  placeholder="Escreva um comentário… Use @ para mencionar"
                   class="w-full resize-none rounded-xl border border-border-subtle bg-column px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+                  @input="onCommentInput"
                 />
+                <div
+                  v-if="mentionOpen && mentionCandidates.length"
+                  class="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 overflow-y-auto rounded-xl border border-border-subtle bg-board-elevated shadow-xl"
+                >
+                  <button
+                    v-for="member in mentionCandidates"
+                    :key="member.id"
+                    type="button"
+                    class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface"
+                    @click="insertMention(member.name)"
+                  >
+                    <MemberAvatar :member="member" size="sm" />
+                    <span class="text-text-primary">{{ member.name }}</span>
+                  </button>
+                </div>
                 <button
                   v-if="commentBody.trim()"
                   type="submit"
@@ -563,23 +810,75 @@ function formatBytes(bytes: number) {
                   size="lg"
                 />
                 <div class="min-w-0 flex-1">
-                  <p class="text-sm">
-                    <span class="font-semibold text-text-primary">
-                      {{ board.getMemberById(comment.authorId)?.name ?? 'Usuário' }}
-                    </span>
-                    <span class="ml-2 text-xs text-text-muted">
-                      {{ formatDate(comment.createdAt) }}
-                    </span>
-                  </p>
-                  <p class="mt-1 rounded-xl bg-column px-3 py-2 text-sm text-text-secondary">
-                    {{ comment.body }}
-                  </p>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <p class="text-sm">
+                      <span class="font-semibold text-text-primary">
+                        {{
+                          board.getMemberById(comment.authorId)?.name ?? 'Usuário'
+                        }}
+                      </span>
+                      <span class="ml-2 text-xs text-text-muted">
+                        {{ formatDate(comment.createdAt) }}
+                        <template v-if="comment.updatedAt"> · editado</template>
+                      </span>
+                    </p>
+                    <div
+                      v-if="canManageComment(comment.authorId)"
+                      class="ml-auto flex items-center gap-1"
+                    >
+                      <button
+                        type="button"
+                        class="rounded p-1 text-text-muted hover:bg-surface hover:text-text-primary"
+                        title="Editar"
+                        @click="startEditComment(comment.id, comment.body)"
+                      >
+                        <Pencil :size="13" />
+                      </button>
+                      <button
+                        type="button"
+                        class="rounded p-1 text-text-muted hover:bg-danger/15 hover:text-danger"
+                        title="Apagar"
+                        @click="removeComment(comment.id)"
+                      >
+                        <Trash2 :size="13" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div
+                    v-if="editingCommentId === comment.id"
+                    class="mt-1 space-y-2"
+                  >
+                    <textarea
+                      v-model="editingCommentBody"
+                      rows="2"
+                      class="w-full resize-none rounded-xl border border-border-subtle bg-column px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                    />
+                    <div class="flex gap-2">
+                      <button
+                        type="button"
+                        class="rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-board hover:bg-accent-hover"
+                        @click="saveEditComment"
+                      >
+                        Salvar
+                      </button>
+                      <button
+                        type="button"
+                        class="rounded-lg px-2.5 py-1 text-xs text-text-muted hover:text-text-primary"
+                        @click="editingCommentId = null"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                  <p
+                    v-else
+                    class="mt-1 rounded-xl bg-column px-3 py-2 text-sm text-text-secondary"
+                    v-html="renderCommentBody(comment.body)"
+                  />
                 </div>
               </li>
-              <li
-                v-if="!card.comments.length"
-                class="text-sm text-text-muted"
-              >
+              <li v-if="!card.comments.length" class="text-sm text-text-muted">
                 Nenhum comentário ainda.
               </li>
             </ul>

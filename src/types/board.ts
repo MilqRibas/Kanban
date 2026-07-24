@@ -29,6 +29,7 @@ export interface ChecklistItem {
   id: string
   text: string
   completed: boolean
+  assigneeId?: string | null
 }
 
 export interface Checklist {
@@ -42,6 +43,7 @@ export interface Comment {
   authorId: string
   body: string
   createdAt: string
+  updatedAt?: string | null
 }
 
 export interface Attachment {
@@ -54,6 +56,22 @@ export interface Attachment {
   kind?: 'file' | 'link'
 }
 
+export type NotificationType = 'checklist_assign' | 'mention'
+
+export interface AppNotification {
+  id: string
+  boardId: string
+  recipientMemberId: string
+  actorMemberId: string | null
+  cardId: string | null
+  type: NotificationType
+  title: string
+  body: string
+  readAt: string | null
+  createdAt: string
+  meta?: Record<string, unknown>
+}
+
 export interface Card {
   id: string
   columnId: string
@@ -61,6 +79,7 @@ export interface Card {
   description: string
   labelIds: string[]
   memberIds: string[]
+  startDate: string | null
   dueDate: string | null
   checklists: Checklist[]
   comments: Comment[]

@@ -15,11 +15,13 @@ import { useAuthStore } from './stores/auth'
 import { useBoardStore } from './stores/board'
 import { useNotesStore } from './stores/notes'
 import { useDailyStore } from './stores/dailyTodos'
+import { useNotificationsStore } from './stores/notifications'
 
 const auth = useAuthStore()
 const board = useBoardStore()
 const notes = useNotesStore()
 const daily = useDailyStore()
+const notifications = useNotificationsStore()
 const activeTab = ref<NavTab>('board')
 const bootstrapping = ref(false)
 const notesReady = ref(false)
@@ -36,6 +38,7 @@ watch(
       board.reset()
       notes.reset()
       daily.reset()
+      notifications.reset()
       notesReady.value = false
       dailyReady.value = false
       return
@@ -44,6 +47,7 @@ watch(
     try {
       // Só o quadro no boot — notas/tarefas sob demanda
       await board.init()
+      await notifications.init()
     } finally {
       bootstrapping.value = false
     }
