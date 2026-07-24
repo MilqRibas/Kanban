@@ -11,6 +11,8 @@ export const useNotificationsStore = defineStore('notifications', () => {
   const loading = ref(false)
   const open = ref(false)
   let channel: RealtimeChannel | null = null
+  let suppressRealtimeUntil = 0
+  let reloadTimer: ReturnType<typeof setTimeout> | null = null
 
   const unreadCount = computed(
     () => items.value.filter((item) => !item.readAt).length,
@@ -51,6 +53,10 @@ export const useNotificationsStore = defineStore('notifications', () => {
     }
   }
 
+  function quietRealtime(ms = 1200) {
+    suppressRealtimeUntil = Date.now() + ms
+  }
+
   async function load() {
     const auth = useAuthStore()
     if (!auth.memberId) {
@@ -67,6 +73,16 @@ export const useNotificationsStore = defineStore('notifications', () => {
     loading.value = false
     if (error) return
     items.value = (data ?? []).map(mapRow)
+  }
+
+  function scheduleReload() {
+    if (Date.now() < suppressRealtimeUntil) return
+    if (reloadTimer) clearTimeout(reloadTimer)
+    reloadTimer = setTimeout(() => {
+      reloadTimer = null
+      if (Date.now() < suppressRealtimeUntil) return
+      void load()
+    }, 400)
   }
 
   function subscribe() {
@@ -87,7 +103,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
           filter: `recipient_member_id=eq.${auth.memberId}`,
         },
         () => {
-          void load()
+          scheduleReload()
         },
       )
       .subscribe()
@@ -101,34 +117,79 @@ export const useNotificationsStore = defineStore('notifications', () => {
   function reset() {
     items.value = []
     open.value = false
+    if (reloadTimer) {
+      clearTimeout(reloadTimer)
+      reloadTimer = null
+    }
     if (channel) {
       supabase.removeChannel(channel)
       channel = null
     }
   }
 
+  async function persistReadAt(ids: string[], readAt: string) {
+    if (!ids.length) return true
+
+    quietRealtime()
+    const { data, error } = await supabase
+      .from('notifications')
+      .update({ read_at: readAt })
+      .in('id', ids)
+      .select('id')
+
+    if (error) {
+      console.error('[notifications] falha ao marcar lidas', error.message)
+      return false
+    }
+
+    // RLS pode “engolir” o update (0 linhas) sem error — confirma pelo select
+    if ((data?.length ?? 0) < ids.length) {
+      const auth = useAuthStore()
+      if (!auth.memberId) return false
+      const { data: fallback, error: fallbackError } = await supabase
+        .from('notifications')
+        .update({ read_at: readAt })
+        .eq('recipient_member_id', auth.memberId)
+        .in('id', ids)
+        .select('id')
+
+      if (fallbackError || !(fallback?.length ?? 0)) {
+        console.error(
+          '[notifications] update sem efeito (possível RLS)',
+          fallbackError?.message,
+        )
+        return false
+      }
+    }
+
+    return true
+  }
+
   async function markRead(id: string) {
     const item = items.value.find((entry) => entry.id === id)
     if (!item || item.readAt) return
-    item.readAt = new Date().toISOString()
-    await supabase
-      .from('notifications')
-      .update({ read_at: item.readAt })
-      .eq('id', id)
+    const now = new Date().toISOString()
+    item.readAt = now
+    const ok = await persistReadAt([id], now)
+    if (!ok) await load()
   }
 
   async function markAllRead() {
     const auth = useAuthStore()
     if (!auth.memberId) return
+
+    const unreadIds = items.value
+      .filter((item) => !item.readAt)
+      .map((item) => item.id)
+    if (!unreadIds.length) return
+
     const now = new Date().toISOString()
     for (const item of items.value) {
       if (!item.readAt) item.readAt = now
     }
-    await supabase
-      .from('notifications')
-      .update({ read_at: now })
-      .eq('recipient_member_id', auth.memberId)
-      .is('read_at', null)
+
+    const ok = await persistReadAt(unreadIds, now)
+    if (!ok) await load()
   }
 
   function openNotification(item: AppNotification) {
