@@ -10,12 +10,13 @@ const iso = (daysFromNow: number, hour = 12) => {
 
 export const mockBoard: Board = {
   id: 'board-1',
-  title: 'Projetos Internos',
+  title: 'B2C TEAM',
   members: [
-    { id: 'm1', name: 'Ana Silva', initials: 'AS', avatarColor: 'bg-sky-600' },
-    { id: 'm2', name: 'Marcos Rocha', initials: 'MR', avatarColor: 'bg-emerald-600' },
-    { id: 'm3', name: 'Julia Lima', initials: 'JL', avatarColor: 'bg-amber-600' },
-    { id: 'm4', name: 'Pedro Costa', initials: 'PC', avatarColor: 'bg-violet-600' },
+    { id: 'm1', name: 'Thiago Malafaia', initials: 'TM', avatarColor: 'bg-sky-600' },
+    { id: 'm2', name: 'Ana Luiza', initials: 'AL', avatarColor: 'bg-pink-600' },
+    { id: 'm3', name: 'Milq Ribas', initials: 'MR', avatarColor: 'bg-emerald-600' },
+    { id: 'm4', name: 'Ana Clara', initials: 'AC', avatarColor: 'bg-amber-600' },
+    { id: 'm5', name: 'Danilo Tonon', initials: 'DT', avatarColor: 'bg-violet-600' },
   ],
   labels: [
     { id: 'l1', name: 'Urgente', color: 'red' },
@@ -41,7 +42,7 @@ export const mockBoard: Board = {
       description:
         'Documentar o funil atual e identificar gargalos.\n\n- Entrevistar CS\n- Revisar métricas do mês',
       labelIds: ['l5', 'l2'],
-      memberIds: ['m1'],
+      memberIds: ['m2'],
       dueDate: iso(5),
       checklists: [
         {
@@ -57,7 +58,7 @@ export const mockBoard: Board = {
       comments: [
         {
           id: 'cm1',
-          authorId: 'm1',
+          authorId: 'm2',
           body: 'Já tenho as notas da primeira entrevista.',
           createdAt: iso(-2),
         },
@@ -74,19 +75,19 @@ export const mockBoard: Board = {
       title: 'Corrigir bug de upload de anexos',
       description: 'Arquivos maiores que 5MB falham no mobile.',
       labelIds: ['l1', 'l6', 'l4'],
-      memberIds: ['m4', 'm2'],
+      memberIds: ['m5', 'm3'],
       dueDate: iso(-1),
       checklists: [],
       comments: [
         {
           id: 'cm2',
-          authorId: 'm4',
+          authorId: 'm5',
           body: 'Reproduzido no iOS 17.',
           createdAt: iso(-1, 9),
         },
         {
           id: 'cm3',
-          authorId: 'm2',
+          authorId: 'm3',
           body: 'Suspeito do limite do proxy.',
           createdAt: iso(-1, 14),
         },
@@ -113,7 +114,7 @@ export const mockBoard: Board = {
       description:
         '## Objetivo\n\nPreparar endpoint que recebe o card concluído e envia para o Google Sheets.\n\n```ts\nPOST /api/sheets/export\n```',
       labelIds: ['l3'],
-      memberIds: ['m2'],
+      memberIds: ['m3'],
       dueDate: iso(2),
       checklists: [
         {
@@ -148,7 +149,7 @@ export const mockBoard: Board = {
       title: 'Redesenhar painel de detalhes do card',
       description: 'Side panel com markdown, etiquetas e comentários.',
       labelIds: ['l2', 'l4'],
-      memberIds: ['m3', 'm1'],
+      memberIds: ['m4', 'm1'],
       dueDate: iso(10),
       checklists: [
         {
@@ -205,7 +206,7 @@ export const mockBoard: Board = {
       title: 'Setup inicial do projeto Vue + Tailwind',
       description: 'Casca visual do board entregue.',
       labelIds: ['l4'],
-      memberIds: ['m4'],
+      memberIds: ['m3'],
       dueDate: iso(-2),
       checklists: [
         {
@@ -230,7 +231,7 @@ export const mockBoard: Board = {
       title: 'Campanha de reativação de leads frios',
       description: 'Segmentar base e montar sequência de e-mails.',
       labelIds: ['l5', 'l1'],
-      memberIds: ['m3', 'm1'],
+      memberIds: ['m2', 'm4'],
       dueDate: iso(7),
       checklists: [],
       comments: [],
@@ -246,7 +247,7 @@ export const mockBoard: Board = {
       title: 'Realtime do quadro com Supabase',
       description: 'Preparar channels para colaboração multi-usuário.',
       labelIds: ['l3', 'l4'],
-      memberIds: ['m2', 'm4'],
+      memberIds: ['m5', 'm3'],
       dueDate: iso(0, 18),
       checklists: [
         {
@@ -262,7 +263,7 @@ export const mockBoard: Board = {
       comments: [
         {
           id: 'cm5',
-          authorId: 'm2',
+          authorId: 'm3',
           body: 'Vamos usar a Fase 5 para isso.',
           createdAt: iso(0, 10),
         },
@@ -275,3 +276,4 @@ export const mockBoard: Board = {
     },
   ],
 }
+

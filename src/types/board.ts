@@ -19,6 +19,9 @@ export interface Member {
   name: string
   initials: string
   avatarColor: string
+  avatarUrl?: string | null
+  userId?: string | null
+  email?: string | null
 }
 
 export interface ChecklistItem {
@@ -47,6 +50,7 @@ export interface Attachment {
   mimeType: string
   sizeBytes: number
   createdAt: string
+  kind?: 'file' | 'link'
 }
 
 export interface Card {

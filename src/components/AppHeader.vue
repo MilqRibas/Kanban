@@ -1,102 +1,125 @@
 <script setup lang="ts">
-import {
-  Star,
-  Users,
-  Filter,
-  Bolt,
-  MoreHorizontal,
-  Share2,
-  LayoutGrid,
-} from '@lucide/vue'
+import { ref } from 'vue'
+import { Camera, LogOut, Plus } from '@lucide/vue'
 import { useBoardStore } from '../stores/board'
-import { computed } from 'vue'
+import { useAuthStore } from '../stores/auth'
+import MembersManager from './MembersManager.vue'
+import MemberFilterSelect from './MemberFilterSelect.vue'
+import logoSxB2c from '../assets/brand/sx-b2c.svg'
 
 const board = useBoardStore()
-const avatars = computed(() => board.members.slice(0, 3))
+const auth = useAuthStore()
+const membersManager = ref<{ openModal: () => void } | null>(null)
+
+async function onAvatarChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const ok = await auth.uploadAvatar(file)
+  if (ok) {
+    // Atualiza só o member local — evita reload pesado / race com realtime
+    const member = board.members.find(
+      (item) => item.userId === auth.user?.id || item.id === auth.memberId,
+    )
+    if (member && auth.avatarUrl) {
+      member.avatarUrl = auth.avatarUrl
+    }
+  }
+  input.value = ''
+}
 </script>
 
 <template>
   <header
-    class="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border-subtle/60 bg-board-elevated/90 px-4 backdrop-blur-md"
+    class="relative z-30 flex h-12 shrink-0 items-center gap-3 overflow-visible border-b border-white/10 bg-black/35 px-3 backdrop-blur-md"
   >
-    <div class="flex min-w-0 items-center gap-3">
-      <div
-        class="flex size-8 shrink-0 items-center justify-center rounded-md bg-accent/15 text-accent"
-      >
-        <LayoutGrid :size="18" :stroke-width="2" />
-      </div>
-      <h1 class="truncate text-lg font-semibold tracking-tight text-text-primary">
+    <div class="flex min-w-0 shrink items-center gap-3">
+      <img
+        :src="logoSxB2c"
+        alt="SX B2C"
+        class="h-6 w-auto shrink-0 object-contain sm:h-7"
+      />
+      <div class="hidden h-6 w-px bg-white/15 sm:block" />
+      <h1 class="truncate text-sm font-semibold tracking-tight text-text-primary sm:text-base">
         {{ board.title }}
       </h1>
+    </div>
+
+    <div class="flex min-w-0 flex-1 items-center justify-center gap-2 px-2">
+      <MemberFilterSelect compact />
       <button
         type="button"
-        class="rounded-md p-1.5 text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
-        aria-label="Favoritar quadro"
+        class="flex size-8 shrink-0 items-center justify-center rounded-xl border border-dashed border-white/25 text-text-secondary transition-colors hover:border-accent hover:bg-accent/15 hover:text-accent"
+        title="Cadastrar ou remover usuários"
+        aria-label="Gerenciar usuários"
+        @click="membersManager?.openModal()"
       >
-        <Star :size="16" :stroke-width="2" />
-      </button>
-      <button
-        type="button"
-        class="hidden items-center gap-1.5 rounded-md px-2 py-1 text-sm text-text-secondary transition-colors hover:bg-surface hover:text-text-primary sm:inline-flex"
-      >
-        <Users :size="15" :stroke-width="2" />
-        <span>Espaço de trabalho</span>
+        <Plus :size="15" :stroke-width="2.5" />
       </button>
     </div>
 
-    <div class="flex shrink-0 items-center gap-1.5 sm:gap-2">
-      <div class="mr-1 flex items-center -space-x-2">
-        <div
-          v-for="avatar in avatars"
-          :key="avatar.id"
-          :class="[
-            avatar.avatarColor,
-            'flex size-7 items-center justify-center rounded-full border-2 border-board-elevated text-[10px] font-semibold text-white',
-          ]"
-          :title="avatar.name"
+    <div class="flex shrink-0 items-center gap-2">
+      <div class="relative flex items-center gap-2">
+        <label
+          class="group relative flex size-8 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 text-[10px] font-semibold text-white transition-colors hover:border-accent"
+          :title="auth.uploadingAvatar ? 'Enviando…' : 'Alterar foto de perfil'"
+          :aria-label="auth.uploadingAvatar ? 'Enviando foto' : 'Alterar foto de perfil'"
+          :class="{ 'pointer-events-none opacity-70': auth.uploadingAvatar }"
         >
-          {{ avatar.initials }}
-        </div>
-        <button
-          v-if="board.members.length > avatars.length"
-          type="button"
-          class="flex size-7 items-center justify-center rounded-full border-2 border-board-elevated bg-surface text-xs font-medium text-text-secondary transition-colors hover:bg-card hover:text-text-primary"
-          aria-label="Ver membros"
+          <img
+            v-if="auth.avatarUrl"
+            :src="auth.avatarUrl"
+            alt=""
+            class="size-full object-cover"
+          />
+          <span v-else>{{ auth.initials }}</span>
+          <span
+            class="absolute inset-0 flex items-center justify-center bg-black/55 opacity-0 transition-opacity group-hover:opacity-100"
+          >
+            <Camera :size="12" :stroke-width="2.25" class="text-white" />
+          </span>
+          <input
+            type="file"
+            accept="image/*,.jpg,.jpeg,.png,.gif,.webp"
+            class="sr-only"
+            :disabled="auth.uploadingAvatar"
+            @change="onAvatarChange"
+          />
+        </label>
+
+        <span
+          class="hidden max-w-[140px] truncate text-xs text-text-secondary sm:inline"
+          :title="auth.displayName ?? auth.user?.email ?? ''"
         >
-          +{{ board.members.length - avatars.length }}
-        </button>
+          {{ auth.displayName ?? auth.user?.email }}
+        </span>
+
+        <p
+          v-if="auth.error"
+          class="absolute right-0 top-full z-40 mt-1 max-w-[240px] rounded-md border border-red-400/30 bg-red-950/90 px-2 py-1 text-[11px] text-red-200"
+        >
+          {{ auth.error }}
+          <button
+            type="button"
+            class="ml-1 underline opacity-80 hover:opacity-100"
+            @click="auth.error = null"
+          >
+            fechar
+          </button>
+        </p>
       </div>
 
       <button
         type="button"
-        class="rounded-md p-2 text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
-        aria-label="Filtros"
+        class="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/5 px-2.5 py-1.5 text-sm font-medium text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
+        title="Sair"
+        @click="auth.signOut()"
       >
-        <Filter :size="16" :stroke-width="2" />
-      </button>
-      <button
-        type="button"
-        class="rounded-md p-2 text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
-        aria-label="Automações"
-      >
-        <Bolt :size="16" :stroke-width="2" />
-      </button>
-      <button
-        type="button"
-        class="rounded-md p-2 text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
-        aria-label="Mais opções"
-      >
-        <MoreHorizontal :size="16" :stroke-width="2" />
-      </button>
-
-      <button
-        type="button"
-        class="ml-1 inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-board transition-colors hover:bg-accent-hover"
-      >
-        <Share2 :size="15" :stroke-width="2.25" />
-        <span class="hidden sm:inline">Compartilhar</span>
-        <span class="sm:hidden">+</span>
+        <LogOut :size="15" :stroke-width="2.25" />
+        <span class="hidden sm:inline">Sair</span>
       </button>
     </div>
+
+    <MembersManager ref="membersManager" />
   </header>
 </template>

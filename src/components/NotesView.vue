@@ -86,10 +86,10 @@ function confirmDelete() {
 
 <template>
   <div
-    class="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-4 pb-24 pt-4 md:flex-row"
+    class="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden px-3 pb-16 pt-2 md:flex-row"
   >
     <aside
-      class="flex max-h-52 w-full shrink-0 flex-col overflow-hidden rounded-2xl border border-border-subtle/60 bg-board-elevated md:max-h-none md:max-w-xs"
+      class="flex max-h-44 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-border-subtle/60 bg-board-elevated/95 md:max-h-none md:w-72 lg:w-80"
     >
       <div class="border-b border-border-subtle p-3">
         <div class="mb-3 flex items-center justify-between gap-2">
@@ -169,7 +169,7 @@ function confirmDelete() {
     </aside>
 
     <section
-      class="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border-subtle/60 bg-board-elevated"
+      class="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border-subtle/60 bg-board-elevated/95"
     >
       <template v-if="notesStore.selectedNote">
         <header

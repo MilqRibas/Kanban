@@ -9,6 +9,7 @@ import {
 import type { Card } from '../types/board'
 import { LABEL_COLOR_MAP } from '../types/board'
 import { useBoardStore } from '../stores/board'
+import MemberAvatar from './MemberAvatar.vue'
 
 const props = defineProps<{
   card: Card
@@ -55,13 +56,13 @@ const hasDescription = computed(() => props.card.description.trim().length > 0)
 
 <template>
   <article
-    class="group cursor-pointer rounded-lg bg-card p-2.5 shadow-sm shadow-black/20 transition-colors hover:bg-card-hover"
+    class="group cursor-pointer rounded-xl bg-card p-3.5 shadow-sm shadow-black/20 transition-colors hover:bg-card-hover"
     role="button"
     tabindex="0"
     @click="board.openCard(card.id)"
     @keydown.enter="board.openCard(card.id)"
   >
-    <div v-if="labels.length" class="mb-2 flex flex-wrap gap-1">
+    <div v-if="labels.length" class="mb-2.5 flex flex-wrap gap-1.5">
       <span
         v-for="label in labels"
         :key="label.id"
@@ -71,7 +72,7 @@ const hasDescription = computed(() => props.card.description.trim().length > 0)
       />
     </div>
 
-    <h3 class="text-sm leading-snug text-text-primary">
+    <h3 class="text-sm leading-relaxed text-text-primary">
       {{ card.title }}
     </h3>
 
@@ -84,7 +85,7 @@ const hasDescription = computed(() => props.card.description.trim().length > 0)
         card.comments.length ||
         members.length
       "
-      class="mt-2.5 flex flex-wrap items-center gap-1.5"
+      class="mt-3 flex flex-wrap items-center gap-2"
     >
       <span
         v-if="dueMeta"
@@ -139,17 +140,13 @@ const hasDescription = computed(() => props.card.description.trim().length > 0)
       </span>
 
       <div v-if="members.length" class="ml-auto flex -space-x-1.5">
-        <div
+        <MemberAvatar
           v-for="member in members"
           :key="member.id"
-          :class="[
-            member.avatarColor,
-            'flex size-6 items-center justify-center rounded-full border border-card text-[9px] font-semibold text-white',
-          ]"
-          :title="member.name"
-        >
-          {{ member.initials }}
-        </div>
+          :member="member"
+          size="md"
+          class="border border-card"
+        />
       </div>
     </footer>
   </article>

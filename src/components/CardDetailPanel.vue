@@ -5,23 +5,46 @@ import {
   AlignLeft,
   Calendar,
   CheckSquare,
+  Link2,
   MessageSquare,
   Paperclip,
   Tag,
+  Trash2,
   Users,
   X,
 } from '@lucide/vue'
 import { LABEL_COLOR_MAP } from '../types/board'
 import { useBoardStore } from '../stores/board'
+import { useAuthStore } from '../stores/auth'
+import MemberAvatar from './MemberAvatar.vue'
 
 const board = useBoardStore()
+const auth = useAuthStore()
 const draftTitle = ref('')
 const draftDescription = ref('')
 const commentBody = ref('')
 const isEditingDescription = ref(false)
 const modalRef = ref<HTMLElement | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const uploading = ref(false)
+const showLinkForm = ref(false)
+const linkUrl = ref('')
+const linkTitle = ref('')
+const attachmentError = ref<string | null>(null)
 
 const card = computed(() => board.selectedCard)
+const currentMember = computed(() => {
+  if (auth.memberId) {
+    return board.getMemberById(auth.memberId) ?? null
+  }
+  return board.members.find((member) => member.userId === auth.user?.id) ?? board.members[0] ?? null
+})
+const fallbackMember = {
+  name: 'Usuário',
+  initials: '?',
+  avatarColor: 'bg-sky-600',
+  avatarUrl: null as string | null,
+}
 
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape' && board.selectedCardId) {
@@ -108,6 +131,64 @@ function submitComment() {
   if (!card.value || !commentBody.value.trim()) return
   board.addComment(card.value.id, commentBody.value)
   commentBody.value = ''
+}
+
+async function onPickAttachment(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!card.value || !file) return
+  attachmentError.value = null
+
+  if (file.size > 5 * 1024 * 1024) {
+    attachmentError.value = 'Arquivo acima do limite de 5 MB.'
+    input.value = ''
+    return
+  }
+
+  uploading.value = true
+  try {
+    const result = await board.uploadAttachment(card.value.id, file)
+    if (!result) {
+      attachmentError.value = board.error ?? 'Falha ao enviar o arquivo.'
+    }
+  } finally {
+    uploading.value = false
+    input.value = ''
+  }
+}
+
+async function submitLink() {
+  if (!card.value || !linkUrl.value.trim()) return
+  attachmentError.value = null
+  uploading.value = true
+  try {
+    const result = await board.addLinkAttachment(
+      card.value.id,
+      linkUrl.value,
+      linkTitle.value,
+    )
+    if (!result) {
+      attachmentError.value = board.error ?? 'Falha ao salvar o link.'
+      return
+    }
+    linkUrl.value = ''
+    linkTitle.value = ''
+    showLinkForm.value = false
+  } finally {
+    uploading.value = false
+  }
+}
+
+async function removeAttachment(attachmentId: string) {
+  if (!card.value) return
+  await board.removeAttachment(card.value.id, attachmentId)
+}
+
+function attachmentLabel(file: { kind?: string; name: string; mimeType: string }) {
+  if (file.kind === 'link') return 'LINK'
+  const fromName = file.name.split('.').pop()
+  if (fromName && fromName !== file.name) return fromName.slice(0, 4)
+  return file.mimeType.split('/').pop()?.slice(0, 4) || 'FILE'
 }
 
 function formatDate(iso: string) {
@@ -198,17 +279,13 @@ function formatBytes(bytes: number) {
                 Responsáveis
               </h3>
               <div class="flex -space-x-1.5">
-                <div
+                <MemberAvatar
                   v-for="member in members"
                   :key="member.id"
-                  :class="[
-                    member.avatarColor,
-                    'flex size-8 items-center justify-center rounded-full border-2 border-board-elevated text-[10px] font-semibold text-white',
-                  ]"
-                  :title="member.name"
-                >
-                  {{ member.initials }}
-                </div>
+                  :member="member"
+                  size="lg"
+                  class="border-2 border-board-elevated"
+                />
               </div>
             </div>
 
@@ -329,30 +406,125 @@ function formatBytes(bytes: number) {
             </div>
           </section>
 
-          <section v-if="card.attachments.length">
-            <h3 class="mb-2 flex items-center gap-1.5 text-sm font-semibold text-text-primary">
-              <Paperclip :size="16" />
-              Anexos
-            </h3>
-            <ul class="space-y-2">
+          <section>
+            <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h3 class="flex items-center gap-1.5 text-sm font-semibold text-text-primary">
+                <Paperclip :size="16" />
+                Anexos
+              </h3>
+              <div class="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  class="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-xs font-medium text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary disabled:opacity-50"
+                  :disabled="uploading"
+                  @click="fileInputRef?.click()"
+                >
+                  {{ uploading ? 'Enviando…' : 'Arquivo' }}
+                </button>
+                <button
+                  type="button"
+                  class="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-xs font-medium text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary disabled:opacity-50"
+                  :disabled="uploading"
+                  @click="showLinkForm = !showLinkForm"
+                >
+                  <Link2 :size="12" />
+                  Link
+                </button>
+                <input
+                  ref="fileInputRef"
+                  type="file"
+                  accept="image/*,.pdf,.csv,.txt,.json,.doc,.docx,.xls,.xlsx"
+                  class="hidden"
+                  @change="onPickAttachment"
+                />
+              </div>
+            </div>
+
+            <p class="mb-2 text-[11px] text-text-muted">
+              Arquivos até 5 MB (foto, PDF, CSV, etc.)
+            </p>
+
+            <form
+              v-if="showLinkForm"
+              class="mb-3 space-y-2 rounded-xl border border-border-subtle bg-column p-3"
+              @submit.prevent="submitLink"
+            >
+              <input
+                v-model="linkUrl"
+                type="url"
+                required
+                placeholder="https://…"
+                class="w-full rounded-lg border border-border-subtle bg-board-elevated px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+              />
+              <input
+                v-model="linkTitle"
+                type="text"
+                placeholder="Título (opcional)"
+                class="w-full rounded-lg border border-border-subtle bg-board-elevated px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+              />
+              <div class="flex justify-end gap-2">
+                <button
+                  type="button"
+                  class="rounded-lg px-2.5 py-1 text-xs text-text-muted hover:text-text-primary"
+                  @click="showLinkForm = false"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  class="rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-board hover:bg-accent-hover disabled:opacity-50"
+                  :disabled="uploading || !linkUrl.trim()"
+                >
+                  Salvar link
+                </button>
+              </div>
+            </form>
+
+            <p v-if="attachmentError" class="mb-2 text-xs text-red-300">
+              {{ attachmentError }}
+            </p>
+
+            <ul v-if="card.attachments.length" class="space-y-2">
               <li
                 v-for="file in card.attachments"
                 :key="file.id"
                 class="flex items-center gap-3 rounded-xl bg-column px-3 py-2"
               >
                 <div
-                  class="flex size-10 items-center justify-center rounded-lg bg-surface text-xs font-semibold uppercase text-text-secondary"
+                  class="flex size-10 items-center justify-center rounded-lg bg-surface text-[10px] font-semibold uppercase text-text-secondary"
                 >
-                  {{ file.name.split('.').pop() }}
+                  <Link2 v-if="file.kind === 'link'" :size="16" />
+                  <template v-else>{{ attachmentLabel(file) }}</template>
                 </div>
                 <div class="min-w-0 flex-1">
-                  <p class="truncate text-sm text-text-primary">{{ file.name }}</p>
+                  <a
+                    :href="file.url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="block truncate text-sm text-accent hover:underline"
+                  >
+                    {{ file.name }}
+                  </a>
                   <p class="text-xs text-text-muted">
-                    {{ formatBytes(file.sizeBytes) }} · {{ formatDate(file.createdAt) }}
+                    <template v-if="file.kind === 'link'">
+                      Link · {{ formatDate(file.createdAt) }}
+                    </template>
+                    <template v-else>
+                      {{ formatBytes(file.sizeBytes) }} · {{ formatDate(file.createdAt) }}
+                    </template>
                   </p>
                 </div>
+                <button
+                  type="button"
+                  class="rounded-lg p-1.5 text-text-muted hover:bg-danger/15 hover:text-danger"
+                  title="Remover anexo"
+                  @click="removeAttachment(file.id)"
+                >
+                  <Trash2 :size="14" />
+                </button>
               </li>
             </ul>
+            <p v-else class="text-sm text-text-muted">Nenhum anexo ainda.</p>
           </section>
 
           <section>
@@ -362,11 +534,7 @@ function formatBytes(bytes: number) {
             </h3>
 
             <form class="mb-4 flex gap-2" @submit.prevent="submitComment">
-              <div
-                class="flex size-8 shrink-0 items-center justify-center rounded-full bg-sky-600 text-[10px] font-semibold text-white"
-              >
-                AS
-              </div>
+              <MemberAvatar :member="currentMember ?? fallbackMember" size="lg" />
               <div class="flex-1">
                 <textarea
                   v-model="commentBody"
@@ -390,14 +558,10 @@ function formatBytes(bytes: number) {
                 :key="comment.id"
                 class="flex gap-2"
               >
-                <div
-                  :class="[
-                    board.getMemberById(comment.authorId)?.avatarColor ?? 'bg-surface',
-                    'flex size-8 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white',
-                  ]"
-                >
-                  {{ board.getMemberById(comment.authorId)?.initials ?? '?' }}
-                </div>
+                <MemberAvatar
+                  :member="board.getMemberById(comment.authorId) ?? fallbackMember"
+                  size="lg"
+                />
                 <div class="min-w-0 flex-1">
                   <p class="text-sm">
                     <span class="font-semibold text-text-primary">

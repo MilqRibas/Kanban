@@ -41,6 +41,11 @@ const calendarDays = computed(() => {
     cells.push({ day, isToday, dateKey })
   }
 
+  // Sempre 6 semanas para o grid preencher a altura da tela
+  while (cells.length < 42) {
+    cells.push({ day: null, isToday: false, dateKey: null })
+  }
+
   return cells
 })
 
@@ -82,26 +87,31 @@ function isOverdue(dueDate: string) {
   start.setHours(0, 0, 0, 0)
   return due < start
 }
+
+function cardsForDay(dateKey: string | null) {
+  if (!dateKey) return []
+  return dueCardsByDay.value[dateKey] ?? []
+}
 </script>
 
 <template>
-  <div class="flex flex-1 flex-col overflow-auto px-4 pb-24 pt-4">
+  <div class="flex min-h-0 flex-1 flex-col items-center px-3 pb-16 pt-2">
     <div
-      class="mx-auto flex w-full max-w-5xl flex-1 flex-col rounded-2xl border border-border-subtle/60 bg-board-elevated p-4 sm:p-6"
+      class="flex min-h-0 w-full max-w-[80%] flex-1 flex-col rounded-xl border border-border-subtle/60 bg-board-elevated/95 p-3 shadow-xl shadow-black/20"
     >
-      <header class="mb-6 flex items-center justify-between gap-3">
-        <div>
-          <h2 class="text-lg font-semibold capitalize text-text-primary">
+      <header class="mb-2 flex shrink-0 items-center justify-between gap-3">
+        <div class="min-w-0">
+          <h2 class="truncate text-base font-semibold capitalize text-text-primary">
             {{ monthLabel }}
           </h2>
-          <p class="mt-1 text-sm text-text-muted">
+          <p class="text-xs text-text-muted">
             Prazos finais dos cartões do quadro
           </p>
         </div>
         <div class="flex items-center gap-1">
           <button
             type="button"
-            class="rounded-lg p-2 text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
+            class="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
             aria-label="Mês anterior"
             @click="prevMonth"
           >
@@ -109,14 +119,14 @@ function isOverdue(dueDate: string) {
           </button>
           <button
             type="button"
-            class="rounded-lg px-3 py-1.5 text-sm text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
+            class="rounded-lg px-2.5 py-1 text-xs text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
             @click="goToday"
           >
             Hoje
           </button>
           <button
             type="button"
-            class="rounded-lg p-2 text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
+            class="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
             aria-label="Próximo mês"
             @click="nextMonth"
           >
@@ -125,11 +135,14 @@ function isOverdue(dueDate: string) {
         </div>
       </header>
 
-      <div class="grid grid-cols-7 gap-px overflow-hidden rounded-xl border border-border-subtle bg-border-subtle">
+      <div
+        class="grid min-h-0 flex-1 grid-cols-7 gap-px overflow-hidden rounded-lg border border-border-subtle bg-border-subtle"
+        style="grid-template-rows: auto repeat(6, minmax(0, 1fr))"
+      >
         <div
           v-for="weekDay in weekDays"
           :key="weekDay"
-          class="bg-surface px-2 py-2 text-center text-xs font-medium text-text-muted"
+          class="bg-surface px-1 py-1.5 text-center text-[11px] font-medium text-text-muted"
         >
           {{ weekDay }}
         </div>
@@ -137,12 +150,12 @@ function isOverdue(dueDate: string) {
         <div
           v-for="(cell, index) in calendarDays"
           :key="index"
-          class="min-h-24 bg-column p-1.5 sm:min-h-28"
+          class="flex min-h-0 flex-col overflow-hidden bg-column p-1"
         >
           <template v-if="cell.day !== null">
             <span
               :class="[
-                'mb-1 inline-flex size-7 items-center justify-center rounded-full text-sm',
+                'mb-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-full text-xs',
                 cell.isToday
                   ? 'bg-accent font-semibold text-board'
                   : 'text-text-secondary',
@@ -151,13 +164,13 @@ function isOverdue(dueDate: string) {
               {{ cell.day }}
             </span>
 
-            <div class="space-y-1">
+            <div class="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
               <button
-                v-for="card in dueCardsByDay[cell.dateKey!] ?? []"
+                v-for="card in cardsForDay(cell.dateKey)"
                 :key="card.id"
                 type="button"
                 :class="[
-                  'block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium transition-opacity hover:opacity-90',
+                  'block w-full truncate rounded px-1 py-0.5 text-left text-[11px] font-medium leading-tight transition-opacity hover:opacity-90',
                   card.completed || card.columnId === 'done'
                     ? 'bg-success/20 text-success'
                     : isOverdue(card.dueDate!)
@@ -171,6 +184,7 @@ function isOverdue(dueDate: string) {
                       : '#579dff'
                   }`,
                 }"
+                :title="card.title"
                 @click="board.openCard(card.id)"
               >
                 {{ card.title }}

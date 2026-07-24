@@ -41,7 +41,7 @@ function confirmAddList() {
 
 <template>
   <div
-    class="board-scroll flex flex-1 gap-3 overflow-x-auto overflow-y-hidden px-4 pb-24 pt-4"
+    class="board-scroll flex min-h-0 flex-1 gap-5 overflow-x-auto overflow-y-hidden px-5 pb-20 pt-4"
   >
     <draggable
       v-model="boardColumns"
@@ -49,18 +49,20 @@ function confirmAddList() {
       item-key="id"
       :animation="180"
       handle=".column-drag-handle"
+      filter=".column-menu-btn"
+      :prevent-on-filter="true"
       ghost-class="column-ghost"
-      class="flex h-full gap-3"
+      class="flex h-full gap-5"
     >
       <template #item="{ element }">
         <BoardColumn :column="element" />
       </template>
     </draggable>
 
-    <div class="h-fit w-72 shrink-0">
+    <div class="h-fit w-80 shrink-0">
       <form
         v-if="isAddingList"
-        class="rounded-xl bg-column p-2"
+        class="rounded-2xl bg-column/90 p-3"
         @submit.prevent="confirmAddList"
       >
         <input
@@ -68,10 +70,10 @@ function confirmAddList() {
           v-model="newListTitle"
           type="text"
           placeholder="Digite o título da lista…"
-          class="mb-2 w-full rounded-lg border border-border-subtle bg-card px-2.5 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+          class="mb-3 w-full rounded-lg border border-border-subtle bg-card px-3 py-2.5 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
           @keydown.escape="cancelAddList"
         />
-        <div class="flex items-center gap-1.5">
+        <div class="flex items-center gap-2">
           <button
             type="submit"
             class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-board hover:bg-accent-hover"
@@ -92,7 +94,7 @@ function confirmAddList() {
       <button
         v-else
         type="button"
-        class="flex w-full items-center gap-1.5 rounded-xl bg-white/5 px-3 py-2.5 text-sm text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
+        class="flex w-full items-center gap-2 rounded-2xl bg-white/5 px-4 py-3 text-sm text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
         @click="startAddList"
       >
         <Plus :size="16" :stroke-width="2" />
