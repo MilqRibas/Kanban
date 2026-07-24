@@ -1,15 +1,61 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import logoSxB2c from '../assets/brand/sx-b2c.svg'
 import boardBg from '../assets/brand/bg-board.png'
 
+type AuthMode = 'login' | 'signup' | 'forgot' | 'update-password'
+
 const auth = useAuthStore()
-const mode = ref<'login' | 'signup'>('login')
+const mode = ref<AuthMode>('login')
 const email = ref('')
 const password = ref('')
+const passwordConfirm = ref('')
 const name = ref('')
 const submitting = ref(false)
+
+watch(
+  () => auth.passwordRecovery,
+  (recovering) => {
+    if (recovering) mode.value = 'update-password'
+  },
+  { immediate: true },
+)
+
+const title = computed(() => {
+  if (mode.value === 'forgot') return 'Recuperar senha'
+  if (mode.value === 'update-password') return 'Nova senha'
+  if (mode.value === 'signup') return 'Criar conta'
+  return 'B2C TEAM'
+})
+
+const subtitle = computed(() => {
+  if (mode.value === 'forgot') {
+    return 'Informe seu e-mail para receber o link de redefinição.'
+  }
+  if (mode.value === 'update-password') {
+    return 'Escolha uma nova senha para acessar o quadro.'
+  }
+  if (mode.value === 'signup') {
+    return 'Se você recebeu um convite, prefira abrir o link do e-mail.'
+  }
+  return 'Entre para sincronizar o quadro com o time'
+})
+
+const submitLabel = computed(() => {
+  if (submitting.value) return 'Aguarde…'
+  if (mode.value === 'forgot') return 'Enviar link'
+  if (mode.value === 'update-password') return 'Salvar nova senha'
+  if (mode.value === 'signup') return 'Criar conta'
+  return 'Entrar'
+})
+
+function switchMode(next: AuthMode) {
+  mode.value = next
+  auth.clearMessages()
+  password.value = ''
+  passwordConfirm.value = ''
+}
 
 async function submit() {
   if (submitting.value) return
@@ -17,8 +63,37 @@ async function submit() {
   try {
     if (mode.value === 'login') {
       await auth.signIn(email.value.trim(), password.value)
-    } else {
-      await auth.signUp(email.value.trim(), password.value, name.value)
+      return
+    }
+
+    if (mode.value === 'signup') {
+      const result = await auth.signUp(
+        email.value.trim(),
+        password.value,
+        name.value,
+      )
+      if (result === 'confirm_email') {
+        mode.value = 'login'
+        password.value = ''
+      }
+      return
+    }
+
+    if (mode.value === 'forgot') {
+      const ok = await auth.requestPasswordReset(email.value)
+      if (ok) {
+        password.value = ''
+        mode.value = 'login'
+      }
+      return
+    }
+
+    if (mode.value === 'update-password') {
+      if (password.value !== passwordConfirm.value) {
+        auth.error = 'As senhas não coincidem.'
+        return
+      }
+      await auth.updatePassword(password.value)
     }
   } finally {
     submitting.value = false
@@ -39,15 +114,16 @@ async function submit() {
       <div class="mb-6 flex flex-col items-center gap-3 text-center">
         <img :src="logoSxB2c" alt="SX B2C" class="h-10 w-auto object-contain" />
         <div>
-          <h1 class="text-xl font-semibold text-text-primary">B2C TEAM</h1>
-          <p class="mt-1 text-sm text-text-secondary">
-            Entre para sincronizar o quadro com o Supabase
-          </p>
+          <h1 class="text-xl font-semibold text-text-primary">{{ title }}</h1>
+          <p class="mt-1 text-sm text-text-secondary">{{ subtitle }}</p>
         </div>
       </div>
 
       <div class="space-y-3">
-        <label v-if="mode === 'signup'" class="block text-sm text-text-secondary">
+        <label
+          v-if="mode === 'signup'"
+          class="block text-sm text-text-secondary"
+        >
           Nome
           <input
             v-model="name"
@@ -58,7 +134,10 @@ async function submit() {
           />
         </label>
 
-        <label class="block text-sm text-text-secondary">
+        <label
+          v-if="mode !== 'update-password'"
+          class="block text-sm text-text-secondary"
+        >
           E-mail
           <input
             v-model="email"
@@ -70,46 +149,81 @@ async function submit() {
           />
         </label>
 
-        <label class="block text-sm text-text-secondary">
-          Senha
+        <label
+          v-if="mode === 'login' || mode === 'signup' || mode === 'update-password'"
+          class="block text-sm text-text-secondary"
+        >
+          {{ mode === 'update-password' ? 'Nova senha' : 'Senha' }}
           <input
             v-model="password"
             type="password"
             required
             minlength="6"
-            autocomplete="current-password"
+            :autocomplete="
+              mode === 'update-password' ? 'new-password' : 'current-password'
+            "
             class="mt-1 w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-text-primary outline-none focus:border-accent"
             placeholder="Mínimo 6 caracteres"
+          />
+        </label>
+
+        <label
+          v-if="mode === 'update-password'"
+          class="block text-sm text-text-secondary"
+        >
+          Confirmar senha
+          <input
+            v-model="passwordConfirm"
+            type="password"
+            required
+            minlength="6"
+            autocomplete="new-password"
+            class="mt-1 w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-text-primary outline-none focus:border-accent"
+            placeholder="Repita a nova senha"
           />
         </label>
       </div>
 
       <p v-if="auth.error" class="mt-3 text-sm text-red-300">{{ auth.error }}</p>
+      <p v-if="auth.notice" class="mt-3 text-sm text-emerald-300">
+        {{ auth.notice }}
+      </p>
 
       <button
         type="submit"
         class="mt-5 w-full rounded-lg bg-accent py-2.5 text-sm font-semibold text-board transition-colors hover:bg-accent-hover disabled:opacity-60"
         :disabled="submitting"
       >
-        {{
-          submitting
-            ? 'Aguarde…'
-            : mode === 'login'
-              ? 'Entrar'
-              : 'Criar conta'
-        }}
+        {{ submitLabel }}
       </button>
 
+      <div
+        v-if="mode === 'login'"
+        class="mt-3 flex flex-col gap-2 text-center text-sm"
+      >
+        <button
+          type="button"
+          class="text-text-secondary hover:text-text-primary"
+          @click="switchMode('forgot')"
+        >
+          Esqueci minha senha
+        </button>
+        <button
+          type="button"
+          class="text-text-secondary hover:text-text-primary"
+          @click="switchMode('signup')"
+        >
+          Não tem conta? Criar agora
+        </button>
+      </div>
+
       <button
+        v-else-if="mode !== 'update-password'"
         type="button"
         class="mt-3 w-full text-sm text-text-secondary hover:text-text-primary"
-        @click="mode = mode === 'login' ? 'signup' : 'login'"
+        @click="switchMode('login')"
       >
-        {{
-          mode === 'login'
-            ? 'Não tem conta? Criar agora'
-            : 'Já tem conta? Entrar'
-        }}
+        Voltar para entrar
       </button>
     </form>
   </div>

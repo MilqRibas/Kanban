@@ -8,10 +8,12 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
   const loading = ref(true)
   const error = ref<string | null>(null)
+  const notice = ref<string | null>(null)
   const memberId = ref<string | null>(null)
   const displayName = ref<string | null>(null)
   const avatarUrl = ref<string | null>(null)
   const uploadingAvatar = ref(false)
+  const passwordRecovery = ref(false)
 
   let authListenerBound = false
 
@@ -35,28 +37,47 @@ export const useAuthStore = defineStore('auth', () => {
     avatarUrl.value = null
   }
 
+  function clearMessages() {
+    error.value = null
+    notice.value = null
+  }
+
+  function translateAuthMessage(message: string) {
+    const lower = message.toLowerCase()
+    if (/invalid login credentials|invalid credentials/.test(lower)) {
+      return 'E-mail ou senha incorretos.'
+    }
+    if (/email not confirmed/.test(lower)) {
+      return 'Confirme seu e-mail antes de entrar. Verifique a caixa de entrada.'
+    }
+    if (/user already registered|already been registered/.test(lower)) {
+      return 'Este e-mail já possui conta. Entre ou use “Esqueci minha senha”.'
+    }
+    if (/rate limit|over_email/.test(lower)) {
+      return 'Muitas tentativas de e-mail. Aguarde alguns minutos e tente de novo.'
+    }
+    if (/failed to fetch/i.test(message)) {
+      return 'Falha de conexão com o Supabase. Tente de novo.'
+    }
+    return message
+  }
+
   function formatError(err: unknown, fallback: string) {
     if (!err) return fallback
-    if (typeof err === 'string') return err
+    if (typeof err === 'string') return translateAuthMessage(err) || fallback
     if (err instanceof Error) {
-      if (/failed to fetch/i.test(err.message)) {
-        return 'Falha de conexão com o Supabase. Tente de novo.'
-      }
-      return err.message || fallback
+      return translateAuthMessage(err.message) || fallback
     }
     if (typeof err === 'object' && err !== null && 'message' in err) {
       const message = String((err as { message: unknown }).message)
-      if (/failed to fetch/i.test(message)) {
-        return 'Falha de conexão com o Supabase. Tente de novo.'
-      }
-      return message || fallback
+      return translateAuthMessage(message) || fallback
     }
     return fallback
   }
 
   async function init() {
     loading.value = true
-    error.value = null
+    clearMessages()
 
     const { data, error: sessionError } = await supabase.auth.getSession()
     if (sessionError) {
@@ -75,6 +96,11 @@ export const useAuthStore = defineStore('auth', () => {
         session.value = nextSession
         user.value = nextSession?.user ?? null
 
+        if (event === 'PASSWORD_RECOVERY') {
+          passwordRecovery.value = true
+          return
+        }
+
         // Nunca faça await de queries aqui — e ignore TOKEN_REFRESHED/INITIAL_SESSION
         // para não competir com o auth lock (causa "Failed to fetch").
         if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
@@ -84,6 +110,7 @@ export const useAuthStore = defineStore('auth', () => {
         setTimeout(() => {
           if (event === 'SIGNED_OUT' || !nextSession?.user) {
             clearProfile()
+            passwordRecovery.value = false
             return
           }
           if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
@@ -179,7 +206,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function signIn(email: string, password: string) {
-    error.value = null
+    clearMessages()
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -192,12 +219,13 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function signUp(email: string, password: string, name?: string) {
-    error.value = null
+    clearMessages()
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { display_name: name?.trim() || undefined },
+        emailRedirectTo: window.location.origin,
       },
     })
     if (signUpError) {
@@ -205,15 +233,61 @@ export const useAuthStore = defineStore('auth', () => {
       return false
     }
     if (!data.session) {
-      error.value =
-        'Conta criada. Confirme o e-mail (se exigido) e faça login.'
+      notice.value =
+        'Conta criada. Enviamos um link de confirmação para o seu e-mail. Abra o link e depois entre aqui.'
+      return 'confirm_email'
+    }
+    return true
+  }
+
+  async function requestPasswordReset(email: string) {
+    clearMessages()
+    const trimmed = email.trim().toLowerCase()
+    if (!trimmed.includes('@')) {
+      error.value = 'Informe um e-mail válido.'
       return false
     }
+
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+      trimmed,
+      { redirectTo: `${window.location.origin}/` },
+    )
+
+    if (resetError) {
+      error.value = formatError(resetError, 'Não foi possível enviar o e-mail.')
+      return false
+    }
+
+    notice.value =
+      'Se este e-mail existir, enviamos um link para redefinir a senha. Confira a caixa de entrada.'
+    return true
+  }
+
+  async function updatePassword(password: string) {
+    clearMessages()
+    if (password.trim().length < 6) {
+      error.value = 'A senha precisa ter pelo menos 6 caracteres.'
+      return false
+    }
+
+    const { error: updateError } = await supabase.auth.updateUser({
+      password: password.trim(),
+    })
+
+    if (updateError) {
+      error.value = formatError(updateError, 'Não foi possível atualizar a senha.')
+      return false
+    }
+
+    passwordRecovery.value = false
+    notice.value = 'Senha atualizada. Você já pode usar o quadro.'
+    await loadProfile({ silent: true })
     return true
   }
 
   async function signOut() {
     await supabase.auth.signOut()
+    passwordRecovery.value = false
   }
 
   async function linkMember(nextMemberId: string | null) {
@@ -259,7 +333,7 @@ export const useAuthStore = defineStore('auth', () => {
             : 'image/jpeg'
 
     uploadingAvatar.value = true
-    error.value = null
+    clearMessages()
 
     const localPreview = URL.createObjectURL(file)
     const previousAvatar = avatarUrl.value
@@ -337,18 +411,23 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     loading,
     error,
+    notice,
     memberId,
     displayName,
     avatarUrl,
     initials,
     uploadingAvatar,
+    passwordRecovery,
     isAuthenticated,
     init,
     signIn,
     signUp,
+    requestPasswordReset,
+    updatePassword,
     signOut,
     linkMember,
     loadProfile,
     uploadAvatar,
+    clearMessages,
   }
 })

@@ -30,9 +30,9 @@ onMounted(async () => {
 })
 
 watch(
-  () => auth.isAuthenticated,
-  async (authenticated) => {
-    if (!authenticated) {
+  () => [auth.isAuthenticated, auth.passwordRecovery] as const,
+  async ([authenticated, recovering]) => {
+    if (!authenticated || recovering) {
       board.reset()
       notes.reset()
       daily.reset()
@@ -52,7 +52,7 @@ watch(
 )
 
 watch(activeTab, async (tab) => {
-  if (!auth.isAuthenticated) return
+  if (!auth.isAuthenticated || auth.passwordRecovery) return
   if (tab === 'notes' && !notesReady.value) {
     await notes.init()
     notesReady.value = true
@@ -65,7 +65,9 @@ watch(activeTab, async (tab) => {
 </script>
 
 <template>
-  <AuthView v-if="!auth.loading && !auth.isAuthenticated" />
+  <AuthView
+    v-if="!auth.loading && (!auth.isAuthenticated || auth.passwordRecovery)"
+  />
 
   <div
     v-else-if="auth.loading || bootstrapping || !board.ready"
