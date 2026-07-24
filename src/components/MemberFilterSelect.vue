@@ -7,8 +7,10 @@ import MemberAvatar from './MemberAvatar.vue'
 withDefaults(
   defineProps<{
     compact?: boolean
+    /** Só ícone/avatar — ideal para header mobile */
+    mini?: boolean
   }>(),
-  { compact: false },
+  { compact: false, mini: false },
 )
 
 const board = useBoardStore()
@@ -95,16 +97,24 @@ onBeforeUnmount(() => {
       ref="triggerRef"
       type="button"
       :class="[
-        'inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 text-left text-sm text-text-primary transition-colors hover:bg-white/10',
-        compact ? 'px-2.5 py-1.5' : 'min-w-44 px-3 py-2',
+        'inline-flex items-center border border-white/10 bg-white/5 text-left text-sm text-text-primary transition-colors hover:bg-white/10',
+        mini
+          ? 'size-8 justify-center rounded-full'
+          : compact
+            ? 'gap-2 rounded-xl px-2.5 py-1.5'
+            : 'min-w-44 gap-2 rounded-xl px-3 py-2',
       ]"
       :aria-expanded="open"
+      :aria-label="mini ? `Filtrar por: ${label}` : undefined"
+      :title="mini ? label : undefined"
       @click.stop="toggle"
     >
       <MemberAvatar v-if="selectedMember" :member="selectedMember" size="sm" />
-      <Users v-else :size="15" class="shrink-0 text-text-muted" />
-      <span class="min-w-0 flex-1 truncate">{{ label }}</span>
-      <ChevronDown :size="14" class="shrink-0 text-text-muted" />
+      <Users v-else :size="mini ? 15 : 15" class="shrink-0 text-text-muted" />
+      <template v-if="!mini">
+        <span class="min-w-0 flex-1 truncate">{{ label }}</span>
+        <ChevronDown :size="14" class="shrink-0 text-text-muted" />
+      </template>
     </button>
 
     <Teleport to="body">

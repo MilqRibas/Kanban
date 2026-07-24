@@ -127,7 +127,7 @@ function submitTodo() {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-16 pt-3 sm:px-5">
+  <div class="flex min-h-0 flex-1 flex-col gap-2 px-2 pb-[4.75rem] pt-2 sm:gap-3 sm:px-5 sm:pb-16 sm:pt-3">
     <!-- Controles: só modo + navegação (dropdown fica no header) -->
     <div class="flex flex-wrap items-center gap-2">
       <div class="flex rounded-xl border border-border-subtle/70 bg-board-elevated/90 p-1">

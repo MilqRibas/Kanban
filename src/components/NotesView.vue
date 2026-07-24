@@ -86,10 +86,10 @@ function confirmDelete() {
 
 <template>
   <div
-    class="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden px-3 pb-16 pt-2 md:flex-row"
+    class="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden px-2 pb-[4.75rem] pt-2 md:flex-row md:gap-2 md:px-3 md:pb-16"
   >
     <aside
-      class="flex max-h-44 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-border-subtle/60 bg-board-elevated/95 md:max-h-none md:w-72 lg:w-80"
+      class="flex max-h-[40vh] w-full shrink-0 flex-col overflow-hidden rounded-xl border border-border-subtle/60 bg-board-elevated/95 md:max-h-none md:w-72 lg:w-80"
     >
       <div class="border-b border-border-subtle p-3">
         <div class="mb-3 flex items-center justify-between gap-2">

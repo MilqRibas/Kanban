@@ -41,7 +41,7 @@ function confirmAddList() {
 
 <template>
   <div
-    class="board-scroll flex min-h-0 flex-1 gap-5 overflow-x-auto overflow-y-hidden px-5 pb-20 pt-4"
+    class="board-scroll flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-hidden px-2 pb-[4.75rem] pt-3 sm:gap-5 sm:px-5 sm:pb-20 sm:pt-4"
   >
     <draggable
       v-model="boardColumns"
@@ -52,14 +52,14 @@ function confirmAddList() {
       filter=".column-menu-btn"
       :prevent-on-filter="true"
       ghost-class="column-ghost"
-      class="flex h-full gap-5"
+      class="flex h-full gap-3 sm:gap-5"
     >
       <template #item="{ element }">
         <BoardColumn :column="element" />
       </template>
     </draggable>
 
-    <div class="h-fit w-80 shrink-0">
+    <div class="h-fit w-[min(85vw,20rem)] shrink-0 sm:w-80">
       <form
         v-if="isAddingList"
         class="rounded-2xl bg-column/90 p-3"
