@@ -103,21 +103,21 @@ async function removeLabel(labelId: string, event: Event) {
       aria-label="Etiquetas"
     >
       <div class="max-h-44 space-y-1 overflow-y-auto p-1.5">
-        <button
+        <div
           v-for="label in labels"
           :key="label.id"
-          type="button"
           role="option"
           :aria-selected="selectedIds.includes(label.id)"
           class="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left"
-          @click="emit('toggle', label.id)"
         >
-          <span
-            class="h-7 min-w-0 flex-1 truncate rounded-md px-2.5 text-xs font-semibold leading-7 text-board"
+          <button
+            type="button"
+            class="h-7 min-w-0 flex-1 truncate rounded-md px-2.5 text-left text-xs font-semibold leading-7 text-board"
             :style="{ backgroundColor: LABEL_COLOR_MAP[label.color] }"
+            @click="emit('toggle', label.id)"
           >
             {{ label.name }}
-          </span>
+          </button>
           <span
             v-if="selectedIds.includes(label.id)"
             class="text-[10px] font-medium text-[#39bcff]"
@@ -132,7 +132,7 @@ async function removeLabel(labelId: string, event: Event) {
           >
             <Trash2 :size="12" />
           </button>
-        </button>
+        </div>
         <p
           v-if="!labels.length"
           class="px-2 py-3 text-center text-xs text-text-muted"

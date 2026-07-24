@@ -58,7 +58,7 @@ onBeforeUnmount(() => {
 
 <template>
   <header
-    class="relative z-30 flex h-12 shrink-0 items-center border-b border-white/10 bg-black/35 px-2 backdrop-blur-md sm:gap-3 sm:px-3"
+    class="relative z-30 flex h-12 shrink-0 items-center border-b border-white/10 bg-board/70 px-2 backdrop-blur-md sm:gap-3 sm:px-3"
   >
     <!-- Mobile: hamburger -->
     <button
@@ -124,7 +124,7 @@ onBeforeUnmount(() => {
         <Archive :size="17" :stroke-width="2.25" />
         <span
           v-if="board.archivedCards.length"
-          class="absolute -right-0.5 -top-0.5 inline-flex min-w-4 items-center justify-center rounded-full bg-[#39bcff] px-1 text-[9px] font-semibold text-board"
+          class="absolute -right-0.5 -top-0.5 inline-flex min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-semibold text-board"
         >
           {{ board.archivedCards.length }}
         </span>

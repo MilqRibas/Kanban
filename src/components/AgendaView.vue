@@ -104,7 +104,7 @@ function cardsForDay(dateKey: string | null) {
 <template>
   <div class="flex min-h-0 flex-1 flex-col items-stretch px-2 pb-[4.75rem] pt-2 sm:items-center sm:px-3 sm:pb-16">
     <div
-      class="flex min-h-0 w-full max-w-none flex-1 flex-col rounded-xl border border-border-subtle/60 bg-board-elevated/95 p-2 shadow-xl shadow-black/20 sm:max-w-[min(100%,72rem)] sm:p-3"
+      class="panel-glass flex min-h-0 w-full max-w-none flex-1 flex-col rounded-xl p-2 shadow-xl shadow-black/20 sm:max-w-[min(100%,72rem)] sm:p-3"
     >
       <header class="mb-2 flex shrink-0 items-center justify-between gap-3">
         <div class="min-w-0">

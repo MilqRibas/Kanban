@@ -90,7 +90,7 @@ async function onToggleDone(event: Event) {
 
 <template>
   <article
-    class="group cursor-pointer rounded-xl border border-white/5 bg-card p-3 shadow-sm shadow-black/20 transition-colors hover:bg-card-hover"
+    class="group cursor-pointer rounded-xl border border-white/10 bg-card p-3 shadow-md shadow-black/25 transition-colors hover:border-white/15 hover:bg-card-hover"
     role="button"
     tabindex="0"
     @click="board.openCard(card.id)"
@@ -181,7 +181,7 @@ async function onToggleDone(event: Event) {
 
         <footer
           v-if="dateMeta || members.length"
-          class="mt-3 flex items-center gap-2 border-t border-white/5 pt-2.5"
+          class="mt-3 flex items-center gap-2 border-t border-white/10 pt-2.5"
         >
           <span
             v-if="dateMeta"

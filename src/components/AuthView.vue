@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { Eye, EyeOff } from '@lucide/vue'
 import { useAuthStore } from '../stores/auth'
 import logoSxB2c from '../assets/brand/sx-b2c.svg'
-import boardBg from '../assets/brand/bg-board.png'
 
 type AuthMode = 'login' | 'signup' | 'forgot' | 'update-password'
 
@@ -13,6 +13,8 @@ const password = ref('')
 const passwordConfirm = ref('')
 const name = ref('')
 const submitting = ref(false)
+const showPassword = ref(false)
+const showPasswordConfirm = ref(false)
 
 watch(
   () => auth.passwordRecovery,
@@ -55,6 +57,8 @@ function switchMode(next: AuthMode) {
   auth.clearMessages()
   password.value = ''
   passwordConfirm.value = ''
+  showPassword.value = false
+  showPasswordConfirm.value = false
 }
 
 async function submit() {
@@ -102,13 +106,9 @@ async function submit() {
 </script>
 
 <template>
-  <div
-    class="relative flex min-h-full items-center justify-center bg-board bg-cover bg-center px-4 py-10"
-    :style="{ backgroundImage: `url(${boardBg})` }"
-  >
-    <div class="pointer-events-none absolute inset-0 bg-board/60" />
+  <div class="app-bg relative flex min-h-full items-center justify-center px-4 py-10">
     <form
-      class="relative z-10 w-full max-w-md rounded-2xl border border-white/10 bg-black/55 p-6 shadow-2xl backdrop-blur-md"
+      class="panel-glass panel-glass-accent relative z-10 w-full max-w-md rounded-2xl p-6 shadow-2xl"
       @submit.prevent="submit"
     >
       <div class="mb-6 flex flex-col items-center gap-3 text-center">
@@ -149,39 +149,67 @@ async function submit() {
           />
         </label>
 
-        <label
+        <div
           v-if="mode === 'login' || mode === 'signup' || mode === 'update-password'"
           class="block text-sm text-text-secondary"
         >
-          {{ mode === 'update-password' ? 'Nova senha' : 'Senha' }}
-          <input
-            v-model="password"
-            type="password"
-            required
-            minlength="6"
-            :autocomplete="
-              mode === 'update-password' ? 'new-password' : 'current-password'
-            "
-            class="mt-1 w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-text-primary outline-none focus:border-accent"
-            placeholder="Mínimo 6 caracteres"
-          />
-        </label>
+          <span>{{ mode === 'update-password' ? 'Nova senha' : 'Senha' }}</span>
+          <div class="relative mt-1">
+            <input
+              v-model="password"
+              :type="showPassword ? 'text' : 'password'"
+              required
+              minlength="6"
+              :autocomplete="
+                mode === 'update-password' ? 'new-password' : 'current-password'
+              "
+              class="w-full rounded-lg border border-white/15 bg-white/5 py-2 pl-3 pr-10 text-text-primary outline-none focus:border-accent"
+              placeholder="Mínimo 6 caracteres"
+            />
+            <button
+              type="button"
+              class="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-text-muted transition-colors hover:text-text-primary"
+              :title="showPassword ? 'Ocultar senha' : 'Mostrar senha'"
+              :aria-label="showPassword ? 'Ocultar senha' : 'Mostrar senha'"
+              @click="showPassword = !showPassword"
+            >
+              <EyeOff v-if="showPassword" :size="16" :stroke-width="2" />
+              <Eye v-else :size="16" :stroke-width="2" />
+            </button>
+          </div>
+        </div>
 
-        <label
+        <div
           v-if="mode === 'update-password'"
           class="block text-sm text-text-secondary"
         >
-          Confirmar senha
-          <input
-            v-model="passwordConfirm"
-            type="password"
-            required
-            minlength="6"
-            autocomplete="new-password"
-            class="mt-1 w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-text-primary outline-none focus:border-accent"
-            placeholder="Repita a nova senha"
-          />
-        </label>
+          <span>Confirmar senha</span>
+          <div class="relative mt-1">
+            <input
+              v-model="passwordConfirm"
+              :type="showPasswordConfirm ? 'text' : 'password'"
+              required
+              minlength="6"
+              autocomplete="new-password"
+              class="w-full rounded-lg border border-white/15 bg-white/5 py-2 pl-3 pr-10 text-text-primary outline-none focus:border-accent"
+              placeholder="Repita a nova senha"
+            />
+            <button
+              type="button"
+              class="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-text-muted transition-colors hover:text-text-primary"
+              :title="
+                showPasswordConfirm ? 'Ocultar senha' : 'Mostrar senha'
+              "
+              :aria-label="
+                showPasswordConfirm ? 'Ocultar senha' : 'Mostrar senha'
+              "
+              @click="showPasswordConfirm = !showPasswordConfirm"
+            >
+              <EyeOff v-if="showPasswordConfirm" :size="16" :stroke-width="2" />
+              <Eye v-else :size="16" :stroke-width="2" />
+            </button>
+          </div>
+        </div>
       </div>
 
       <p v-if="auth.error" class="mt-3 text-sm text-red-300">{{ auth.error }}</p>

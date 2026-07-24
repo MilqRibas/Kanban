@@ -6,22 +6,26 @@ import BoardView from './components/BoardView.vue'
 import AgendaView from './components/AgendaView.vue'
 import NotesView from './components/NotesView.vue'
 import DailyView from './components/DailyView.vue'
+import HubView from './components/HubView.vue'
 import CardDetailPanel from './components/CardDetailPanel.vue'
 import AuthView from './components/AuthView.vue'
 import type { NavTab } from './components/AppFooter.vue'
 import { Loader2 } from '@lucide/vue'
-import boardBg from './assets/brand/bg-board.png'
 import { useAuthStore } from './stores/auth'
 import { useBoardStore } from './stores/board'
 import { useNotesStore } from './stores/notes'
 import { useDailyStore } from './stores/dailyTodos'
 import { useNotificationsStore } from './stores/notifications'
+import { useCommunityStore } from './stores/community'
+import { useHubSectionsStore } from './stores/hubSections'
 
 const auth = useAuthStore()
 const board = useBoardStore()
 const notes = useNotesStore()
 const daily = useDailyStore()
 const notifications = useNotificationsStore()
+const community = useCommunityStore()
+const hubSections = useHubSectionsStore()
 const activeTab = ref<NavTab>('board')
 const bootstrapping = ref(false)
 const notesReady = ref(false)
@@ -39,6 +43,8 @@ watch(
       notes.reset()
       daily.reset()
       notifications.reset()
+      community.reset()
+      hubSections.reset()
       notesReady.value = false
       dailyReady.value = false
       return
@@ -75,7 +81,7 @@ watch(activeTab, async (tab) => {
 
   <div
     v-else-if="auth.loading || bootstrapping || !board.ready"
-    class="flex h-full min-h-0 items-center justify-center bg-board"
+    class="app-bg flex h-full min-h-0 items-center justify-center"
   >
     <Loader2
       class="animate-spin text-accent"
@@ -87,17 +93,16 @@ watch(activeTab, async (tab) => {
 
   <div
     v-else
-    class="relative flex h-full min-h-0 flex-col bg-board bg-cover bg-center bg-no-repeat"
-    :style="{ backgroundImage: `url(${boardBg})` }"
+    class="app-bg relative flex h-full min-h-0 flex-col"
   >
-    <div class="pointer-events-none absolute inset-0 bg-board/30" />
     <div class="relative z-10 flex h-full min-h-0 flex-col">
       <AppHeader />
       <main class="flex min-h-0 flex-1 flex-col">
         <BoardView v-if="activeTab === 'board'" />
         <AgendaView v-else-if="activeTab === 'agenda'" />
         <DailyView v-else-if="activeTab === 'daily'" />
-        <NotesView v-else />
+        <NotesView v-else-if="activeTab === 'notes'" />
+        <HubView v-else-if="activeTab === 'hub'" />
       </main>
       <AppFooter v-model:active-tab="activeTab" />
       <CardDetailPanel />

@@ -61,6 +61,8 @@ export const useBoardStore = defineStore('board', () => {
   const selectedCardId = ref<string | null>(null)
   const memberFilterId = ref<string | null>(null)
   const searchQuery = ref('')
+  /** manual | dueAsc | dueDesc */
+  const dateSortMode = ref<'manual' | 'dueAsc' | 'dueDesc'>('manual')
   const loading = ref(false)
   const ready = ref(false)
   const error = ref<string | null>(null)
@@ -134,16 +136,44 @@ export const useBoardStore = defineStore('board', () => {
     searchQuery.value = value
   }
 
+  function cycleDateSortMode() {
+    if (dateSortMode.value === 'manual') dateSortMode.value = 'dueAsc'
+    else if (dateSortMode.value === 'dueAsc') dateSortMode.value = 'dueDesc'
+    else dateSortMode.value = 'manual'
+  }
+
+  function setDateSortMode(mode: 'manual' | 'dueAsc' | 'dueDesc') {
+    dateSortMode.value = mode
+  }
+
+  function sortCardsForColumn(list: Card[]) {
+    if (dateSortMode.value === 'manual') {
+      return [...list].sort((a, b) => a.position - b.position)
+    }
+    const dir = dateSortMode.value === 'dueAsc' ? 1 : -1
+    return [...list].sort((a, b) => {
+      const aDate = a.dueDate ?? a.startDate
+      const bDate = b.dueDate ?? b.startDate
+      if (!aDate && !bDate) return a.position - b.position
+      if (!aDate) return 1
+      if (!bDate) return -1
+      const diff = new Date(aDate).getTime() - new Date(bDate).getTime()
+      if (diff !== 0) return diff * dir
+      return a.position - b.position
+    })
+  }
+
   const cardsByColumn = computed(() => {
     const map: Record<string, Card[]> = {}
     for (const column of columns.value) {
       map[column.id] = []
     }
-    for (const card of [...filteredCards.value].sort(
-      (a, b) => a.position - b.position,
-    )) {
+    for (const card of filteredCards.value) {
       if (!map[card.columnId]) map[card.columnId] = []
       map[card.columnId].push(card)
+    }
+    for (const columnId of Object.keys(map)) {
+      map[columnId] = sortCardsForColumn(map[columnId])
     }
     return map
   })
@@ -972,12 +1002,30 @@ export const useBoardStore = defineStore('board', () => {
     assigneeIds: string[]
     itemText: string
   }) {
-    const recipients = params.assigneeIds.filter(
+    let recipients = params.assigneeIds.filter(
       (id) => id && id !== params.actorMemberId,
     )
     if (!recipients.length) return
     const card = cards.value.find((item) => item.id === params.cardId)
     const actor = getMemberById(params.actorMemberId)
+    const body = `${card?.title ?? 'Cartão'}: ${params.itemText.slice(0, 140)}`
+
+    // Evita duplicatas: se já existe notificação não lida idêntica
+    // (mesmo destinatário, cartão e tarefa), não cria outra.
+    const { data: existing } = await supabase
+      .from('notifications')
+      .select('recipient_member_id')
+      .eq('card_id', params.cardId)
+      .eq('type', 'checklist_assign')
+      .eq('body', body)
+      .in('recipient_member_id', recipients)
+      .is('read_at', null)
+    const alreadyNotified = new Set(
+      (existing ?? []).map((row) => row.recipient_member_id as string),
+    )
+    recipients = recipients.filter((id) => !alreadyNotified.has(id))
+    if (!recipients.length) return
+
     await supabase.from('notifications').insert(
       recipients.map((assigneeId) => ({
         id: createNotificationId(),
@@ -987,7 +1035,7 @@ export const useBoardStore = defineStore('board', () => {
         card_id: params.cardId,
         type: 'checklist_assign' as const,
         title: `${actor?.name ?? 'Alguém'} atribuiu uma tarefa`,
-        body: `${card?.title ?? 'Cartão'}: ${params.itemText.slice(0, 140)}`,
+        body,
         meta: { kind: 'checklist_assign' },
       })),
     )
@@ -1180,6 +1228,45 @@ export const useBoardStore = defineStore('board', () => {
     await updateCard(cardId, {
       checklists: card.checklists.filter((list) => list.id !== listId),
     })
+  }
+
+  async function renameChecklistItem(
+    cardId: string,
+    listId: string,
+    itemId: string,
+    text: string,
+  ) {
+    const card = cards.value.find((item) => item.id === cardId)
+    if (!card || !text.trim()) return
+    const checklists = card.checklists.map((list) => {
+      if (list.id !== listId) return list
+      return {
+        ...list,
+        items: list.items.map((item) =>
+          item.id === itemId ? { ...item, text: text.trim() } : item,
+        ),
+      }
+    })
+    await updateCard(cardId, { checklists })
+  }
+
+  async function reorderChecklistItems(
+    cardId: string,
+    listId: string,
+    orderedIds: string[],
+  ) {
+    const card = cards.value.find((item) => item.id === cardId)
+    if (!card) return
+    const checklists = card.checklists.map((list) => {
+      if (list.id !== listId) return list
+      const byId = new Map(list.items.map((item) => [item.id, item]))
+      const ordered = orderedIds
+        .map((id) => byId.get(id))
+        .filter((item): item is ChecklistItem => Boolean(item))
+      const leftover = list.items.filter((item) => !orderedIds.includes(item.id))
+      return { ...list, items: [...ordered, ...leftover] }
+    })
+    await updateCard(cardId, { checklists })
   }
 
   async function removeChecklistItem(
@@ -1412,6 +1499,7 @@ export const useBoardStore = defineStore('board', () => {
     selectedCard,
     memberFilterId,
     searchQuery,
+    dateSortMode,
     activeMemberFilter,
     sortedColumns,
     cardsByColumn,
@@ -1428,6 +1516,8 @@ export const useBoardStore = defineStore('board', () => {
     getMemberById,
     setMemberFilter,
     setSearchQuery,
+    cycleDateSortMode,
+    setDateSortMode,
     addMember,
     removeMember,
     openCard,
@@ -1448,6 +1538,8 @@ export const useBoardStore = defineStore('board', () => {
     deleteComment,
     addChecklist,
     addChecklistItem,
+    renameChecklistItem,
+    reorderChecklistItems,
     toggleChecklistItem,
     toggleCardMember,
     toggleCardLabel,

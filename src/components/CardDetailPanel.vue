@@ -1,15 +1,22 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { marked } from 'marked'
+import {
+  renderCommentMarkdown,
+  renderMarkdown,
+  wrapSelection,
+} from '../lib/markdown'
 import {
   AlignLeft,
   Archive,
+  Bold,
   Calendar,
   Check,
   CheckSquare,
   ChevronDown,
   Clock,
   Ellipsis,
+  GripVertical,
+  Italic,
   Link2,
   MessageSquare,
   MoreHorizontal,
@@ -19,6 +26,7 @@ import {
   Trash2,
   X,
 } from '@lucide/vue'
+import draggable from 'vuedraggable'
 import { useBoardStore } from '../stores/board'
 import { useAuthStore } from '../stores/auth'
 import MemberAvatar from './MemberAvatar.vue'
@@ -47,6 +55,8 @@ const addingItemFor = ref<string | null>(null)
 const hideCheckedByList = ref<Record<string, boolean>>({})
 const openItemMenu = ref<string | null>(null)
 const openItemDate = ref<string | null>(null)
+const editingItemId = ref<string | null>(null)
+const editingItemText = ref('')
 const datesOpen = ref(false)
 const cardMenuOpen = ref(false)
 const mentionOpen = ref(false)
@@ -180,8 +190,54 @@ const columnTitle = computed(
 
 const renderedDescription = computed(() => {
   if (!draftDescription.value.trim()) return ''
-  return marked.parse(draftDescription.value, { async: false }) as string
+  return renderMarkdown(draftDescription.value)
 })
+
+function onDescriptionClick(event: MouseEvent) {
+  const target = event.target as HTMLElement | null
+  if (target?.closest('a')) {
+    event.stopPropagation()
+    return
+  }
+  isEditingDescription.value = true
+}
+
+function applyCommentFormat(kind: 'bold' | 'italic') {
+  const el = commentInputRef.value
+  if (!el) return
+  const start = el.selectionStart ?? commentBody.value.length
+  const end = el.selectionEnd ?? start
+  const wrapper =
+    kind === 'bold'
+      ? { before: '**', after: '**' }
+      : { before: '*', after: '*' }
+  const { next, cursor } = wrapSelection(commentBody.value, start, end, wrapper)
+  commentBody.value = next
+  nextTick(() => {
+    el.focus()
+    el.setSelectionRange(cursor, cursor)
+    onCommentInput()
+  })
+}
+
+function startEditChecklistItem(itemId: string, text: string) {
+  editingItemId.value = itemId
+  editingItemText.value = text
+  openItemMenu.value = null
+}
+
+async function saveChecklistItem(listId: string, itemId: string) {
+  if (!card.value) return
+  const text = editingItemText.value.trim()
+  if (!text) return
+  await board.renameChecklistItem(card.value.id, listId, itemId, text)
+  editingItemId.value = null
+}
+
+function onChecklistReorder(listId: string, orderedIds: string[]) {
+  if (!card.value) return
+  void board.reorderChecklistItems(card.value.id, listId, orderedIds)
+}
 
 const checklistStats = computed(() => {
   if (!card.value) return []
@@ -462,10 +518,7 @@ function formatBytes(bytes: number) {
 }
 
 function renderCommentBody(body: string) {
-  let html = body
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
+  let html = renderCommentMarkdown(body)
   for (const member of board.members) {
     const escaped = member.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     html = html.replace(
@@ -494,7 +547,7 @@ function renderCommentBody(body: string) {
       />
 
       <article
-        class="relative z-10 flex max-h-[min(92vh,900px)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border-subtle bg-board-elevated shadow-2xl shadow-black/50"
+        class="relative z-10 flex max-h-[min(92vh,900px)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-board-elevated/95 shadow-2xl shadow-black/50 backdrop-blur-md"
         tabindex="-1"
         ref="modalRef"
       >
@@ -744,8 +797,8 @@ function renderCommentBody(body: string) {
 
             <div
               v-else
-              class="markdown-body cursor-pointer rounded-xl bg-column/50 px-3 py-2 text-sm text-text-secondary"
-              @click="isEditingDescription = true"
+              class="markdown-body rounded-xl bg-column/50 px-3 py-2 text-sm text-text-secondary"
+              @click="onDescriptionClick"
               v-html="renderedDescription"
             />
           </section>
@@ -810,149 +863,196 @@ function renderCommentBody(body: string) {
                 </div>
               </div>
 
-              <ul class="space-y-0.5">
-                <li
-                  v-for="item in list.visibleItems"
-                  :key="item.id"
-                  class="group relative flex items-center gap-2 rounded-lg px-1.5 py-1.5 text-sm hover:bg-white/5"
-                >
-                  <input
-                    type="checkbox"
-                    class="size-4 shrink-0 accent-[#39bcff]"
-                    :checked="item.completed"
-                    @change="
-                      board.toggleChecklistItem(card.id, list.id, item.id)
-                    "
-                  />
-                  <p
-                    :class="[
-                      'min-w-0 flex-1 leading-snug',
-                      item.completed
-                        ? 'text-text-muted line-through'
-                        : 'text-text-primary',
-                    ]"
+              <draggable
+                :model-value="list.items"
+                item-key="id"
+                handle=".checklist-drag-handle"
+                :animation="150"
+                ghost-class="opacity-40"
+                class="space-y-0.5"
+                @update:model-value="
+                  (items: typeof list.items) =>
+                    onChecklistReorder(
+                      list.id,
+                      items.map((item) => item.id),
+                    )
+                "
+              >
+                <template #item="{ element: item }">
+                  <li
+                    v-show="!list.hideChecked || !item.completed"
+                    class="group relative flex items-center gap-2 rounded-lg px-1.5 py-1.5 text-sm hover:bg-white/5"
                   >
-                    {{ item.text }}
-                  </p>
-
-                  <div class="flex shrink-0 items-center gap-0.5 opacity-70 transition-opacity group-hover:opacity-100">
-                    <div class="relative" data-ephemeral-menu>
-                      <button
-                        type="button"
-                        :class="[
-                          'inline-flex items-center gap-1 rounded-md px-1 py-1 text-text-muted hover:bg-white/10 hover:text-text-primary',
-                          item.dueDate && 'text-[#39bcff]',
-                        ]"
-                        :title="
-                          item.dueDate
-                            ? formatItemDue(item.dueDate)
-                            : 'Definir prazo'
-                        "
-                        @click="
-                          openItemDate =
-                            openItemDate === itemDateKey(list.id, item.id)
-                              ? null
-                              : itemDateKey(list.id, item.id)
-                        "
-                      >
-                        <Clock :size="14" :stroke-width="1.75" />
-                        <span
-                          v-if="item.dueDate"
-                          class="text-[10px] font-medium"
-                        >
-                          {{ formatItemDue(item.dueDate) }}
-                        </span>
-                      </button>
-                      <div
-                        v-if="openItemDate === itemDateKey(list.id, item.id)"
-                        class="absolute right-0 top-[calc(100%+4px)] z-30 w-44 rounded-lg border border-white/10 bg-board-elevated p-2 shadow-xl"
-                      >
-                        <input
-                          type="date"
-                          class="w-full rounded-md border border-border-subtle bg-column px-2 py-1 text-xs text-text-primary outline-none focus:border-accent"
-                          :value="toDateInput(item.dueDate ?? null)"
-                          @change="
-                            board.setChecklistItemDueDate(
-                              card.id,
-                              list.id,
-                              item.id,
-                              ($event.target as HTMLInputElement).value
-                                ? fromDateInput(
-                                    ($event.target as HTMLInputElement).value,
-                                  )
-                                : null,
-                            );
-                            openItemDate = null
-                          "
-                        />
-                        <button
-                          v-if="item.dueDate"
-                          type="button"
-                          class="mt-1.5 text-[11px] text-danger hover:underline"
-                          @click="
-                            board.setChecklistItemDueDate(
-                              card.id,
-                              list.id,
-                              item.id,
-                              null,
-                            );
-                            openItemDate = null
-                          "
-                        >
-                          Remover prazo
-                        </button>
-                      </div>
-                    </div>
-
-                    <AssigneePicker
-                      variant="icon"
-                      :selected-ids="item.assigneeIds ?? []"
-                      :members="board.members"
-                      @toggle="
-                        board.toggleChecklistItemAssignee(
-                          card.id,
-                          list.id,
-                          item.id,
-                          $event,
-                        )
+                    <button
+                      type="button"
+                      class="checklist-drag-handle cursor-grab touch-none rounded p-0.5 text-text-muted opacity-0 hover:text-text-primary active:cursor-grabbing group-hover:opacity-100"
+                      title="Arrastar para reordenar"
+                      aria-label="Reordenar"
+                    >
+                      <GripVertical :size="14" />
+                    </button>
+                    <input
+                      type="checkbox"
+                      class="size-4 shrink-0 accent-[#39bcff]"
+                      :checked="item.completed"
+                      @change="
+                        board.toggleChecklistItem(card.id, list.id, item.id)
                       "
                     />
+                    <form
+                      v-if="editingItemId === item.id"
+                      class="min-w-0 flex-1"
+                      @submit.prevent="saveChecklistItem(list.id, item.id)"
+                    >
+                      <input
+                        v-model="editingItemText"
+                        type="text"
+                        class="w-full rounded-md border border-accent/50 bg-board-elevated px-2 py-1 text-sm text-text-primary outline-none"
+                        @keydown.escape="editingItemId = null"
+                        @blur="saveChecklistItem(list.id, item.id)"
+                      />
+                    </form>
+                    <button
+                      v-else
+                      type="button"
+                      :class="[
+                        'min-w-0 flex-1 text-left leading-snug',
+                        item.completed
+                          ? 'text-text-muted line-through'
+                          : 'text-text-primary',
+                      ]"
+                      title="Clique para editar"
+                      @click="startEditChecklistItem(item.id, item.text)"
+                    >
+                      {{ item.text }}
+                    </button>
 
-                    <div class="relative" data-ephemeral-menu>
-                      <button
-                        type="button"
-                        class="rounded-md p-1 text-text-muted hover:bg-white/10 hover:text-text-primary"
-                        title="Mais ações"
-                        @click="
-                          openItemMenu =
-                            openItemMenu === item.id ? null : item.id
-                        "
-                      >
-                        <Ellipsis :size="14" />
-                      </button>
-                      <div
-                        v-if="openItemMenu === item.id"
-                        class="absolute right-0 top-[calc(100%+4px)] z-30 min-w-[8rem] rounded-lg border border-white/10 bg-board-elevated p-1 shadow-xl"
-                      >
+                    <div class="flex shrink-0 items-center gap-0.5 opacity-70 transition-opacity group-hover:opacity-100">
+                      <div class="relative" data-ephemeral-menu>
                         <button
                           type="button"
-                          class="w-full rounded-md px-2.5 py-1.5 text-left text-xs text-danger hover:bg-danger/15"
+                          :class="[
+                            'inline-flex items-center gap-1 rounded-md px-1 py-1 text-text-muted hover:bg-white/10 hover:text-text-primary',
+                            item.dueDate && 'text-[#39bcff]',
+                          ]"
+                          :title="
+                            item.dueDate
+                              ? formatItemDue(item.dueDate)
+                              : 'Definir prazo'
+                          "
                           @click="
-                            board.removeChecklistItem(
-                              card.id,
-                              list.id,
-                              item.id,
-                            );
-                            openItemMenu = null
+                            openItemDate =
+                              openItemDate === itemDateKey(list.id, item.id)
+                                ? null
+                                : itemDateKey(list.id, item.id)
                           "
                         >
-                          Excluir item
+                          <Clock :size="14" :stroke-width="1.75" />
+                          <span
+                            v-if="item.dueDate"
+                            class="text-[10px] font-medium"
+                          >
+                            {{ formatItemDue(item.dueDate) }}
+                          </span>
                         </button>
+                        <div
+                          v-if="openItemDate === itemDateKey(list.id, item.id)"
+                          class="absolute right-0 top-[calc(100%+4px)] z-30 w-44 rounded-lg border border-white/10 bg-board-elevated p-2 shadow-xl"
+                        >
+                          <input
+                            type="date"
+                            class="w-full rounded-md border border-border-subtle bg-column px-2 py-1 text-xs text-text-primary outline-none focus:border-accent"
+                            :value="toDateInput(item.dueDate ?? null)"
+                            @change="
+                              board.setChecklistItemDueDate(
+                                card.id,
+                                list.id,
+                                item.id,
+                                ($event.target as HTMLInputElement).value
+                                  ? fromDateInput(
+                                      ($event.target as HTMLInputElement).value,
+                                    )
+                                  : null,
+                              );
+                              openItemDate = null
+                            "
+                          />
+                          <button
+                            v-if="item.dueDate"
+                            type="button"
+                            class="mt-1.5 text-[11px] text-danger hover:underline"
+                            @click="
+                              board.setChecklistItemDueDate(
+                                card.id,
+                                list.id,
+                                item.id,
+                                null,
+                              );
+                              openItemDate = null
+                            "
+                          >
+                            Remover prazo
+                          </button>
+                        </div>
+                      </div>
+
+                      <AssigneePicker
+                        variant="icon"
+                        :selected-ids="item.assigneeIds ?? []"
+                        :members="board.members"
+                        @toggle="
+                          board.toggleChecklistItemAssignee(
+                            card.id,
+                            list.id,
+                            item.id,
+                            $event,
+                          )
+                        "
+                      />
+
+                      <div class="relative" data-ephemeral-menu>
+                        <button
+                          type="button"
+                          class="rounded-md p-1 text-text-muted hover:bg-white/10 hover:text-text-primary"
+                          title="Mais ações"
+                          @click="
+                            openItemMenu =
+                              openItemMenu === item.id ? null : item.id
+                          "
+                        >
+                          <Ellipsis :size="14" />
+                        </button>
+                        <div
+                          v-if="openItemMenu === item.id"
+                          class="absolute right-0 top-[calc(100%+4px)] z-30 min-w-[8rem] rounded-lg border border-white/10 bg-board-elevated p-1 shadow-xl"
+                        >
+                          <button
+                            type="button"
+                            class="w-full rounded-md px-2.5 py-1.5 text-left text-xs text-text-primary hover:bg-white/10"
+                            @click="startEditChecklistItem(item.id, item.text)"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            class="w-full rounded-md px-2.5 py-1.5 text-left text-xs text-danger hover:bg-danger/15"
+                            @click="
+                              board.removeChecklistItem(
+                                card.id,
+                                list.id,
+                                item.id,
+                              );
+                              openItemMenu = null
+                            "
+                          >
+                            Excluir item
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </li>
-              </ul>
+                  </li>
+                </template>
+              </draggable>
 
               <form
                 v-if="addingItemFor === list.id"
@@ -1146,6 +1246,28 @@ function renderCommentBody(body: string) {
                     size="md"
                   />
                   <div class="relative min-w-0 flex-1">
+                    <div
+                      class="mb-1.5 flex items-center gap-1"
+                      role="toolbar"
+                      aria-label="Formatação"
+                    >
+                      <button
+                        type="button"
+                        class="inline-flex size-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-text-secondary hover:bg-white/10 hover:text-text-primary"
+                        title="Negrito (**texto**)"
+                        @click="applyCommentFormat('bold')"
+                      >
+                        <Bold :size="14" />
+                      </button>
+                      <button
+                        type="button"
+                        class="inline-flex size-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-text-secondary hover:bg-white/10 hover:text-text-primary"
+                        title="Itálico (*texto*)"
+                        @click="applyCommentFormat('italic')"
+                      >
+                        <Italic :size="14" />
+                      </button>
+                    </div>
                     <textarea
                       ref="commentInputRef"
                       v-model="commentBody"
@@ -1259,7 +1381,7 @@ function renderCommentBody(body: string) {
                     </div>
                     <p
                       v-else
-                      class="mt-1 rounded-xl bg-board-elevated/80 px-3 py-2 text-sm text-text-secondary"
+                      class="markdown-body mt-1 rounded-xl bg-board-elevated/80 px-3 py-2 text-sm text-text-secondary"
                       v-html="renderCommentBody(comment.body)"
                     />
                   </div>

@@ -179,7 +179,7 @@ function submitTodo() {
     <!-- SEMANAL -->
     <section
       v-if="daily.viewMode === 'week'"
-      class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border-subtle/60 bg-board-elevated/95"
+      class="panel-glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl"
     >
       <header class="flex shrink-0 items-center justify-between border-b border-border-subtle/70 px-4 py-3">
         <div>
@@ -270,7 +270,7 @@ function submitTodo() {
     <!-- MENSAL -->
     <section
       v-else-if="daily.viewMode === 'month'"
-      class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border-subtle/60 bg-board-elevated/95"
+      class="panel-glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl"
     >
       <header class="flex shrink-0 items-center justify-between border-b border-border-subtle/70 px-4 py-3">
         <h2 class="text-sm font-semibold capitalize text-text-primary">
@@ -349,7 +349,7 @@ function submitTodo() {
     <!-- DIÁRIO (visualização detalhada anterior) -->
     <section
       v-else
-      class="relative mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col overflow-hidden rounded-2xl border border-border-subtle/60 bg-board-elevated/95 shadow-xl shadow-black/20"
+      class="panel-glass relative mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col overflow-hidden rounded-2xl shadow-xl shadow-black/20"
     >
       <div class="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-8 sm:py-7">
         <header class="mb-6">

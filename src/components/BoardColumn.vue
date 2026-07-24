@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { GripVertical, MoreHorizontal, Pencil, Plus, Trash2, X } from '@lucide/vue'
+import { ArrowDownUp, GripVertical, MoreHorizontal, Pencil, Plus, Trash2, X } from '@lucide/vue'
 import draggable from 'vuedraggable'
 import type { Card, Column } from '../types/board'
 import { useBoardStore } from '../stores/board'
@@ -193,6 +193,28 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
+      <button
+        type="button"
+        :class="[
+          'column-menu-btn relative rounded-md p-1 transition-colors',
+          board.dateSortMode === 'manual'
+            ? 'text-text-muted hover:bg-column-hover hover:text-text-secondary'
+            : 'bg-accent/15 text-accent hover:bg-accent/25',
+        ]"
+        :title="
+          board.dateSortMode === 'manual'
+            ? 'Ordenar por data'
+            : board.dateSortMode === 'dueAsc'
+              ? 'Data: mais próxima primeiro (clique para inverter)'
+              : 'Data: mais distante primeiro (clique para ordem manual)'
+        "
+        aria-label="Ordenar cartões por data"
+        @pointerdown.stop
+        @click.stop="board.cycleDateSortMode()"
+      >
+        <ArrowDownUp :size="14" :stroke-width="2" />
+      </button>
+
       <span class="rounded-md bg-surface px-1.5 py-0.5 text-xs text-text-muted">
         {{ columnCards.length }}
       </span>
@@ -244,6 +266,7 @@ onBeforeUnmount(() => {
       v-model="columnCards"
       group="cards"
       item-key="id"
+      :disabled="board.dateSortMode !== 'manual'"
       :animation="180"
       ghost-class="card-ghost"
       drag-class="card-drag"

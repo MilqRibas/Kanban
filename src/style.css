@@ -1,21 +1,22 @@
 @import 'tailwindcss';
 
 @theme {
-  --color-board: #0e1318;
-  --color-board-elevated: #151b22;
-  --color-column: #1a222c;
-  --color-column-hover: #1f2833;
-  --color-card: #232c38;
-  --color-card-hover: #2a3442;
-  --color-surface: #1c2430;
-  --color-border-subtle: #2a3544;
-  --color-text-primary: #e8eef5;
-  --color-text-secondary: #9aabbc;
-  --color-text-muted: #6f8194;
-  --color-accent: #579dff;
-  --color-accent-hover: #85b8ff;
-  --color-danger: #f87171;
-  --color-success: #4ade80;
+  /* Identidade B2C — base escura com azul SX */
+  --color-board: #070d13;
+  --color-board-elevated: #111a25;
+  --color-column: #16212e;
+  --color-column-hover: #1e2b3a;
+  --color-card: #212e3e;
+  --color-card-hover: #29384a;
+  --color-surface: #1a2533;
+  --color-border-subtle: #33455a;
+  --color-text-primary: #f1f6fb;
+  --color-text-secondary: #a8b9cb;
+  --color-text-muted: #7d90a4;
+  --color-accent: #39bcff;
+  --color-accent-hover: #6bd0ff;
+  --color-danger: #fb8585;
+  --color-success: #5ce68f;
   --font-sans: 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
 }
 
@@ -54,16 +55,45 @@
   }
 
   .board-scroll::-webkit-scrollbar-thumb {
-    background: #3a4656;
+    background: #465a71;
     border-radius: 8px;
   }
 
   .board-scroll::-webkit-scrollbar-thumb:hover {
-    background: #4a586c;
+    background: #5a7189;
   }
 }
 
 @layer components {
+  /* Fundo unificado: gradiente azul sutil (sem foto) */
+  .app-bg {
+    background-color: var(--color-board);
+    background-image:
+      radial-gradient(
+        ellipse 110% 70% at 8% -10%,
+        rgba(57, 188, 255, 0.13),
+        transparent 50%
+      ),
+      radial-gradient(
+        ellipse 80% 55% at 100% 5%,
+        rgba(57, 188, 255, 0.07),
+        transparent 46%
+      ),
+      radial-gradient(
+        ellipse 90% 45% at 50% 112%,
+        rgba(18, 56, 92, 0.24),
+        transparent 55%
+      ),
+      linear-gradient(
+        165deg,
+        #070d13 0%,
+        #0a1420 40%,
+        #0b1825 74%,
+        #060b11 100%
+      );
+    background-attachment: fixed;
+  }
+
   .card-ghost {
     opacity: 0.45;
   }
@@ -78,21 +108,41 @@
     opacity: 0.4;
   }
 
-  /* Colunas: glass com contraste suficiente sobre o fundo */
+  /* Painéis / colunas: glass alinhado ao accent */
+  .panel-glass,
   .column-glass {
-    background: color-mix(in srgb, var(--color-column) 72%, transparent);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: color-mix(in srgb, var(--color-column) 88%, transparent);
+    border: 1px solid rgba(255, 255, 255, 0.14);
     box-shadow:
-      0 8px 32px rgba(0, 0, 0, 0.35),
-      inset 0 1px 0 rgba(255, 255, 255, 0.06);
-    backdrop-filter: blur(18px) saturate(1.35);
-    -webkit-backdrop-filter: blur(18px) saturate(1.35);
+      0 10px 34px rgba(0, 0, 0, 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(16px) saturate(1.2);
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  }
+
+  .panel-glass-accent {
+    border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
   }
 
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .panel-glass,
     .column-glass {
-      background: color-mix(in srgb, var(--color-column) 92%, transparent);
+      background: color-mix(in srgb, var(--color-column) 98%, transparent);
     }
+  }
+
+  .markdown-body a {
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+    pointer-events: auto;
+    position: relative;
+    z-index: 1;
+  }
+
+  .markdown-body a:hover {
+    color: var(--color-accent-hover);
   }
 
   .markdown-body {

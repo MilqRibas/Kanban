@@ -64,9 +64,9 @@ onBeforeUnmount(() => {
     >
       <label
         v-if="expanded"
-        class="flex h-8 items-center gap-1.5 rounded-full border border-[#39bcff]/50 bg-white/5 pl-2.5 pr-1 shadow-lg shadow-black/20 backdrop-blur-md"
+        class="flex h-8 items-center gap-1.5 rounded-full border border-accent/45 bg-white/5 pl-2.5 pr-1 shadow-lg shadow-black/20 backdrop-blur-md"
       >
-        <Search :size="15" class="shrink-0 text-[#39bcff]" :stroke-width="2.25" />
+        <Search :size="15" class="shrink-0 text-accent" :stroke-width="2.25" />
         <input
           ref="inputRef"
           :value="board.searchQuery"
