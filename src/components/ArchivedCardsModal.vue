@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Archive, MoreHorizontal, RotateCcw, Trash2, X } from '@lucide/vue'
+import { Archive, RotateCcw, Trash2, X } from '@lucide/vue'
 import { useAuthStore } from '../stores/auth'
 import { useBoardStore } from '../stores/board'
 
