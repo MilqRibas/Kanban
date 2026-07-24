@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import {
   Calendar,
+  Check,
   CheckSquare,
   MessageSquare,
   Paperclip,
@@ -19,6 +20,14 @@ const board = useBoardStore()
 
 const labels = computed(() => board.getLabelsForCard(props.card))
 const members = computed(() => board.getMembersForCard(props.card))
+
+const isDone = computed(() => {
+  const doneColumn = board.columns.find((column) => column.isDoneColumn)
+  return Boolean(
+    props.card.completed ||
+      (doneColumn && props.card.columnId === doneColumn.id),
+  )
+})
 
 const descriptionPreview = computed(() => {
   const text = props.card.description
@@ -54,7 +63,7 @@ const dateMeta = computed(() => {
   if (end) end.setHours(0, 0, 0, 0)
 
   let tone: 'ok' | 'today' | 'overdue' | 'done' = 'ok'
-  if (props.card.completed || props.card.columnId === 'done') {
+  if (isDone.value) {
     tone = 'done'
   } else if (end) {
     const diffDays = Math.round(
@@ -73,6 +82,12 @@ const dateMeta = computed(() => {
 
   return { label, tone }
 })
+
+async function onToggleDone(event: Event) {
+  event.stopPropagation()
+  event.preventDefault()
+  await board.toggleCardDone(props.card.id)
+}
 </script>
 
 <template>
@@ -83,7 +98,7 @@ const dateMeta = computed(() => {
     @click="board.openCard(card.id)"
     @keydown.enter="board.openCard(card.id)"
   >
-    <div v-if="labels.length" class="mb-2 flex flex-wrap gap-1.5">
+    <div v-if="labels.length" class="mb-2 flex flex-wrap gap-1.5 pl-7">
       <span
         v-for="label in labels"
         :key="label.id"
@@ -93,77 +108,107 @@ const dateMeta = computed(() => {
       />
     </div>
 
-    <h3 class="text-[15px] font-semibold leading-snug text-text-primary">
-      {{ card.title }}
-    </h3>
-
-    <p
-      v-if="descriptionPreview"
-      class="mt-1 line-clamp-2 text-[11px] leading-relaxed text-text-muted"
-    >
-      {{ descriptionPreview }}
-    </p>
-
-    <div
-      v-if="checklistProgress || card.comments.length || card.attachments.length"
-      class="mt-2.5 flex flex-wrap items-center gap-2 text-text-muted"
-    >
-      <span
-        v-if="card.comments.length"
-        class="inline-flex items-center gap-1 text-[11px]"
-        :title="`${card.comments.length} comentário(s)`"
-      >
-        <MessageSquare :size="12" :stroke-width="2" />
-        {{ card.comments.length }}
-      </span>
-      <span
-        v-if="checklistProgress"
+    <div class="flex items-start gap-2">
+      <button
+        type="button"
+        :title="
+          isDone ? 'Reabrir tarefa' : 'Marcar tarefa como concluída'
+        "
+        :aria-label="
+          isDone ? 'Reabrir tarefa' : 'Marcar tarefa como concluída'
+        "
+        :aria-pressed="isDone"
         :class="[
-          'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px]',
-          checklistProgress.complete
-            ? 'bg-success/15 text-success'
-            : 'bg-surface text-text-secondary',
+          'mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors',
+          isDone
+            ? 'border-success bg-success text-board'
+            : 'border-white/30 text-white/20 hover:border-success hover:text-success',
         ]"
+        @click="onToggleDone"
+        @keydown.enter.stop="onToggleDone"
       >
-        <CheckSquare :size="12" :stroke-width="2.25" />
-        {{ checklistProgress.done }} / {{ checklistProgress.total }}
-      </span>
-      <span
-        v-if="card.attachments.length"
-        class="inline-flex items-center gap-0.5 text-[11px]"
-      >
-        <Paperclip :size="12" :stroke-width="2" />
-        {{ card.attachments.length }}
-      </span>
-    </div>
+        <Check :size="11" :stroke-width="3" />
+      </button>
 
-    <footer
-      v-if="dateMeta || members.length"
-      class="mt-3 flex items-center gap-2 border-t border-white/5 pt-2.5"
-    >
-      <span
-        v-if="dateMeta"
-        :class="[
-          'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium',
-          dateMeta.tone === 'overdue' && 'bg-danger/20 text-danger',
-          dateMeta.tone === 'today' && 'bg-danger/20 text-danger',
-          dateMeta.tone === 'ok' && 'bg-surface text-text-secondary',
-          dateMeta.tone === 'done' && 'bg-success/15 text-success',
-        ]"
-      >
-        <Calendar :size="12" :stroke-width="2" />
-        {{ dateMeta.label }}
-      </span>
+      <div class="min-w-0 flex-1">
+        <h3
+          :class="[
+            'text-[15px] font-semibold leading-snug',
+            isDone ? 'text-text-muted line-through' : 'text-text-primary',
+          ]"
+        >
+          {{ card.title }}
+        </h3>
 
-      <div v-if="members.length" class="ml-auto flex -space-x-1.5">
-        <MemberAvatar
-          v-for="member in members"
-          :key="member.id"
-          :member="member"
-          size="md"
-          class="border border-card"
-        />
+        <p
+          v-if="descriptionPreview"
+          class="mt-1 line-clamp-2 text-[11px] leading-relaxed text-text-muted"
+        >
+          {{ descriptionPreview }}
+        </p>
+
+        <div
+          v-if="checklistProgress || card.comments.length || card.attachments.length"
+          class="mt-2.5 flex flex-wrap items-center gap-2 text-text-muted"
+        >
+          <span
+            v-if="card.comments.length"
+            class="inline-flex items-center gap-1 text-[11px]"
+            :title="`${card.comments.length} comentário(s)`"
+          >
+            <MessageSquare :size="12" :stroke-width="2" />
+            {{ card.comments.length }}
+          </span>
+          <span
+            v-if="checklistProgress"
+            :class="[
+              'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px]',
+              checklistProgress.complete
+                ? 'bg-success/15 text-success'
+                : 'bg-surface text-text-secondary',
+            ]"
+          >
+            <CheckSquare :size="12" :stroke-width="2.25" />
+            {{ checklistProgress.done }} / {{ checklistProgress.total }}
+          </span>
+          <span
+            v-if="card.attachments.length"
+            class="inline-flex items-center gap-0.5 text-[11px]"
+          >
+            <Paperclip :size="12" :stroke-width="2" />
+            {{ card.attachments.length }}
+          </span>
+        </div>
+
+        <footer
+          v-if="dateMeta || members.length"
+          class="mt-3 flex items-center gap-2 border-t border-white/5 pt-2.5"
+        >
+          <span
+            v-if="dateMeta"
+            :class="[
+              'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium',
+              dateMeta.tone === 'overdue' && 'bg-danger/20 text-danger',
+              dateMeta.tone === 'today' && 'bg-danger/20 text-danger',
+              dateMeta.tone === 'ok' && 'bg-surface text-text-secondary',
+              dateMeta.tone === 'done' && 'bg-success/15 text-success',
+            ]"
+          >
+            <Calendar :size="12" :stroke-width="2" />
+            {{ dateMeta.label }}
+          </span>
+
+          <div v-if="members.length" class="ml-auto flex -space-x-1.5">
+            <MemberAvatar
+              v-for="member in members"
+              :key="member.id"
+              :member="member"
+              size="md"
+              class="border border-card"
+            />
+          </div>
+        </footer>
       </div>
-    </footer>
+    </div>
   </article>
 </template>

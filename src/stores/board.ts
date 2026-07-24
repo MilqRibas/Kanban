@@ -20,14 +20,31 @@ function createId(prefix: string) {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`
 }
 
+function normalizeAssigneeIds(item: {
+  assigneeIds?: string[] | null
+  assigneeId?: string | null
+}): string[] {
+  if (Array.isArray(item.assigneeIds)) {
+    return [...new Set(item.assigneeIds.filter(Boolean))]
+  }
+  if (item.assigneeId) return [item.assigneeId]
+  return []
+}
+
 function asChecklists(value: Json): Checklist[] {
   if (!Array.isArray(value)) return []
   return (value as unknown as Checklist[]).map((list) => ({
     ...list,
-    items: (list.items ?? []).map((item) => ({
-      ...item,
-      assigneeId: item.assigneeId ?? null,
-    })),
+    items: (list.items ?? []).map((item) => {
+      const { assigneeId: _legacy, ...rest } = item as ChecklistItem & {
+        assigneeId?: string | null
+      }
+      return {
+        ...rest,
+        assigneeIds: normalizeAssigneeIds(item),
+        dueDate: item.dueDate ?? null,
+      }
+    }),
   }))
 }
 
@@ -46,6 +63,7 @@ export const useBoardStore = defineStore('board', () => {
   const loading = ref(false)
   const ready = ref(false)
   const error = ref<string | null>(null)
+  const previousColumnByCard = new Map<string, string>()
 
   let channel: RealtimeChannel | null = null
   let suppressRealtimeUntil = 0
@@ -486,6 +504,55 @@ export const useBoardStore = defineStore('board', () => {
     selectedCardId.value = null
   }
 
+  async function toggleCardDone(cardId: string) {
+    const card = cards.value.find((item) => item.id === cardId)
+    const doneColumn = columns.value.find((column) => column.isDoneColumn)
+    if (!card || !doneColumn) return
+
+    const isDone = Boolean(
+      card.completed || card.columnId === doneColumn.id,
+    )
+
+    if (!isDone) {
+      if (card.columnId !== doneColumn.id) {
+        previousColumnByCard.set(cardId, card.columnId)
+      }
+      const position = cards.value.filter(
+        (item) => item.columnId === doneColumn.id && item.id !== cardId,
+      ).length
+      await updateCard(cardId, {
+        columnId: doneColumn.id,
+        position,
+        completed: true,
+      })
+      const updated = cards.value.find((item) => item.id === cardId)
+      if (updated) onCardCompleted(updated)
+      return
+    }
+
+    const restoreId =
+      previousColumnByCard.get(cardId) ??
+      columns.value
+        .filter((column) => !column.isDoneColumn)
+        .sort((a, b) => a.position - b.position)[0]?.id
+
+    previousColumnByCard.delete(cardId)
+
+    if (restoreId && card.columnId === doneColumn.id) {
+      const position = cards.value.filter(
+        (item) => item.columnId === restoreId && item.id !== cardId,
+      ).length
+      await updateCard(cardId, {
+        columnId: restoreId,
+        position,
+        completed: false,
+      })
+      return
+    }
+
+    await updateCard(cardId, { completed: false })
+  }
+
   async function setColumnCards(columnId: string, nextCards: Card[]) {
     const column = columns.value.find((item) => item.id === columnId)
     const previousInColumn = cards.value.filter(
@@ -843,23 +910,48 @@ export const useBoardStore = defineStore('board', () => {
   async function notifyChecklistAssign(params: {
     cardId: string
     actorMemberId: string
-    assigneeId: string
+    assigneeIds: string[]
     itemText: string
   }) {
-    if (!params.assigneeId || params.assigneeId === params.actorMemberId) return
+    const recipients = params.assigneeIds.filter(
+      (id) => id && id !== params.actorMemberId,
+    )
+    if (!recipients.length) return
     const card = cards.value.find((item) => item.id === params.cardId)
     const actor = getMemberById(params.actorMemberId)
-    await supabase.from('notifications').insert({
-      id: createNotificationId(),
-      board_id: BOARD_ID,
-      recipient_member_id: params.assigneeId,
-      actor_member_id: params.actorMemberId,
-      card_id: params.cardId,
-      type: 'checklist_assign',
-      title: `${actor?.name ?? 'Alguém'} atribuiu uma tarefa`,
-      body: `${card?.title ?? 'Cartão'}: ${params.itemText.slice(0, 140)}`,
-      meta: { kind: 'checklist_assign' },
-    })
+    await supabase.from('notifications').insert(
+      recipients.map((assigneeId) => ({
+        id: createNotificationId(),
+        board_id: BOARD_ID,
+        recipient_member_id: assigneeId,
+        actor_member_id: params.actorMemberId,
+        card_id: params.cardId,
+        type: 'checklist_assign' as const,
+        title: `${actor?.name ?? 'Alguém'} atribuiu uma tarefa`,
+        body: `${card?.title ?? 'Cartão'}: ${params.itemText.slice(0, 140)}`,
+        meta: { kind: 'checklist_assign' },
+      })),
+    )
+  }
+
+  async function toggleCardMember(cardId: string, memberId: string) {
+    const card = cards.value.find((item) => item.id === cardId)
+    if (!card) return
+    const has = card.memberIds.includes(memberId)
+    const memberIds = has
+      ? card.memberIds.filter((id) => id !== memberId)
+      : [...card.memberIds, memberId]
+    await updateCard(cardId, { memberIds })
+  }
+
+  async function toggleCardLabel(cardId: string, labelId: string) {
+    const card = cards.value.find((item) => item.id === cardId)
+    if (!card) return
+    const has = card.labelIds.includes(labelId)
+    const labelIds = has
+      ? card.labelIds.filter((id) => id !== labelId)
+      : [...card.labelIds, labelId]
+    await updateCard(cardId, { labelIds })
   }
 
   async function addChecklist(cardId: string, title = 'Lista de verificação') {
@@ -886,7 +978,8 @@ export const useBoardStore = defineStore('board', () => {
             id: createId('cli'),
             text: text.trim(),
             completed: false,
-            assigneeId: null,
+            assigneeIds: [],
+            dueDate: null,
           },
         ],
       }
@@ -913,16 +1006,17 @@ export const useBoardStore = defineStore('board', () => {
     await updateCard(cardId, { checklists })
   }
 
-  async function setChecklistItemAssignee(
+  async function toggleChecklistItemAssignee(
     cardId: string,
     listId: string,
     itemId: string,
-    assigneeId: string | null,
+    memberId: string,
   ) {
     const card = cards.value.find((item) => item.id === cardId)
     if (!card) return
     const auth = useAuthStore()
-    let previousAssignee: string | null = null
+    let previousIds: string[] = []
+    let nextIds: string[] = []
     let itemText = ''
     const checklists = card.checklists.map((list) => {
       if (list.id !== listId) return list
@@ -930,21 +1024,53 @@ export const useBoardStore = defineStore('board', () => {
         ...list,
         items: list.items.map((item) => {
           if (item.id !== itemId) return item
-          previousAssignee = item.assigneeId ?? null
+          previousIds = normalizeAssigneeIds(item)
           itemText = item.text
-          return { ...item, assigneeId }
+          nextIds = previousIds.includes(memberId)
+            ? previousIds.filter((id) => id !== memberId)
+            : [...previousIds, memberId]
+          return { ...item, assigneeIds: nextIds }
         }),
       }
     })
     await updateCard(cardId, { checklists })
-    if (assigneeId && assigneeId !== previousAssignee && auth.memberId) {
+    const added = nextIds.filter((id) => !previousIds.includes(id))
+    if (added.length && auth.memberId) {
       await notifyChecklistAssign({
         cardId,
         actorMemberId: auth.memberId,
-        assigneeId,
+        assigneeIds: added,
         itemText,
       })
     }
+  }
+
+  async function setChecklistItemDueDate(
+    cardId: string,
+    listId: string,
+    itemId: string,
+    dueDate: string | null,
+  ) {
+    const card = cards.value.find((item) => item.id === cardId)
+    if (!card) return
+    const checklists = card.checklists.map((list) => {
+      if (list.id !== listId) return list
+      return {
+        ...list,
+        items: list.items.map((item) =>
+          item.id === itemId ? { ...item, dueDate } : item,
+        ),
+      }
+    })
+    await updateCard(cardId, { checklists })
+  }
+
+  async function removeChecklist(cardId: string, listId: string) {
+    const card = cards.value.find((item) => item.id === cardId)
+    if (!card) return
+    await updateCard(cardId, {
+      checklists: card.checklists.filter((list) => list.id !== listId),
+    })
   }
 
   async function removeChecklistItem(
@@ -1194,6 +1320,7 @@ export const useBoardStore = defineStore('board', () => {
     removeMember,
     openCard,
     closeCard,
+    toggleCardDone,
     setColumnCards,
     reorderColumns,
     addColumn,
@@ -1207,7 +1334,11 @@ export const useBoardStore = defineStore('board', () => {
     addChecklist,
     addChecklistItem,
     toggleChecklistItem,
-    setChecklistItemAssignee,
+    toggleCardMember,
+    toggleCardLabel,
+    toggleChecklistItemAssignee,
+    setChecklistItemDueDate,
+    removeChecklist,
     removeChecklistItem,
     uploadAttachment,
     addLinkAttachment,

@@ -4,21 +4,24 @@ import { marked } from 'marked'
 import {
   AlignLeft,
   Calendar,
+  Check,
   CheckSquare,
+  ChevronDown,
+  Clock,
+  Ellipsis,
   Link2,
   MessageSquare,
   Paperclip,
   Pencil,
   Plus,
-  Tag,
   Trash2,
-  Users,
   X,
 } from '@lucide/vue'
-import { LABEL_COLOR_MAP } from '../types/board'
 import { useBoardStore } from '../stores/board'
 import { useAuthStore } from '../stores/auth'
 import MemberAvatar from './MemberAvatar.vue'
+import AssigneePicker from './AssigneePicker.vue'
+import LabelPicker from './LabelPicker.vue'
 
 const board = useBoardStore()
 const auth = useAuthStore()
@@ -37,6 +40,11 @@ const linkUrl = ref('')
 const linkTitle = ref('')
 const attachmentError = ref<string | null>(null)
 const newItemText = ref<Record<string, string>>({})
+const addingItemFor = ref<string | null>(null)
+const hideCheckedByList = ref<Record<string, boolean>>({})
+const openItemMenu = ref<string | null>(null)
+const openItemDate = ref<string | null>(null)
+const datesOpen = ref(false)
 const mentionOpen = ref(false)
 const mentionQuery = ref('')
 const mentionStart = ref(-1)
@@ -63,6 +71,12 @@ function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape' && board.selectedCardId) {
     if (mentionOpen.value) {
       mentionOpen.value = false
+      return
+    }
+    if (datesOpen.value || openItemMenu.value || openItemDate.value) {
+      datesOpen.value = false
+      openItemMenu.value = null
+      openItemDate.value = null
       return
     }
     board.closeCard()
@@ -96,10 +110,35 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
 })
 
-const labels = computed(() => (card.value ? board.getLabelsForCard(card.value) : []))
-const members = computed(() =>
-  card.value ? board.getMembersForCard(card.value) : [],
-)
+const isCardDone = computed(() => {
+  if (!card.value) return false
+  const doneColumn = board.columns.find((column) => column.isDoneColumn)
+  return Boolean(
+    card.value.completed ||
+      (doneColumn && card.value.columnId === doneColumn.id),
+  )
+})
+
+const dueDateStatus = computed(() => {
+  if (!card.value?.dueDate) return null
+  if (isCardDone.value) return 'done' as const
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const due = new Date(card.value.dueDate)
+  due.setHours(0, 0, 0, 0)
+  const diff = Math.round((due.getTime() - today.getTime()) / 86400000)
+  if (diff < 0) return 'overdue' as const
+  if (diff === 0) return 'today' as const
+  return 'ok' as const
+})
+
+const dueDateLabel = computed(() => {
+  if (!card.value?.dueDate) return 'Definir data'
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: 'numeric',
+    month: 'short',
+  }).format(new Date(card.value.dueDate))
+})
 
 const columnTitle = computed(
   () => board.columns.find((c) => c.id === card.value?.columnId)?.title ?? '',
@@ -115,11 +154,17 @@ const checklistStats = computed(() => {
   return card.value.checklists.map((list) => {
     const total = list.items.length
     const done = list.items.filter((item) => item.completed).length
+    const hideChecked = hideCheckedByList.value[list.id] ?? false
+    const visibleItems = hideChecked
+      ? list.items.filter((item) => !item.completed)
+      : list.items
     return {
       ...list,
       done,
       total,
       percent: total ? Math.round((done / total) * 100) : 0,
+      hideChecked,
+      visibleItems,
     }
   })
 })
@@ -262,6 +307,31 @@ async function addItem(listId: string) {
   if (!text) return
   await board.addChecklistItem(card.value.id, listId, text)
   newItemText.value[listId] = ''
+  addingItemFor.value = null
+}
+
+function toggleHideChecked(listId: string) {
+  hideCheckedByList.value = {
+    ...hideCheckedByList.value,
+    [listId]: !(hideCheckedByList.value[listId] ?? false),
+  }
+}
+
+async function deleteChecklist(listId: string) {
+  if (!card.value) return
+  if (!window.confirm('Excluir esta lista de verificação?')) return
+  await board.removeChecklist(card.value.id, listId)
+}
+
+function formatItemDue(iso: string) {
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: 'numeric',
+    month: 'short',
+  }).format(new Date(iso))
+}
+
+function itemDateKey(listId: string, itemId: string) {
+  return `${listId}:${itemId}`
 }
 
 async function onPickAttachment(event: Event) {
@@ -370,94 +440,148 @@ function renderCommentBody(body: string) {
       />
 
       <article
-        class="relative z-10 flex max-h-[min(92vh,860px)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border-subtle bg-board-elevated shadow-2xl shadow-black/50"
+        class="relative z-10 flex max-h-[min(92vh,900px)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border-subtle bg-board-elevated shadow-2xl shadow-black/50"
         tabindex="-1"
         ref="modalRef"
       >
-        <header class="flex shrink-0 items-start gap-3 px-5 pb-3 pt-5 sm:px-6 sm:pt-6">
-          <div class="min-w-0 flex-1">
-            <input
-              v-model="draftTitle"
-              type="text"
-              class="w-full rounded-lg bg-transparent px-1 py-0.5 text-xl font-semibold text-text-primary outline-none focus:bg-surface"
-              @blur="saveTitle"
-              @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+        <div class="flex min-h-0 flex-1 flex-col lg:flex-row">
+          <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+            <header class="flex shrink-0 items-start gap-3 px-5 pb-3 pt-5 sm:px-6 sm:pt-6">
+              <button
+                type="button"
+                :title="
+                  isCardDone
+                    ? 'Reabrir tarefa'
+                    : 'Marcar tarefa como concluída'
+                "
+                :aria-label="
+                  isCardDone
+                    ? 'Reabrir tarefa'
+                    : 'Marcar tarefa como concluída'
+                "
+                :aria-pressed="isCardDone"
+                :class="[
+                  'mt-1.5 inline-flex size-6 shrink-0 items-center justify-center rounded-full border transition-colors',
+                  isCardDone
+                    ? 'border-success bg-success text-board'
+                    : 'border-white/30 text-white/25 hover:border-success hover:text-success',
+                ]"
+                @click="board.toggleCardDone(card.id)"
+              >
+                <Check :size="13" :stroke-width="3" />
+              </button>
+              <div class="min-w-0 flex-1">
+                <input
+                  v-model="draftTitle"
+                  type="text"
+                  :class="[
+                    'w-full rounded-lg bg-transparent px-1 py-0.5 text-xl font-semibold outline-none focus:bg-surface',
+                    isCardDone
+                      ? 'text-text-muted line-through'
+                      : 'text-text-primary',
+                  ]"
+                  @blur="saveTitle"
+                  @keydown.enter.prevent="
+                    ($event.target as HTMLInputElement).blur()
+                  "
+                />
+                <p class="mt-1 px-1 text-sm text-text-muted">
+                  na lista
+                  <span class="font-medium text-text-secondary">
+                    {{ columnTitle }}
+                  </span>
+                </p>
+              </div>
+              <button
+                type="button"
+                class="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-surface hover:text-text-primary lg:hidden"
+                aria-label="Fechar"
+                @click="board.closeCard()"
+              >
+                <X :size="20" :stroke-width="2" />
+              </button>
+            </header>
+
+            <div class="flex-1 space-y-6 overflow-y-auto px-5 pb-6 sm:px-6">
+          <section class="flex flex-wrap items-start gap-x-8 gap-y-5">
+            <AssigneePicker
+              label="Membros"
+              variant="stack"
+              :selected-ids="card.memberIds"
+              :members="board.members"
+              @toggle="board.toggleCardMember(card.id, $event)"
             />
-            <p class="mt-1 px-1 text-sm text-text-muted">
-              na lista
-              <span class="font-medium text-text-secondary">
-                {{ columnTitle }}
-              </span>
-            </p>
-          </div>
-          <button
-            type="button"
-            class="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
-            aria-label="Fechar"
-            @click="board.closeCard()"
-          >
-            <X :size="20" :stroke-width="2" />
-          </button>
-        </header>
 
-        <div class="flex-1 space-y-6 overflow-y-auto px-5 pb-6 sm:px-6">
-          <section class="flex flex-wrap gap-5">
-            <div v-if="labels.length">
-              <h3 class="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">
-                <Tag :size="13" />
-                Etiquetas
-              </h3>
-              <div class="flex flex-wrap gap-1.5">
+            <LabelPicker
+              :selected-ids="card.labelIds"
+              :labels="board.labels"
+              @toggle="board.toggleCardLabel(card.id, $event)"
+            />
+
+            <div class="relative min-w-[11rem]">
+              <p class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                Data entrega
+              </p>
+              <button
+                type="button"
+                class="inline-flex w-full items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1.5 text-left text-sm text-text-secondary transition-colors hover:border-white/25 hover:bg-white/10"
+                @click="datesOpen = !datesOpen"
+              >
+                <Calendar :size="14" class="shrink-0 text-text-muted" />
+                <span class="min-w-0 flex-1 truncate">{{ dueDateLabel }}</span>
                 <span
-                  v-for="label in labels"
-                  :key="label.id"
-                  class="rounded-md px-2.5 py-1 text-xs font-medium text-board"
-                  :style="{ backgroundColor: LABEL_COLOR_MAP[label.color] }"
+                  v-if="dueDateStatus === 'done'"
+                  class="rounded bg-success px-1.5 py-0.5 text-[10px] font-semibold text-board"
                 >
-                  {{ label.name }}
+                  Concluído
                 </span>
-              </div>
-            </div>
+                <span
+                  v-else-if="dueDateStatus === 'overdue'"
+                  class="rounded bg-danger px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                >
+                  Atrasado
+                </span>
+                <span
+                  v-else-if="dueDateStatus === 'today'"
+                  class="rounded bg-amber-400 px-1.5 py-0.5 text-[10px] font-semibold text-board"
+                >
+                  Hoje
+                </span>
+                <ChevronDown :size="14" class="shrink-0 text-text-muted" />
+              </button>
 
-            <div v-if="members.length">
-              <h3 class="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">
-                <Users :size="13" />
-                Responsáveis
-              </h3>
-              <div class="flex -space-x-1.5">
-                <MemberAvatar
-                  v-for="member in members"
-                  :key="member.id"
-                  :member="member"
-                  size="lg"
-                  class="border-2 border-board-elevated"
-                />
+              <div
+                v-if="datesOpen"
+                class="absolute left-0 top-[calc(100%+6px)] z-40 w-64 space-y-3 rounded-xl border border-white/10 bg-board-elevated p-3 shadow-xl shadow-black/50"
+              >
+                <label class="block text-xs text-text-muted">
+                  Início
+                  <input
+                    v-model="startDateInput"
+                    type="date"
+                    class="mt-1 w-full rounded-lg border border-border-subtle bg-column px-2.5 py-1.5 text-sm text-text-primary outline-none focus:border-accent"
+                  />
+                </label>
+                <label class="block text-xs text-text-muted">
+                  Conclusão
+                  <input
+                    v-model="dueDateInput"
+                    type="date"
+                    class="mt-1 w-full rounded-lg border border-border-subtle bg-column px-2.5 py-1.5 text-sm text-text-primary outline-none focus:border-accent"
+                  />
+                </label>
+                <button
+                  v-if="card.dueDate || card.startDate"
+                  type="button"
+                  class="text-xs text-danger hover:underline"
+                  @click="
+                    board.updateCard(card.id, { startDate: null, dueDate: null });
+                    datesOpen = false
+                  "
+                >
+                  Remover datas
+                </button>
               </div>
-            </div>
-          </section>
-
-          <section>
-            <h3 class="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">
-              <Calendar :size="13" />
-              Datas
-            </h3>
-            <div class="grid gap-3 sm:grid-cols-2">
-              <label class="block text-xs text-text-muted">
-                Data de início
-                <input
-                  v-model="startDateInput"
-                  type="date"
-                  class="mt-1 w-full rounded-lg border border-border-subtle bg-column px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-                />
-              </label>
-              <label class="block text-xs text-text-muted">
-                Data de conclusão
-                <input
-                  v-model="dueDateInput"
-                  type="date"
-                  class="mt-1 w-full rounded-lg border border-border-subtle bg-column px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-                />
-              </label>
             </div>
           </section>
 
@@ -523,10 +647,10 @@ function renderCommentBody(body: string) {
           </section>
 
           <section>
-            <div class="mb-2 flex items-center justify-between gap-2">
+            <div class="mb-3 flex items-center justify-between gap-2">
               <h3 class="flex items-center gap-1.5 text-sm font-semibold text-text-primary">
                 <CheckSquare :size="16" />
-                Lista de verificação
+                Checklist
               </h3>
               <button
                 type="button"
@@ -541,97 +665,225 @@ function renderCommentBody(body: string) {
             <div
               v-for="list in checklistStats"
               :key="list.id"
-              class="mb-4 last:mb-0"
+              class="mb-5 last:mb-0"
             >
-              <h4 class="mb-2 flex items-center gap-1.5 text-sm font-medium text-text-primary">
-                {{ list.title }}
-                <span class="ml-auto text-xs font-normal text-text-muted">
-                  {{ list.done }} de {{ list.total }} itens concluídos
-                </span>
-              </h4>
-              <div class="mb-2 h-1.5 overflow-hidden rounded-full bg-surface">
-                <div
-                  class="h-full rounded-full bg-success transition-all"
-                  :style="{ width: `${list.percent}%` }"
-                />
+              <div class="mb-2 flex flex-wrap items-center gap-2">
+                <h4 class="flex items-center gap-1.5 text-sm font-semibold text-text-primary">
+                  <CheckSquare :size="15" class="text-text-muted" />
+                  {{ list.title }}
+                </h4>
+                <div class="ml-auto flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    class="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-text-secondary hover:bg-white/10 hover:text-text-primary"
+                    @click="toggleHideChecked(list.id)"
+                  >
+                    {{
+                      list.hideChecked
+                        ? 'Mostrar itens marcados'
+                        : 'Ocultar itens marcados'
+                    }}
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-text-secondary hover:bg-danger/15 hover:text-danger"
+                    @click="deleteChecklist(list.id)"
+                  >
+                    Excluir
+                  </button>
+                </div>
               </div>
-              <ul class="space-y-1.5">
+
+              <div class="mb-2 flex items-center gap-3">
+                <span class="w-8 shrink-0 text-right text-[11px] tabular-nums text-text-muted">
+                  {{ list.percent }}%
+                </span>
+                <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    class="h-full rounded-full bg-white/70 transition-all"
+                    :style="{ width: `${list.percent}%` }"
+                  />
+                </div>
+              </div>
+
+              <ul class="space-y-0.5">
                 <li
-                  v-for="item in list.items"
+                  v-for="item in list.visibleItems"
                   :key="item.id"
-                  class="flex items-start gap-2 rounded-md px-1 py-1 text-sm"
+                  class="group relative flex items-center gap-2 rounded-lg px-1.5 py-1.5 text-sm hover:bg-white/5"
                 >
                   <input
                     type="checkbox"
-                    class="mt-1 accent-accent"
+                    class="size-4 shrink-0 accent-[#39bcff]"
                     :checked="item.completed"
                     @change="
                       board.toggleChecklistItem(card.id, list.id, item.id)
                     "
                   />
-                  <div class="min-w-0 flex-1">
-                    <p
-                      :class="
-                        item.completed
-                          ? 'text-text-muted line-through'
-                          : 'text-text-primary'
-                      "
-                    >
-                      {{ item.text }}
-                    </p>
-                    <div class="mt-1 flex flex-wrap items-center gap-2">
-                      <select
-                        class="rounded-md border border-border-subtle bg-column px-2 py-1 text-[11px] text-text-secondary outline-none focus:border-accent"
-                        :value="item.assigneeId ?? ''"
-                        @change="
-                          board.setChecklistItemAssignee(
-                            card.id,
-                            list.id,
-                            item.id,
-                            ($event.target as HTMLSelectElement).value || null,
-                          )
-                        "
-                      >
-                        <option value="">Sem responsável</option>
-                        <option
-                          v-for="member in board.members"
-                          :key="member.id"
-                          :value="member.id"
-                        >
-                          {{ member.name }}
-                        </option>
-                      </select>
+                  <p
+                    :class="[
+                      'min-w-0 flex-1 leading-snug',
+                      item.completed
+                        ? 'text-text-muted line-through'
+                        : 'text-text-primary',
+                    ]"
+                  >
+                    {{ item.text }}
+                  </p>
+
+                  <div class="flex shrink-0 items-center gap-0.5 opacity-70 transition-opacity group-hover:opacity-100">
+                    <div class="relative">
                       <button
                         type="button"
-                        class="rounded p-1 text-text-muted hover:bg-danger/15 hover:text-danger"
-                        title="Remover item"
+                        :class="[
+                          'inline-flex items-center gap-1 rounded-md px-1 py-1 text-text-muted hover:bg-white/10 hover:text-text-primary',
+                          item.dueDate && 'text-[#39bcff]',
+                        ]"
+                        :title="
+                          item.dueDate
+                            ? formatItemDue(item.dueDate)
+                            : 'Definir prazo'
+                        "
                         @click="
-                          board.removeChecklistItem(card.id, list.id, item.id)
+                          openItemDate =
+                            openItemDate === itemDateKey(list.id, item.id)
+                              ? null
+                              : itemDateKey(list.id, item.id)
                         "
                       >
-                        <Trash2 :size="12" />
+                        <Clock :size="14" :stroke-width="1.75" />
+                        <span
+                          v-if="item.dueDate"
+                          class="text-[10px] font-medium"
+                        >
+                          {{ formatItemDue(item.dueDate) }}
+                        </span>
                       </button>
+                      <div
+                        v-if="openItemDate === itemDateKey(list.id, item.id)"
+                        class="absolute right-0 top-[calc(100%+4px)] z-30 w-44 rounded-lg border border-white/10 bg-board-elevated p-2 shadow-xl"
+                      >
+                        <input
+                          type="date"
+                          class="w-full rounded-md border border-border-subtle bg-column px-2 py-1 text-xs text-text-primary outline-none focus:border-accent"
+                          :value="toDateInput(item.dueDate ?? null)"
+                          @change="
+                            board.setChecklistItemDueDate(
+                              card.id,
+                              list.id,
+                              item.id,
+                              ($event.target as HTMLInputElement).value
+                                ? fromDateInput(
+                                    ($event.target as HTMLInputElement).value,
+                                  )
+                                : null,
+                            );
+                            openItemDate = null
+                          "
+                        />
+                        <button
+                          v-if="item.dueDate"
+                          type="button"
+                          class="mt-1.5 text-[11px] text-danger hover:underline"
+                          @click="
+                            board.setChecklistItemDueDate(
+                              card.id,
+                              list.id,
+                              item.id,
+                              null,
+                            );
+                            openItemDate = null
+                          "
+                        >
+                          Remover prazo
+                        </button>
+                      </div>
+                    </div>
+
+                    <AssigneePicker
+                      variant="icon"
+                      :selected-ids="item.assigneeIds ?? []"
+                      :members="board.members"
+                      @toggle="
+                        board.toggleChecklistItemAssignee(
+                          card.id,
+                          list.id,
+                          item.id,
+                          $event,
+                        )
+                      "
+                    />
+
+                    <div class="relative">
+                      <button
+                        type="button"
+                        class="rounded-md p-1 text-text-muted hover:bg-white/10 hover:text-text-primary"
+                        title="Mais ações"
+                        @click="
+                          openItemMenu =
+                            openItemMenu === item.id ? null : item.id
+                        "
+                      >
+                        <Ellipsis :size="14" />
+                      </button>
+                      <div
+                        v-if="openItemMenu === item.id"
+                        class="absolute right-0 top-[calc(100%+4px)] z-30 min-w-[8rem] rounded-lg border border-white/10 bg-board-elevated p-1 shadow-xl"
+                      >
+                        <button
+                          type="button"
+                          class="w-full rounded-md px-2.5 py-1.5 text-left text-xs text-danger hover:bg-danger/15"
+                          @click="
+                            board.removeChecklistItem(
+                              card.id,
+                              list.id,
+                              item.id,
+                            );
+                            openItemMenu = null
+                          "
+                        >
+                          Excluir item
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </li>
               </ul>
+
               <form
+                v-if="addingItemFor === list.id"
                 class="mt-2 flex items-center gap-2"
                 @submit.prevent="addItem(list.id)"
               >
                 <input
                   v-model="newItemText[list.id]"
                   type="text"
+                  autofocus
                   placeholder="Adicionar um item"
-                  class="flex-1 rounded-lg border border-border-subtle bg-column px-3 py-1.5 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+                  class="flex-1 rounded-lg border border-border-subtle bg-column px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
                 />
                 <button
                   type="submit"
-                  class="rounded-lg bg-accent px-2.5 py-1.5 text-xs font-medium text-board hover:bg-accent-hover"
+                  class="rounded-lg bg-accent px-2.5 py-2 text-xs font-medium text-board hover:bg-accent-hover"
                 >
                   Add
                 </button>
+                <button
+                  type="button"
+                  class="rounded-lg px-2 py-2 text-xs text-text-muted hover:text-text-primary"
+                  @click="addingItemFor = null"
+                >
+                  Cancelar
+                </button>
               </form>
+              <button
+                v-else
+                type="button"
+                class="mt-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
+                @click="addingItemFor = list.id"
+              >
+                Adicionar um item
+              </button>
             </div>
           </section>
 
@@ -756,133 +1008,167 @@ function renderCommentBody(body: string) {
             </ul>
             <p v-else class="text-sm text-text-muted">Nenhum anexo ainda.</p>
           </section>
+            </div>
+          </div>
 
-          <section>
-            <h3 class="mb-3 flex items-center gap-1.5 text-sm font-semibold text-text-primary">
-              <MessageSquare :size="16" />
-              Comentários
-            </h3>
-
-            <form class="relative mb-4 flex gap-2" @submit.prevent="submitComment">
-              <MemberAvatar :member="currentMember ?? fallbackMember" size="lg" />
-              <div class="relative flex-1">
-                <textarea
-                  ref="commentInputRef"
-                  v-model="commentBody"
-                  rows="2"
-                  placeholder="Escreva um comentário… Use @ para mencionar"
-                  class="w-full resize-none rounded-xl border border-border-subtle bg-column px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
-                  @input="onCommentInput"
-                />
-                <div
-                  v-if="mentionOpen && mentionCandidates.length"
-                  class="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 overflow-y-auto rounded-xl border border-border-subtle bg-board-elevated shadow-xl"
-                >
-                  <button
-                    v-for="member in mentionCandidates"
-                    :key="member.id"
-                    type="button"
-                    class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface"
-                    @click="insertMention(member.name)"
-                  >
-                    <MemberAvatar :member="member" size="sm" />
-                    <span class="text-text-primary">{{ member.name }}</span>
-                  </button>
-                </div>
-                <button
-                  v-if="commentBody.trim()"
-                  type="submit"
-                  class="mt-2 rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-board hover:bg-accent-hover"
-                >
-                  Salvar
-                </button>
-              </div>
-            </form>
-
-            <ul class="space-y-3">
-              <li
-                v-for="comment in [...card.comments].reverse()"
-                :key="comment.id"
-                class="flex gap-2"
+          <aside
+            class="flex min-h-0 w-full shrink-0 flex-col border-t border-white/10 bg-column/30 lg:w-[340px] lg:border-l lg:border-t-0"
+          >
+            <div
+              class="flex shrink-0 items-center justify-between gap-2 border-b border-white/5 px-4 py-3"
+            >
+              <h3 class="flex items-center gap-1.5 text-sm font-semibold text-text-primary">
+                <MessageSquare :size="15" />
+                Comentários
+              </h3>
+              <button
+                type="button"
+                class="hidden rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-surface hover:text-text-primary lg:inline-flex"
+                aria-label="Fechar"
+                @click="board.closeCard()"
               >
-                <MemberAvatar
-                  :member="board.getMemberById(comment.authorId) ?? fallbackMember"
-                  size="lg"
-                />
-                <div class="min-w-0 flex-1">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <p class="text-sm">
-                      <span class="font-semibold text-text-primary">
-                        {{
-                          board.getMemberById(comment.authorId)?.name ?? 'Usuário'
-                        }}
-                      </span>
-                      <span class="ml-2 text-xs text-text-muted">
-                        {{ formatDate(comment.createdAt) }}
-                        <template v-if="comment.updatedAt"> · editado</template>
-                      </span>
-                    </p>
+                <X :size="18" :stroke-width="2" />
+              </button>
+            </div>
+
+            <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <form
+                class="relative shrink-0 border-b border-white/5 px-4 py-3"
+                @submit.prevent="submitComment"
+              >
+                <div class="flex gap-2">
+                  <MemberAvatar
+                    :member="currentMember ?? fallbackMember"
+                    size="md"
+                  />
+                  <div class="relative min-w-0 flex-1">
+                    <textarea
+                      ref="commentInputRef"
+                      v-model="commentBody"
+                      rows="2"
+                      placeholder="Escrever um comentário… Use @"
+                      class="w-full resize-none rounded-xl border border-border-subtle bg-board-elevated px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+                      @input="onCommentInput"
+                    />
                     <div
-                      v-if="canManageComment(comment.authorId)"
-                      class="ml-auto flex items-center gap-1"
+                      v-if="mentionOpen && mentionCandidates.length"
+                      class="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 overflow-y-auto rounded-xl border border-border-subtle bg-board-elevated shadow-xl"
                     >
                       <button
+                        v-for="member in mentionCandidates"
+                        :key="member.id"
                         type="button"
-                        class="rounded p-1 text-text-muted hover:bg-surface hover:text-text-primary"
-                        title="Editar"
-                        @click="startEditComment(comment.id, comment.body)"
+                        class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface"
+                        @click="insertMention(member.name)"
                       >
-                        <Pencil :size="13" />
-                      </button>
-                      <button
-                        type="button"
-                        class="rounded p-1 text-text-muted hover:bg-danger/15 hover:text-danger"
-                        title="Apagar"
-                        @click="removeComment(comment.id)"
-                      >
-                        <Trash2 :size="13" />
+                        <MemberAvatar :member="member" size="sm" />
+                        <span class="text-text-primary">{{ member.name }}</span>
                       </button>
                     </div>
+                    <button
+                      v-if="commentBody.trim()"
+                      type="submit"
+                      class="mt-2 rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-board hover:bg-accent-hover"
+                    >
+                      Salvar
+                    </button>
                   </div>
-
-                  <div
-                    v-if="editingCommentId === comment.id"
-                    class="mt-1 space-y-2"
-                  >
-                    <textarea
-                      v-model="editingCommentBody"
-                      rows="2"
-                      class="w-full resize-none rounded-xl border border-border-subtle bg-column px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-                    />
-                    <div class="flex gap-2">
-                      <button
-                        type="button"
-                        class="rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-board hover:bg-accent-hover"
-                        @click="saveEditComment"
-                      >
-                        Salvar
-                      </button>
-                      <button
-                        type="button"
-                        class="rounded-lg px-2.5 py-1 text-xs text-text-muted hover:text-text-primary"
-                        @click="editingCommentId = null"
-                      >
-                        Cancelar
-                      </button>
-                    </div>
-                  </div>
-                  <p
-                    v-else
-                    class="mt-1 rounded-xl bg-column px-3 py-2 text-sm text-text-secondary"
-                    v-html="renderCommentBody(comment.body)"
-                  />
                 </div>
-              </li>
-              <li v-if="!card.comments.length" class="text-sm text-text-muted">
-                Nenhum comentário ainda.
-              </li>
-            </ul>
-          </section>
+              </form>
+
+              <ul class="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+                <li
+                  v-for="comment in [...card.comments].reverse()"
+                  :key="comment.id"
+                  class="flex gap-2"
+                >
+                  <MemberAvatar
+                    :member="
+                      board.getMemberById(comment.authorId) ?? fallbackMember
+                    "
+                    size="md"
+                  />
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <p class="text-sm">
+                        <span class="font-semibold text-text-primary">
+                          {{
+                            board.getMemberById(comment.authorId)?.name ??
+                            'Usuário'
+                          }}
+                        </span>
+                        <span class="ml-2 text-[11px] text-text-muted">
+                          {{ formatDate(comment.createdAt) }}
+                          <template v-if="comment.updatedAt">
+                            · editado
+                          </template>
+                        </span>
+                      </p>
+                      <div
+                        v-if="canManageComment(comment.authorId)"
+                        class="ml-auto flex items-center gap-1"
+                      >
+                        <button
+                          type="button"
+                          class="rounded p-1 text-text-muted hover:bg-surface hover:text-text-primary"
+                          title="Editar"
+                          @click="startEditComment(comment.id, comment.body)"
+                        >
+                          <Pencil :size="13" />
+                        </button>
+                        <button
+                          type="button"
+                          class="rounded p-1 text-text-muted hover:bg-danger/15 hover:text-danger"
+                          title="Apagar"
+                          @click="removeComment(comment.id)"
+                        >
+                          <Trash2 :size="13" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div
+                      v-if="editingCommentId === comment.id"
+                      class="mt-1 space-y-2"
+                    >
+                      <textarea
+                        v-model="editingCommentBody"
+                        rows="2"
+                        class="w-full resize-none rounded-xl border border-border-subtle bg-board-elevated px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                      />
+                      <div class="flex gap-2">
+                        <button
+                          type="button"
+                          class="rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-board hover:bg-accent-hover"
+                          @click="saveEditComment"
+                        >
+                          Salvar
+                        </button>
+                        <button
+                          type="button"
+                          class="rounded-lg px-2.5 py-1 text-xs text-text-muted hover:text-text-primary"
+                          @click="editingCommentId = null"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                    <p
+                      v-else
+                      class="mt-1 rounded-xl bg-board-elevated/80 px-3 py-2 text-sm text-text-secondary"
+                      v-html="renderCommentBody(comment.body)"
+                    />
+                  </div>
+                </li>
+                <li
+                  v-if="!card.comments.length"
+                  class="py-6 text-center text-sm text-text-muted"
+                >
+                  Nenhum comentário ainda.
+                </li>
+              </ul>
+            </div>
+          </aside>
         </div>
       </article>
     </div>

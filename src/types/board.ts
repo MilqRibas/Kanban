@@ -29,7 +29,9 @@ export interface ChecklistItem {
   id: string
   text: string
   completed: boolean
-  assigneeId?: string | null
+  /** Multiple assignees per checklist item */
+  assigneeIds: string[]
+  dueDate?: string | null
 }
 
 export interface Checklist {
