@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue'
-import { Camera, LogOut, Menu, Plus, UserRound, Users, X } from '@lucide/vue'
+import { Camera, Archive, LogOut, Menu, Plus, UserRound, Users, X } from '@lucide/vue'
 import { useBoardStore } from '../stores/board'
 import { useAuthStore } from '../stores/auth'
 import MembersManager from './MembersManager.vue'
 import MemberFilterSelect from './MemberFilterSelect.vue'
 import NotificationCenter from './NotificationCenter.vue'
 import HeaderSearch from './HeaderSearch.vue'
+import ArchivedCardsModal from './ArchivedCardsModal.vue'
 import logoSxB2c from '../assets/brand/sx-b2c.svg'
 
 const board = useBoardStore()
 const auth = useAuthStore()
 const membersManager = ref<{ openModal: () => void } | null>(null)
+const archivedModal = ref<{ openModal: () => void } | null>(null)
 const menuOpen = ref(false)
 
 async function onAvatarChange(event: Event) {
@@ -33,6 +35,11 @@ async function onAvatarChange(event: Event) {
 function openMembers() {
   menuOpen.value = false
   membersManager.value?.openModal()
+}
+
+function openArchived() {
+  menuOpen.value = false
+  archivedModal.value?.openModal()
 }
 
 function signOut() {
@@ -105,6 +112,23 @@ onBeforeUnmount(() => {
     <!-- Direita: busca + filtro mini (mobile) + notificações + avatar -->
     <div class="relative z-20 ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
       <HeaderSearch />
+
+      <button
+        v-if="auth.isAdmin"
+        type="button"
+        class="relative inline-flex size-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
+        title="Cartões arquivados"
+        aria-label="Cartões arquivados"
+        @click="openArchived"
+      >
+        <Archive :size="17" :stroke-width="2.25" />
+        <span
+          v-if="board.archivedCards.length"
+          class="absolute -right-0.5 -top-0.5 inline-flex min-w-4 items-center justify-center rounded-full bg-[#39bcff] px-1 text-[9px] font-semibold text-board"
+        >
+          {{ board.archivedCards.length }}
+        </span>
+      </button>
 
       <div class="md:hidden">
         <MemberFilterSelect mini />
@@ -225,6 +249,21 @@ onBeforeUnmount(() => {
 
           <nav class="flex flex-1 flex-col gap-1 p-2">
             <button
+              v-if="auth.isAdmin"
+              type="button"
+              class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-text-secondary hover:bg-white/10 hover:text-text-primary"
+              @click="openArchived"
+            >
+              <Archive :size="17" />
+              Arquivados
+              <span
+                v-if="board.archivedCards.length"
+                class="ml-auto rounded-full bg-white/10 px-1.5 text-[10px]"
+              >
+                {{ board.archivedCards.length }}
+              </span>
+            </button>
+            <button
               type="button"
               class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-text-secondary hover:bg-white/10 hover:text-text-primary"
               @click="openMembers"
@@ -259,5 +298,6 @@ onBeforeUnmount(() => {
     </Teleport>
 
     <MembersManager ref="membersManager" />
+    <ArchivedCardsModal ref="archivedModal" />
   </header>
 </template>

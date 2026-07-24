@@ -87,6 +87,7 @@ export interface Card {
   comments: Comment[]
   attachments: Attachment[]
   completed: boolean
+  archivedAt: string | null
   position: number
   createdAt: string
   updatedAt: string

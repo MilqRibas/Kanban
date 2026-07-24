@@ -29,14 +29,12 @@ const isDone = computed(() => {
   )
 })
 
-const descriptionPreview = computed(() => {
-  const text = props.card.description
+const fullDescription = computed(() =>
+  props.card.description
     .replace(/[#>*_`~\-\[\]\(\)]/g, ' ')
     .replace(/\s+/g, ' ')
-    .trim()
-  if (!text) return ''
-  return text.length > 110 ? `${text.slice(0, 110)}…` : text
-})
+    .trim(),
+)
 
 const checklistProgress = computed(() => {
   const items = props.card.checklists.flatMap((list) => list.items)
@@ -141,10 +139,11 @@ async function onToggleDone(event: Event) {
         </h3>
 
         <p
-          v-if="descriptionPreview"
-          class="mt-1 line-clamp-2 text-[11px] leading-relaxed text-text-muted"
+          v-if="fullDescription"
+          class="mt-1 line-clamp-2 text-[11px] leading-relaxed text-text-muted transition-[max-height] group-hover:line-clamp-none"
+          :title="fullDescription"
         >
-          {{ descriptionPreview }}
+          {{ fullDescription }}
         </p>
 
         <div

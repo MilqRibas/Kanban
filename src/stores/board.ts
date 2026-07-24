@@ -105,7 +105,7 @@ export const useBoardStore = defineStore('board', () => {
   )
 
   const filteredCards = computed(() => {
-    let list = cards.value
+    let list = cards.value.filter((card) => !card.archivedAt)
     if (memberFilterId.value) {
       list = list.filter((card) =>
         card.memberIds.includes(memberFilterId.value!),
@@ -121,6 +121,14 @@ export const useBoardStore = defineStore('board', () => {
       )
     })
   })
+
+  const archivedCards = computed(() =>
+    [...cards.value]
+      .filter((card) => Boolean(card.archivedAt))
+      .sort((a, b) =>
+        (b.archivedAt ?? '').localeCompare(a.archivedAt ?? ''),
+      ),
+  )
 
   function setSearchQuery(value: string) {
     searchQuery.value = value
@@ -190,15 +198,16 @@ export const useBoardStore = defineStore('board', () => {
             id: string
             column_id: string
             title: string
-          description: string
-          due_date: string | null
-          start_date: string | null
-          checklists: Json
-          completed: boolean
-          position: number
-          created_at: string
-          updated_at: string
-        }>
+            description: string
+            due_date: string | null
+            start_date: string | null
+            checklists: Json
+            completed: boolean
+            archived_at: string | null
+            position: number
+            created_at: string
+            updated_at: string
+          }>
         card_labels: Array<{ card_id: string; label_id: string }>
         card_members: Array<{ card_id: string; member_id: string }>
         comments: Array<{
@@ -322,6 +331,7 @@ export const useBoardStore = defineStore('board', () => {
           comments: commentsByCard.get(row.id) ?? [],
           attachments: attachmentsByCard.get(row.id) ?? [],
           completed: row.completed,
+          archivedAt: row.archived_at ?? null,
           position: row.position,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
@@ -718,6 +728,7 @@ export const useBoardStore = defineStore('board', () => {
       comments: [],
       attachments: [],
       completed: false,
+      archivedAt: null,
       position: columnCards.length,
       createdAt: now,
       updatedAt: now,
@@ -773,6 +784,7 @@ export const useBoardStore = defineStore('board', () => {
     if (patch.startDate !== undefined) dbPatch.start_date = patch.startDate
     if (patch.dueDate !== undefined) dbPatch.due_date = patch.dueDate
     if (patch.completed !== undefined) dbPatch.completed = patch.completed
+    if (patch.archivedAt !== undefined) dbPatch.archived_at = patch.archivedAt
     if (patch.columnId !== undefined) dbPatch.column_id = patch.columnId
     if (patch.position !== undefined) dbPatch.position = patch.position
     if (patch.checklists !== undefined) {
@@ -804,6 +816,31 @@ export const useBoardStore = defineStore('board', () => {
         )
       }
     }
+  }
+
+  async function archiveCard(cardId: string) {
+    await updateCard(cardId, { archivedAt: new Date().toISOString() })
+    if (selectedCardId.value === cardId) selectedCardId.value = null
+  }
+
+  async function unarchiveCard(cardId: string) {
+    await updateCard(cardId, { archivedAt: null })
+  }
+
+  async function deleteCard(cardId: string) {
+    quietRealtime()
+    cards.value = cards.value.filter((card) => card.id !== cardId)
+    if (selectedCardId.value === cardId) selectedCardId.value = null
+    const { error: deleteError } = await supabase
+      .from('cards')
+      .delete()
+      .eq('id', cardId)
+    if (deleteError) {
+      error.value = deleteError.message
+      await loadBoard()
+      return false
+    }
+    return true
   }
 
   async function addComment(cardId: string, body: string, authorId?: string) {
@@ -1379,6 +1416,7 @@ export const useBoardStore = defineStore('board', () => {
     sortedColumns,
     cardsByColumn,
     cardsWithDueDate,
+    archivedCards,
     loading,
     ready,
     error,
@@ -1402,6 +1440,9 @@ export const useBoardStore = defineStore('board', () => {
     deleteColumn,
     addCard,
     updateCard,
+    archiveCard,
+    unarchiveCard,
+    deleteCard,
     addComment,
     updateComment,
     deleteComment,

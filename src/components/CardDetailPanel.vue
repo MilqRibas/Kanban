@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { marked } from 'marked'
 import {
   AlignLeft,
+  Archive,
   Calendar,
   Check,
   CheckSquare,
@@ -11,6 +12,7 @@ import {
   Ellipsis,
   Link2,
   MessageSquare,
+  MoreHorizontal,
   Paperclip,
   Pencil,
   Plus,
@@ -45,6 +47,7 @@ const hideCheckedByList = ref<Record<string, boolean>>({})
 const openItemMenu = ref<string | null>(null)
 const openItemDate = ref<string | null>(null)
 const datesOpen = ref(false)
+const cardMenuOpen = ref(false)
 const mentionOpen = ref(false)
 const mentionQuery = ref('')
 const mentionStart = ref(-1)
@@ -73,10 +76,16 @@ function onKeydown(event: KeyboardEvent) {
       mentionOpen.value = false
       return
     }
-    if (datesOpen.value || openItemMenu.value || openItemDate.value) {
+    if (
+      datesOpen.value ||
+      openItemMenu.value ||
+      openItemDate.value ||
+      cardMenuOpen.value
+    ) {
       datesOpen.value = false
       openItemMenu.value = null
       openItemDate.value = null
+      cardMenuOpen.value = false
       return
     }
     board.closeCard()
@@ -96,6 +105,7 @@ watch(
     draftDescription.value = value.description
     commentBody.value = ''
     editingCommentId.value = null
+    cardMenuOpen.value = false
     isEditingDescription.value = !value.description.trim()
     document.body.style.overflow = 'hidden'
     window.addEventListener('keydown', onKeydown)
@@ -334,6 +344,26 @@ function itemDateKey(listId: string, itemId: string) {
   return `${listId}:${itemId}`
 }
 
+async function archiveCurrentCard() {
+  if (!card.value) return
+  cardMenuOpen.value = false
+  await board.archiveCard(card.value.id)
+}
+
+async function deleteCurrentCard() {
+  if (!card.value) return
+  const title = card.value.title
+  cardMenuOpen.value = false
+  if (
+    !window.confirm(
+      `Apagar permanentemente o cartão “${title}”? Esta ação não pode ser desfeita.`,
+    )
+  ) {
+    return
+  }
+  await board.deleteCard(card.value.id)
+}
+
 async function onPickAttachment(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -491,6 +521,55 @@ function renderCommentBody(body: string) {
                     {{ columnTitle }}
                   </span>
                 </p>
+              </div>
+              <div class="relative shrink-0">
+                <button
+                  type="button"
+                  class="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
+                  aria-label="Opções do cartão"
+                  :aria-expanded="cardMenuOpen"
+                  @click="cardMenuOpen = !cardMenuOpen"
+                >
+                  <MoreHorizontal :size="18" :stroke-width="2" />
+                </button>
+                <div
+                  v-if="cardMenuOpen"
+                  class="absolute right-0 top-[calc(100%+4px)] z-40 min-w-[11rem] overflow-hidden rounded-xl border border-white/10 bg-board-elevated py-1 shadow-xl shadow-black/50"
+                  role="menu"
+                >
+                  <button
+                    v-if="card.archivedAt"
+                    type="button"
+                    role="menuitem"
+                    class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface hover:text-text-primary"
+                    @click="
+                      board.unarchiveCard(card.id);
+                      cardMenuOpen = false
+                    "
+                  >
+                    <Archive :size="14" />
+                    Restaurar
+                  </button>
+                  <button
+                    v-else
+                    type="button"
+                    role="menuitem"
+                    class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface hover:text-text-primary"
+                    @click="archiveCurrentCard"
+                  >
+                    <Archive :size="14" />
+                    Arquivar
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-danger hover:bg-danger/10"
+                    @click="deleteCurrentCard"
+                  >
+                    <Trash2 :size="14" />
+                    Apagar
+                  </button>
+                </div>
               </div>
               <button
                 type="button"
