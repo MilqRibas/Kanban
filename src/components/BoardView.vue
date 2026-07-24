@@ -62,7 +62,7 @@ function confirmAddList() {
     <div class="h-fit w-[min(85vw,20rem)] shrink-0 sm:w-80">
       <form
         v-if="isAddingList"
-        class="rounded-2xl bg-column/90 p-3"
+        class="column-glass rounded-2xl p-3"
         @submit.prevent="confirmAddList"
       >
         <input
@@ -94,7 +94,7 @@ function confirmAddList() {
       <button
         v-else
         type="button"
-        class="flex w-full items-center gap-2 rounded-2xl bg-white/5 px-4 py-3 text-sm text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
+        class="column-glass flex w-full items-center gap-2 rounded-2xl px-4 py-3 text-sm text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
         @click="startAddList"
       >
         <Plus :size="16" :stroke-width="2" />

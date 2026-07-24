@@ -515,6 +515,7 @@ function renderCommentBody(body: string) {
             <LabelPicker
               :selected-ids="card.labelIds"
               :labels="board.labels"
+              :card-id="card.id"
               @toggle="board.toggleCardLabel(card.id, $event)"
             />
 

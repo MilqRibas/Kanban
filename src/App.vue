@@ -90,7 +90,7 @@ watch(activeTab, async (tab) => {
     class="relative flex h-full min-h-0 flex-col bg-board bg-cover bg-center bg-no-repeat"
     :style="{ backgroundImage: `url(${boardBg})` }"
   >
-    <div class="pointer-events-none absolute inset-0 bg-board/45" />
+    <div class="pointer-events-none absolute inset-0 bg-board/30" />
     <div class="relative z-10 flex h-full min-h-0 flex-col">
       <AppHeader />
       <main class="flex min-h-0 flex-1 flex-col">

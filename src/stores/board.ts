@@ -60,6 +60,7 @@ export const useBoardStore = defineStore('board', () => {
   const members = ref<Member[]>([])
   const selectedCardId = ref<string | null>(null)
   const memberFilterId = ref<string | null>(null)
+  const searchQuery = ref('')
   const loading = ref(false)
   const ready = ref(false)
   const error = ref<string | null>(null)
@@ -104,11 +105,26 @@ export const useBoardStore = defineStore('board', () => {
   )
 
   const filteredCards = computed(() => {
-    if (!memberFilterId.value) return cards.value
-    return cards.value.filter((card) =>
-      card.memberIds.includes(memberFilterId.value!),
-    )
+    let list = cards.value
+    if (memberFilterId.value) {
+      list = list.filter((card) =>
+        card.memberIds.includes(memberFilterId.value!),
+      )
+    }
+    const query = searchQuery.value.trim().toLowerCase()
+    if (!query) return list
+    return list.filter((card) => {
+      if (card.title.toLowerCase().includes(query)) return true
+      if (card.description.toLowerCase().includes(query)) return true
+      return card.checklists.some((list) =>
+        list.items.some((item) => item.text.toLowerCase().includes(query)),
+      )
+    })
   })
+
+  function setSearchQuery(value: string) {
+    searchQuery.value = value
+  }
 
   const cardsByColumn = computed(() => {
     const map: Record<string, Card[]> = {}
@@ -371,6 +387,11 @@ export const useBoardStore = defineStore('board', () => {
       )
       .on(
         'postgres_changes',
+        { event: '*', schema: 'public', table: 'labels' },
+        onChange,
+      )
+      .on(
+        'postgres_changes',
         { event: '*', schema: 'public', table: 'card_labels' },
         onChange,
       )
@@ -407,6 +428,7 @@ export const useBoardStore = defineStore('board', () => {
     members.value = []
     selectedCardId.value = null
     memberFilterId.value = null
+    searchQuery.value = ''
     ready.value = false
     error.value = null
   }
@@ -954,6 +976,56 @@ export const useBoardStore = defineStore('board', () => {
     await updateCard(cardId, { labelIds })
   }
 
+  async function createLabel(
+    name: string,
+    color: LabelColor,
+    assignToCardId?: string,
+  ) {
+    const trimmed = name.trim()
+    if (!trimmed) return null
+    const label: Label = {
+      id: createId('lb'),
+      name: trimmed,
+      color,
+    }
+    quietRealtime()
+    const { error: insertError } = await supabase.from('labels').insert({
+      id: label.id,
+      board_id: BOARD_ID,
+      name: label.name,
+      color: label.color,
+      created_at: new Date().toISOString(),
+    })
+    if (insertError) {
+      error.value = insertError.message
+      return null
+    }
+    labels.value = [...labels.value, label]
+    if (assignToCardId) {
+      await toggleCardLabel(assignToCardId, label.id)
+    }
+    return label
+  }
+
+  async function deleteLabel(labelId: string) {
+    quietRealtime()
+    const { error: deleteError } = await supabase
+      .from('labels')
+      .delete()
+      .eq('id', labelId)
+    if (deleteError) {
+      error.value = deleteError.message
+      return false
+    }
+    labels.value = labels.value.filter((label) => label.id !== labelId)
+    for (const card of cards.value) {
+      if (card.labelIds.includes(labelId)) {
+        card.labelIds = card.labelIds.filter((id) => id !== labelId)
+      }
+    }
+    return true
+  }
+
   async function addChecklist(cardId: string, title = 'Lista de verificação') {
     const card = cards.value.find((item) => item.id === cardId)
     if (!card) return
@@ -1302,6 +1374,7 @@ export const useBoardStore = defineStore('board', () => {
     selectedCardId,
     selectedCard,
     memberFilterId,
+    searchQuery,
     activeMemberFilter,
     sortedColumns,
     cardsByColumn,
@@ -1316,6 +1389,7 @@ export const useBoardStore = defineStore('board', () => {
     getMembersForCard,
     getMemberById,
     setMemberFilter,
+    setSearchQuery,
     addMember,
     removeMember,
     openCard,
@@ -1336,6 +1410,8 @@ export const useBoardStore = defineStore('board', () => {
     toggleChecklistItem,
     toggleCardMember,
     toggleCardLabel,
+    createLabel,
+    deleteLabel,
     toggleChecklistItemAssignee,
     setChecklistItemDueDate,
     removeChecklist,

@@ -6,6 +6,7 @@ import { useAuthStore } from '../stores/auth'
 import MembersManager from './MembersManager.vue'
 import MemberFilterSelect from './MemberFilterSelect.vue'
 import NotificationCenter from './NotificationCenter.vue'
+import HeaderSearch from './HeaderSearch.vue'
 import logoSxB2c from '../assets/brand/sx-b2c.svg'
 
 const board = useBoardStore()
@@ -101,8 +102,10 @@ onBeforeUnmount(() => {
       <MemberFilterSelect compact />
     </div>
 
-    <!-- Direita: filtro mini (mobile) + notificações + avatar -->
+    <!-- Direita: busca + filtro mini (mobile) + notificações + avatar -->
     <div class="relative z-20 ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
+      <HeaderSearch />
+
       <div class="md:hidden">
         <MemberFilterSelect mini />
       </div>
