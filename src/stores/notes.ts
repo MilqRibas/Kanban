@@ -149,6 +149,11 @@ export const useNotesStore = defineStore('notes', () => {
   ) {
     const note = notes.value.find((item) => item.id === id)
     if (!note) return
+    const auth = useAuthStore()
+    if (!auth.memberId || note.authorId !== auth.memberId) {
+      error.value = 'Só quem criou a nota pode editá-la.'
+      return
+    }
     Object.assign(note, patch, { updatedAt: new Date().toISOString() })
     quietRealtime()
     await supabase
@@ -165,6 +170,12 @@ export const useNotesStore = defineStore('notes', () => {
   async function deleteNote(id: string) {
     const index = notes.value.findIndex((note) => note.id === id)
     if (index === -1) return
+    const note = notes.value[index]
+    const auth = useAuthStore()
+    if (!auth.memberId || note.authorId !== auth.memberId) {
+      error.value = 'Só quem criou a nota pode excluí-la.'
+      return
+    }
     notes.value.splice(index, 1)
     if (selectedNoteId.value === id) {
       selectedNoteId.value = notes.value[0]?.id ?? null

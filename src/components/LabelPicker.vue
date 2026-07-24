@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import { Plus, Trash2 } from '@lucide/vue'
 import type { Label, LabelColor } from '../types/board'
 import { LABEL_COLOR_MAP } from '../types/board'
 import { useBoardStore } from '../stores/board'
+import { useEphemeralDismiss } from '../composables/useEphemeralDismiss'
 
 const props = defineProps<{
   selectedIds: string[]
@@ -24,20 +25,19 @@ const creating = ref(false)
 
 const colorOptions = Object.keys(LABEL_COLOR_MAP) as LabelColor[]
 
+useEphemeralDismiss({
+  isOpen: open,
+  onClose: () => {
+    open.value = false
+  },
+  roots: [rootRef],
+  delayMs: 4000,
+})
+
 const selected = () =>
   props.selectedIds
     .map((id) => props.labels.find((label) => label.id === id))
     .filter((label): label is Label => Boolean(label))
-
-function onDocPointer(event: PointerEvent) {
-  const target = event.target as Node
-  if (rootRef.value?.contains(target)) return
-  open.value = false
-}
-
-function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') open.value = false
-}
 
 async function toggleOpen() {
   open.value = !open.value
@@ -64,20 +64,10 @@ async function removeLabel(labelId: string, event: Event) {
   if (!window.confirm('Excluir esta etiqueta do quadro?')) return
   await board.deleteLabel(labelId)
 }
-
-onMounted(() => {
-  document.addEventListener('pointerdown', onDocPointer)
-  document.addEventListener('keydown', onKeydown)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', onDocPointer)
-  document.removeEventListener('keydown', onKeydown)
-})
 </script>
 
 <template>
-  <div ref="rootRef" class="relative">
+  <div ref="rootRef" class="relative" data-ephemeral-menu>
     <p class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
       Etiquetas
     </p>

@@ -88,6 +88,13 @@ function isOverdue(dueDate: string) {
   return due < start
 }
 
+function isDone(card: (typeof board.cards)[number]) {
+  const doneColumn = board.columns.find((column) => column.isDoneColumn)
+  return Boolean(
+    card.completed || (doneColumn && card.columnId === doneColumn.id),
+  )
+}
+
 function cardsForDay(dateKey: string | null) {
   if (!dateKey) return []
   return dueCardsByDay.value[dateKey] ?? []
@@ -164,30 +171,30 @@ function cardsForDay(dateKey: string | null) {
               {{ cell.day }}
             </span>
 
-            <div class="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
+            <div class="min-h-0 flex-1 space-y-1 overflow-y-auto pr-0.5">
               <button
                 v-for="card in cardsForDay(cell.dateKey)"
                 :key="card.id"
                 type="button"
                 :class="[
-                  'block w-full truncate rounded px-1 py-0.5 text-left text-[11px] font-medium leading-tight transition-opacity hover:opacity-90',
-                  card.completed || card.columnId === 'done'
-                    ? 'bg-success/20 text-success'
+                  'block w-full rounded-md px-1.5 py-1 text-left text-[11px] font-semibold leading-snug shadow-sm transition-all hover:brightness-110',
+                  isDone(card)
+                    ? 'bg-success/30 text-success ring-1 ring-success/25'
                     : isOverdue(card.dueDate!)
-                      ? 'bg-danger/20 text-danger'
-                      : 'bg-accent/20 text-accent-hover',
+                      ? 'bg-danger/30 text-danger ring-1 ring-danger/30'
+                      : 'bg-[#39bcff]/25 text-[#c8ecff] ring-1 ring-[#39bcff]/35',
                 ]"
                 :style="{
                   borderLeft: `3px solid ${
                     board.getLabelsForCard(card)[0]
                       ? LABEL_COLOR_MAP[board.getLabelsForCard(card)[0].color]
-                      : '#579dff'
+                      : '#39bcff'
                   }`,
                 }"
                 :title="card.title"
                 @click="board.openCard(card.id)"
               >
-                {{ card.title }}
+                <span class="line-clamp-2 break-words">{{ card.title }}</span>
               </button>
             </div>
           </template>

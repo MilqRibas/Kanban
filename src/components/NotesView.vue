@@ -10,14 +10,22 @@ import {
 } from '@lucide/vue'
 import { useNotesStore } from '../stores/notes'
 import { useBoardStore } from '../stores/board'
+import { useAuthStore } from '../stores/auth'
 import type { NoteKind } from '../types/notes'
 
 const notesStore = useNotesStore()
 const board = useBoardStore()
+const auth = useAuthStore()
 
 const search = ref('')
 const draftTitle = ref('')
 const draftBody = ref('')
+
+const canEditSelected = computed(() => {
+  const note = notesStore.selectedNote
+  if (!note || !auth.memberId) return false
+  return note.authorId === auth.memberId
+})
 
 const filteredNotes = computed(() => {
   const query = search.value.trim().toLowerCase()
@@ -40,7 +48,7 @@ watch(
 
 function saveTitle() {
   const note = notesStore.selectedNote
-  if (!note) return
+  if (!note || !canEditSelected.value) return
   const title = draftTitle.value.trim() || 'Sem título'
   draftTitle.value = title
   notesStore.updateNote(note.id, { title })
@@ -48,13 +56,13 @@ function saveTitle() {
 
 function saveBody() {
   const note = notesStore.selectedNote
-  if (!note) return
+  if (!note || !canEditSelected.value) return
   notesStore.updateNote(note.id, { body: draftBody.value })
 }
 
 function setKind(kind: NoteKind) {
   const note = notesStore.selectedNote
-  if (!note) return
+  if (!note || !canEditSelected.value) return
   notesStore.updateNote(note.id, { kind })
 }
 
@@ -77,7 +85,7 @@ function authorName(authorId: string) {
 
 function confirmDelete() {
   const note = notesStore.selectedNote
-  if (!note) return
+  if (!note || !canEditSelected.value) return
   if (window.confirm(`Excluir “${note.title}”?`)) {
     notesStore.deleteNote(note.id)
   }
@@ -179,11 +187,13 @@ function confirmDelete() {
           <div class="flex rounded-lg bg-column p-0.5">
             <button
               type="button"
+              :disabled="!canEditSelected"
               :class="[
                 'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
                 notesStore.selectedNote.kind === 'note'
                   ? 'bg-surface text-text-primary'
                   : 'text-text-muted hover:text-text-secondary',
+                !canEditSelected && 'cursor-default opacity-60',
               ]"
               @click="setKind('note')"
             >
@@ -191,11 +201,13 @@ function confirmDelete() {
             </button>
             <button
               type="button"
+              :disabled="!canEditSelected"
               :class="[
                 'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
                 notesStore.selectedNote.kind === 'meeting'
                   ? 'bg-surface text-text-primary'
                   : 'text-text-muted hover:text-text-secondary',
+                !canEditSelected && 'cursor-default opacity-60',
               ]"
               @click="setKind('meeting')"
             >
@@ -206,9 +218,13 @@ function confirmDelete() {
           <p class="ml-auto text-xs text-text-muted">
             {{ authorName(notesStore.selectedNote.authorId) }} ·
             {{ formatDate(notesStore.selectedNote.updatedAt) }}
+            <span v-if="!canEditSelected" class="ml-1 text-text-muted/80">
+              · só leitura
+            </span>
           </p>
 
           <button
+            v-if="canEditSelected"
             type="button"
             class="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-danger/15 hover:text-danger"
             title="Excluir nota"
@@ -222,14 +238,24 @@ function confirmDelete() {
           <input
             v-model="draftTitle"
             type="text"
-            class="mb-3 w-full rounded-lg bg-transparent px-1 text-xl font-semibold text-text-primary outline-none focus:bg-surface"
+            :readonly="!canEditSelected"
+            :class="[
+              'mb-3 w-full rounded-lg bg-transparent px-1 text-xl font-semibold text-text-primary outline-none',
+              canEditSelected ? 'focus:bg-surface' : 'cursor-default',
+            ]"
             placeholder="Título"
             @blur="saveTitle"
             @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
           />
           <textarea
             v-model="draftBody"
-            class="min-h-0 flex-1 resize-none rounded-xl border border-transparent bg-transparent px-1 py-1 text-sm leading-relaxed text-text-secondary outline-none placeholder:text-text-muted focus:border-border-subtle focus:bg-column/40"
+            :readonly="!canEditSelected"
+            :class="[
+              'min-h-0 flex-1 resize-none rounded-xl border border-transparent bg-transparent px-1 py-1 text-sm leading-relaxed text-text-secondary outline-none placeholder:text-text-muted',
+              canEditSelected
+                ? 'focus:border-border-subtle focus:bg-column/40'
+                : 'cursor-default',
+            ]"
             placeholder="Escreva atas, decisões, ideias soltas do time… Markdown é bem-vindo."
             @blur="saveBody"
           />

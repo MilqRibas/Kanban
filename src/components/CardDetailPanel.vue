@@ -24,6 +24,7 @@ import { useAuthStore } from '../stores/auth'
 import MemberAvatar from './MemberAvatar.vue'
 import AssigneePicker from './AssigneePicker.vue'
 import LabelPicker from './LabelPicker.vue'
+import { useEphemeralDismiss } from '../composables/useEphemeralDismiss'
 
 const board = useBoardStore()
 const auth = useAuthStore()
@@ -51,6 +52,29 @@ const cardMenuOpen = ref(false)
 const mentionOpen = ref(false)
 const mentionQuery = ref('')
 const mentionStart = ref(-1)
+
+const anyEphemeralOpen = computed(
+  () =>
+    Boolean(
+      datesOpen.value ||
+        openItemMenu.value ||
+        openItemDate.value ||
+        cardMenuOpen.value,
+    ),
+)
+
+function dismissEphemeral() {
+  datesOpen.value = false
+  openItemMenu.value = null
+  openItemDate.value = null
+  cardMenuOpen.value = false
+}
+
+useEphemeralDismiss({
+  isOpen: anyEphemeralOpen,
+  onClose: dismissEphemeral,
+  delayMs: 4000,
+})
 
 const card = computed(() => board.selectedCard)
 const currentMember = computed(() => {
@@ -522,7 +546,7 @@ function renderCommentBody(body: string) {
                   </span>
                 </p>
               </div>
-              <div class="relative shrink-0">
+              <div class="relative shrink-0" data-ephemeral-menu>
                 <button
                   type="button"
                   class="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
@@ -598,7 +622,7 @@ function renderCommentBody(body: string) {
               @toggle="board.toggleCardLabel(card.id, $event)"
             />
 
-            <div class="relative min-w-[11rem]">
+            <div class="relative min-w-[11rem]" data-ephemeral-menu>
               <p class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
                 Data entrega
               </p>
@@ -812,7 +836,7 @@ function renderCommentBody(body: string) {
                   </p>
 
                   <div class="flex shrink-0 items-center gap-0.5 opacity-70 transition-opacity group-hover:opacity-100">
-                    <div class="relative">
+                    <div class="relative" data-ephemeral-menu>
                       <button
                         type="button"
                         :class="[
@@ -894,7 +918,7 @@ function renderCommentBody(body: string) {
                       "
                     />
 
-                    <div class="relative">
+                    <div class="relative" data-ephemeral-menu>
                       <button
                         type="button"
                         class="rounded-md p-1 text-text-muted hover:bg-white/10 hover:text-text-primary"

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { Plus, UserRoundPlus } from '@lucide/vue'
 import type { Member } from '../types/board'
 import MemberAvatar from './MemberAvatar.vue'
+import { useEphemeralDismiss } from '../composables/useEphemeralDismiss'
 
 const props = withDefaults(
   defineProps<{
@@ -27,6 +28,15 @@ const emit = defineEmits<{
 const open = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
 
+useEphemeralDismiss({
+  isOpen: open,
+  onClose: () => {
+    open.value = false
+  },
+  roots: [rootRef],
+  delayMs: 4000,
+})
+
 const selected = computed(() =>
   props.selectedIds
     .map((id) => props.members.find((member) => member.id === id))
@@ -36,34 +46,14 @@ const selected = computed(() =>
 const visible = computed(() => selected.value.slice(0, props.maxVisible))
 const overflow = computed(() => Math.max(0, selected.value.length - props.maxVisible))
 
-function onDocPointer(event: PointerEvent) {
-  const target = event.target as Node
-  if (rootRef.value?.contains(target)) return
-  open.value = false
-}
-
-function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') open.value = false
-}
-
 async function toggleOpen() {
   open.value = !open.value
   if (open.value) await nextTick()
 }
-
-onMounted(() => {
-  document.addEventListener('pointerdown', onDocPointer)
-  document.addEventListener('keydown', onKeydown)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', onDocPointer)
-  document.removeEventListener('keydown', onKeydown)
-})
 </script>
 
 <template>
-  <div ref="rootRef" class="relative">
+  <div ref="rootRef" class="relative" data-ephemeral-menu>
     <p
       v-if="label"
       class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-text-muted"
