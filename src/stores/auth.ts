@@ -12,6 +12,7 @@ export const useAuthStore = defineStore('auth', () => {
   const memberId = ref<string | null>(null)
   const displayName = ref<string | null>(null)
   const avatarUrl = ref<string | null>(null)
+  const isAdmin = ref(false)
   const uploadingAvatar = ref(false)
   const passwordRecovery = ref(false)
 
@@ -35,6 +36,7 @@ export const useAuthStore = defineStore('auth', () => {
     memberId.value = null
     displayName.value = null
     avatarUrl.value = null
+    isAdmin.value = false
   }
 
   function clearMessages() {
@@ -128,7 +130,7 @@ export const useAuthStore = defineStore('auth', () => {
     const silent = options?.silent ?? false
     const { data, error: profileError } = await supabase
       .from('profiles')
-      .select('display_name, member_id, avatar_url')
+      .select('display_name, member_id, avatar_url, is_admin')
       .eq('id', user.value.id)
       .maybeSingle()
 
@@ -142,6 +144,7 @@ export const useAuthStore = defineStore('auth', () => {
     displayName.value = data?.display_name ?? user.value.email ?? null
     memberId.value = data?.member_id ?? null
     avatarUrl.value = data?.avatar_url ?? null
+    isAdmin.value = Boolean(data?.is_admin)
     await syncMemberRecord({ silent })
   }
 
@@ -415,6 +418,7 @@ export const useAuthStore = defineStore('auth', () => {
     memberId,
     displayName,
     avatarUrl,
+    isAdmin,
     initials,
     uploadingAvatar,
     passwordRecovery,

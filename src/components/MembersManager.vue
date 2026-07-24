@@ -1,18 +1,33 @@
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { Loader2, Mail, Trash2, X } from '@lucide/vue'
 import { useBoardStore } from '../stores/board'
+import { useAuthStore } from '../stores/auth'
 import MemberAvatar from './MemberAvatar.vue'
 
 const board = useBoardStore()
+const auth = useAuthStore()
 const open = ref(false)
 const email = ref('')
 const name = ref('')
 const inviting = ref(false)
+const removingId = ref<string | null>(null)
 const formError = ref<string | null>(null)
 const formSuccess = ref<string | null>(null)
 const inviteLink = ref<string | null>(null)
 const emailInputRef = ref<HTMLInputElement | null>(null)
+
+const canManageRemovals = computed(() => auth.isAdmin)
+
+function canRemove(memberId: string) {
+  if (!auth.isAdmin) return false
+  const member = board.getMemberById(memberId)
+  if (!member) return false
+  if (member.isAdmin) return false
+  if (member.userId && member.userId === auth.user?.id) return false
+  if (member.id === auth.memberId) return false
+  return true
+}
 
 async function openModal() {
   open.value = true
@@ -75,14 +90,32 @@ async function copyInviteLink() {
   }
 }
 
-function remove(memberId: string, memberName: string) {
-  const member = board.getMemberById(memberId)
-  if (member?.userId) {
-    window.alert('Contas autenticadas não podem ser removidas por aqui.')
+async function remove(memberId: string, memberName: string) {
+  if (!canRemove(memberId)) {
+    formError.value = 'Você não tem permissão para remover este usuário.'
     return
   }
-  if (!window.confirm(`Remover ${memberName} do time?`)) return
-  board.removeMember(memberId)
+  if (
+    !window.confirm(
+      `Remover ${memberName} do time? A conta de acesso também será excluída.`,
+    )
+  ) {
+    return
+  }
+
+  formError.value = null
+  formSuccess.value = null
+  removingId.value = memberId
+  try {
+    const ok = await board.removeMember(memberId)
+    if (!ok) {
+      formError.value = board.error ?? 'Não foi possível remover o usuário.'
+      return
+    }
+    formSuccess.value = `${memberName} foi removido do time.`
+  } finally {
+    removingId.value = null
+  }
 }
 
 defineExpose({ openModal })
@@ -111,7 +144,11 @@ defineExpose({ openModal })
           <div>
             <h2 class="text-base font-semibold text-text-primary">Usuários do time</h2>
             <p class="text-xs text-text-muted">
-              Convide por e-mail — o Supabase envia o link de acesso
+              {{
+                canManageRemovals
+                  ? 'Convide por e-mail e remova membros quando precisar'
+                  : 'Convide por e-mail — o Supabase envia o link de acesso'
+              }}
             </p>
           </div>
           <button
@@ -131,19 +168,33 @@ defineExpose({ openModal })
           >
             <MemberAvatar :member="member" size="lg" />
             <div class="min-w-0 flex-1">
-              <p class="truncate text-sm text-text-primary">{{ member.name }}</p>
+              <p class="truncate text-sm text-text-primary">
+                {{ member.name }}
+                <span
+                  v-if="member.isAdmin"
+                  class="ml-1 rounded bg-accent/20 px-1.5 py-0.5 text-[10px] font-medium text-accent"
+                >
+                  admin
+                </span>
+              </p>
               <p v-if="member.email" class="truncate text-xs text-text-muted">
                 {{ member.email }}
               </p>
             </div>
             <button
-              v-if="!member.userId"
+              v-if="canRemove(member.id)"
               type="button"
-              class="rounded-lg p-1.5 text-text-muted hover:bg-danger/15 hover:text-danger"
+              class="rounded-lg p-1.5 text-text-muted hover:bg-danger/15 hover:text-danger disabled:opacity-50"
               :aria-label="`Remover ${member.name}`"
+              :disabled="removingId === member.id"
               @click="remove(member.id, member.name)"
             >
-              <Trash2 :size="15" />
+              <Loader2
+                v-if="removingId === member.id"
+                :size="15"
+                class="animate-spin"
+              />
+              <Trash2 v-else :size="15" />
             </button>
           </div>
           <p v-if="!board.members.length" class="text-sm text-text-muted">

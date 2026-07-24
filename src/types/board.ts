@@ -22,6 +22,7 @@ export interface Member {
   avatarUrl?: string | null
   userId?: string | null
   email?: string | null
+  isAdmin?: boolean
 }
 
 export interface ChecklistItem {

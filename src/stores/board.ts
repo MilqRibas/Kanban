@@ -175,7 +175,7 @@ export const useBoardStore = defineStore('board', () => {
         }
 
         title.value = snapshot.board.title
-        members.value = (snapshot.members ?? []).map((row) => ({
+        const mappedMembers = (snapshot.members ?? []).map((row) => ({
           id: row.id,
           name: row.name,
           initials: row.initials,
@@ -183,7 +183,31 @@ export const useBoardStore = defineStore('board', () => {
           avatarUrl: row.avatar_url ?? null,
           userId: row.user_id ?? null,
           email: row.email ?? null,
+          isAdmin: false,
         }))
+
+        const userIds = mappedMembers
+          .map((member) => member.userId)
+          .filter((id): id is string => Boolean(id))
+
+        if (userIds.length) {
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, is_admin')
+            .in('id', userIds)
+          const adminIds = new Set(
+            (profiles ?? [])
+              .filter((profile) => profile.is_admin)
+              .map((profile) => profile.id),
+          )
+          for (const member of mappedMembers) {
+            if (member.userId && adminIds.has(member.userId)) {
+              member.isAdmin = true
+            }
+          }
+        }
+
+        members.value = mappedMembers
         labels.value = (snapshot.labels ?? []).map((row) => ({
           id: row.id,
           name: row.name,
@@ -382,6 +406,13 @@ export const useBoardStore = defineStore('board', () => {
   }
 
   async function removeMember(memberId: string) {
+    const auth = useAuthStore()
+    if (!auth.isAdmin) {
+      error.value = 'Apenas administradores podem remover usuários.'
+      return false
+    }
+
+    const previous = members.value.slice()
     members.value = members.value.filter((member) => member.id !== memberId)
     for (const card of cards.value) {
       card.memberIds = card.memberIds.filter((id) => id !== memberId)
@@ -390,11 +421,34 @@ export const useBoardStore = defineStore('board', () => {
       memberFilterId.value = null
     }
     quietRealtime()
-    const { error: deleteError } = await supabase
-      .from('members')
-      .delete()
-      .eq('id', memberId)
-    if (deleteError) error.value = deleteError.message
+
+    const { data, error: fnError } = await supabase.functions.invoke(
+      'remove-member',
+      { body: { memberId } },
+    )
+
+    if (fnError || data?.error) {
+      members.value = previous
+      let fromBody: string | null = null
+      if (data && typeof data === 'object' && 'error' in data) {
+        fromBody = String((data as { error: unknown }).error)
+      } else {
+        try {
+          const context = (fnError as { context?: Response } | null)?.context
+          if (context) {
+            const payload = await context.clone().json()
+            if (payload?.error) fromBody = String(payload.error)
+          }
+        } catch {
+          // ignore
+        }
+      }
+      error.value = fromBody || fnError?.message || 'Falha ao remover usuário.'
+      return false
+    }
+
+    error.value = null
+    return true
   }
 
   function getLabelsForCard(card: Card) {
