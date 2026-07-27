@@ -82,11 +82,25 @@ function membersAvailableForDate(_dateKey: string) {
 }
 
 function startAddForDay(dateKey: string) {
+  // Com filtro ativo: abre direto para o membro filtrado
   if (board.memberFilterId) {
     daily.openEntry(board.memberFilterId, dateKey)
     addMenuDateKey.value = null
     return
   }
+  // Dia vazio: abre para o membro em foco (sem exigir seletor)
+  const dayEntries = daily.entries.filter(
+    (entry) => entry.dateKey === dateKey && entry.todos.length > 0,
+  )
+  if (dayEntries.length === 0) {
+    const preferred = focusMemberId.value ?? board.members[0]?.id
+    if (preferred) {
+      daily.openEntry(preferred, dateKey)
+      addMenuDateKey.value = null
+      return
+    }
+  }
+  // Já há rotinas no dia: escolher outro membro
   if (board.members.length <= 1) {
     const only = board.members[0]?.id
     if (only) daily.openEntry(only, dateKey)
@@ -169,12 +183,25 @@ function saveCampaign() {
 function onDateChange(event: Event) {
   const value = (event.target as HTMLInputElement).value
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return
+  if (value === daily.selectedDateKey) return
   const memberId = focusMemberId.value ?? board.members[0]?.id
   if (!memberId) {
     daily.setDateKey(value)
     return
   }
   daily.openEntry(memberId, value)
+}
+
+function shiftDay(delta: number) {
+  const date = new Date(`${daily.selectedDateKey}T12:00:00`)
+  date.setDate(date.getDate() + delta)
+  const nextKey = toDateKey(date)
+  const memberId = focusMemberId.value ?? board.members[0]?.id
+  if (!memberId) {
+    daily.setDateKey(nextKey)
+    return
+  }
+  daily.openEntry(memberId, nextKey)
 }
 
 function isToggle(todo: DailyTodoItem) {
@@ -410,7 +437,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
 
               <div
                 v-if="addMenuDateKey === day.dateKey"
-                class="absolute inset-x-0 bottom-full z-20 mb-1 max-h-48 overflow-y-auto rounded-xl border border-white/10 bg-board-elevated py-1 shadow-xl"
+                class="absolute inset-x-0 top-full z-30 mt-1 max-h-48 overflow-y-auto rounded-xl border border-white/10 bg-board-elevated py-1 shadow-xl"
               >
                 <p class="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
                   Criar para
@@ -578,13 +605,29 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
               <Calendar :size="15" />
               Data
             </dt>
-            <dd>
+            <dd class="flex items-center gap-1.5">
+              <button
+                type="button"
+                class="rounded-md p-1 text-text-muted hover:bg-white/10 hover:text-text-primary"
+                aria-label="Dia anterior"
+                @click="shiftDay(-1)"
+              >
+                <ChevronLeft :size="16" />
+              </button>
               <input
                 type="date"
                 :value="daily.selectedDateKey"
                 class="rounded-md border border-border-subtle/70 bg-surface px-2 py-1 text-text-primary outline-none hover:border-accent/40 focus:border-accent [color-scheme:dark]"
                 @change="onDateChange"
               />
+              <button
+                type="button"
+                class="rounded-md p-1 text-text-muted hover:bg-white/10 hover:text-text-primary"
+                aria-label="Próximo dia"
+                @click="shiftDay(1)"
+              >
+                <ChevronRight :size="16" />
+              </button>
             </dd>
           </div>
 

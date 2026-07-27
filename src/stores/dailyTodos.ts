@@ -205,6 +205,26 @@ export const useDailyStore = defineStore('daily', () => {
 
   async function persistEntry(entry: DailyEntry) {
     quietRealtime()
+
+    // Reusa o id remoto se já existir linha para member+date (evita conflito de PK)
+    const { data: existingRow } = await supabase
+      .from('daily_entries')
+      .select('id')
+      .eq('board_id', BOARD_ID)
+      .eq('member_id', entry.memberId)
+      .eq('date_key', entry.dateKey)
+      .maybeSingle()
+
+    if (existingRow?.id && existingRow.id !== entry.id) {
+      const oldId = entry.id
+      entry.id = existingRow.id
+      if (persistTimers.has(oldId)) {
+        const timer = persistTimers.get(oldId)
+        if (timer) clearTimeout(timer)
+        persistTimers.delete(oldId)
+      }
+    }
+
     const { error: upsertError } = await supabase.from('daily_entries').upsert(
       {
         id: entry.id,
@@ -477,6 +497,7 @@ export const useDailyStore = defineStore('daily', () => {
     }
     selectedDateKey.value = dateKey
     dayDetailOpen.value = true
+    ensureEntry(memberId, dateKey)
     persistUi()
   }
 
