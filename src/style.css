@@ -209,4 +209,85 @@
   .daily-pin-pop {
     animation: daily-pin-pop 0.7s cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
   }
+
+  /* Troca de abas: fade + leve deslocamento (sem corte seco) */
+  .tab-stage {
+    isolation: isolate;
+  }
+
+  .tab-panel {
+    min-height: 0;
+  }
+
+  .tab-fade-enter-active {
+    transition:
+      opacity 0.28s ease,
+      transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .tab-fade-leave-active {
+    transition:
+      opacity 0.18s ease,
+      transform 0.18s ease;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .tab-fade-enter-active {
+    position: relative;
+    z-index: 1;
+  }
+
+  .tab-fade-enter-from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  .tab-fade-leave-to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+
+  .view-fade-enter-active,
+  .view-fade-leave-active {
+    transition:
+      opacity 0.22s ease,
+      transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .view-fade-enter-from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  .view-fade-leave-to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  .view-fade-leave-active {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tab-fade-enter-active,
+    .tab-fade-leave-active,
+    .view-fade-enter-active,
+    .view-fade-leave-active {
+      transition-duration: 0.01ms !important;
+    }
+
+    .tab-fade-enter-from,
+    .tab-fade-leave-to,
+    .view-fade-enter-from,
+    .view-fade-leave-to {
+      transform: none;
+    }
+  }
 }

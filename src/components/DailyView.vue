@@ -235,11 +235,14 @@ function submitTodo() {
       </div>
     </div>
 
-    <!-- SEMANAL -->
-    <section
-      v-if="daily.viewMode === 'week'"
-      class="panel-glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl"
-    >
+    <!-- SEMANAL / MENSAL / DIÁRIO -->
+    <div class="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      <Transition name="view-fade">
+        <section
+          v-if="daily.viewMode === 'week'"
+          key="week"
+          class="panel-glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl"
+        >
       <header class="flex shrink-0 items-center justify-between border-b border-border-subtle/70 px-4 py-3">
         <div>
           <h2 class="text-sm font-semibold capitalize text-text-primary">
@@ -359,13 +362,13 @@ function submitTodo() {
           </div>
         </div>
       </div>
-    </section>
+        </section>
 
-    <!-- MENSAL -->
-    <section
-      v-else-if="daily.viewMode === 'month'"
-      class="panel-glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl"
-    >
+        <section
+          v-else-if="daily.viewMode === 'month'"
+          key="month"
+          class="panel-glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl"
+        >
       <header class="flex shrink-0 items-center justify-between border-b border-border-subtle/70 px-4 py-3">
         <h2 class="text-sm font-semibold capitalize text-text-primary">
           {{ daily.periodLabel }}
@@ -439,13 +442,13 @@ function submitTodo() {
           </div>
         </div>
       </div>
-    </section>
+        </section>
 
-    <!-- DIÁRIO (visualização detalhada anterior) -->
-    <section
-      v-else
-      class="panel-glass relative mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col overflow-hidden rounded-2xl shadow-xl shadow-black/20"
-    >
+        <section
+          v-else
+          key="day"
+          class="panel-glass relative mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col overflow-hidden rounded-2xl shadow-xl shadow-black/20"
+        >
       <div class="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-8 sm:py-7">
         <header class="mb-6">
           <div class="mb-2 flex items-start justify-between gap-3">
@@ -618,6 +621,8 @@ function submitTodo() {
           </button>
         </form>
       </div>
-    </section>
+        </section>
+      </Transition>
+    </div>
   </div>
 </template>

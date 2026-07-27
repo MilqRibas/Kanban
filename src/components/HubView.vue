@@ -261,10 +261,13 @@ async function addSection() {
 </script>
 
 <template>
-  <div
-    class="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-[4.75rem] pt-2 sm:px-4 sm:pb-16 sm:pt-3"
-  >
-    <template v-if="screen === 'home'">
+  <div class="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+    <Transition name="view-fade">
+      <div
+        v-if="screen === 'home'"
+        key="home"
+        class="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-[4.75rem] pt-2 sm:px-4 sm:pb-16 sm:pt-3"
+      >
       <header class="mb-4 flex shrink-0 flex-wrap items-end justify-between gap-3 sm:mb-5">
         <div>
           <h2 class="text-xl font-semibold tracking-tight text-text-primary sm:text-2xl">
@@ -421,9 +424,13 @@ async function addSection() {
         <Plus :size="22" />
         <span class="text-sm font-medium">Adicionar card</span>
       </button>
-    </template>
+      </div>
 
-    <template v-else-if="screen === 'conteudo'">
+      <div
+        v-else-if="screen === 'conteudo'"
+        key="conteudo"
+        class="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-[4.75rem] pt-2 sm:px-4 sm:pb-16 sm:pt-3"
+      >
       <header class="mb-4 shrink-0">
         <button
           type="button"
@@ -528,15 +535,17 @@ async function addSection() {
           Nenhuma subdivisão. Crie uma para organizar o calendário.
         </p>
       </div>
-    </template>
+      </div>
 
-    <CommunityCalendar
-      v-else-if="activeSection"
-      class="min-h-0 flex-1"
-      :title="activeSection.title"
-      :section-id="activeSection.id"
-      @back="screen = 'conteudo'"
-    />
+      <CommunityCalendar
+        v-else-if="activeSection"
+        :key="`section-${activeSection.id}`"
+        class="min-h-0 flex-1 overflow-y-auto px-2 pb-[4.75rem] pt-2 sm:px-4 sm:pb-16 sm:pt-3"
+        :title="activeSection.title"
+        :section-id="activeSection.id"
+        @back="screen = 'conteudo'"
+      />
+    </Transition>
 
     <!-- Create / edit card modal -->
     <Teleport to="body">

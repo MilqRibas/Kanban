@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { defineAsyncComponent, onMounted, ref, watch } from 'vue'
+import {
+  defineAsyncComponent,
+  markRaw,
+  onMounted,
+  type Component,
+  ref,
+  watch,
+} from 'vue'
 import AppHeader from './components/AppHeader.vue'
 import AppFooter from './components/AppFooter.vue'
 import BoardView from './components/BoardView.vue'
@@ -16,16 +23,32 @@ import { useNotificationsStore } from './stores/notifications'
 import { useCommunityStore } from './stores/community'
 import { useHubSectionsStore } from './stores/hubSections'
 
-const AgendaView = defineAsyncComponent(
-  () => import('./components/AgendaView.vue'),
-)
-const DailyView = defineAsyncComponent(
-  () => import('./components/DailyView.vue'),
-)
-const NotesView = defineAsyncComponent(
-  () => import('./components/NotesView.vue'),
-)
-const HubView = defineAsyncComponent(() => import('./components/HubView.vue'))
+const asyncOpts = { delay: 320 }
+
+const AgendaView = defineAsyncComponent({
+  loader: () => import('./components/AgendaView.vue'),
+  ...asyncOpts,
+})
+const DailyView = defineAsyncComponent({
+  loader: () => import('./components/DailyView.vue'),
+  ...asyncOpts,
+})
+const NotesView = defineAsyncComponent({
+  loader: () => import('./components/NotesView.vue'),
+  ...asyncOpts,
+})
+const HubView = defineAsyncComponent({
+  loader: () => import('./components/HubView.vue'),
+  ...asyncOpts,
+})
+
+const tabViews: Record<NavTab, Component> = {
+  board: markRaw(BoardView),
+  agenda: markRaw(AgendaView),
+  daily: markRaw(DailyView),
+  notes: markRaw(NotesView),
+  hub: markRaw(HubView),
+}
 
 const auth = useAuthStore()
 const board = useBoardStore()
@@ -38,10 +61,20 @@ const activeTab = ref<NavTab>('board')
 const bootstrapping = ref(false)
 const notesReady = ref(false)
 const dailyReady = ref(false)
+const chunksPrefetched = ref(false)
 
 onMounted(async () => {
   await auth.init()
 })
+
+function prefetchTabChunks() {
+  if (chunksPrefetched.value) return
+  chunksPrefetched.value = true
+  void import('./components/AgendaView.vue')
+  void import('./components/DailyView.vue')
+  void import('./components/NotesView.vue')
+  void import('./components/HubView.vue')
+}
 
 watch(
   () => [auth.isAuthenticated, auth.passwordRecovery] as const,
@@ -59,9 +92,9 @@ watch(
     }
     bootstrapping.value = true
     try {
-      // Só o quadro no boot — notas/tarefas sob demanda
       await board.init()
       await notifications.init()
+      prefetchTabChunks()
     } finally {
       bootstrapping.value = false
     }
@@ -107,40 +140,16 @@ watch(activeTab, async (tab) => {
   >
     <div class="relative z-10 flex h-full min-h-0 flex-col">
       <AppHeader />
-      <main class="flex min-h-0 flex-1 flex-col">
-        <BoardView v-if="activeTab === 'board'" />
-        <Suspense v-else-if="activeTab === 'agenda'">
-          <AgendaView />
-          <template #fallback>
-            <div class="flex flex-1 items-center justify-center">
-              <Loader2 class="animate-spin text-accent" :size="24" />
-            </div>
-          </template>
-        </Suspense>
-        <Suspense v-else-if="activeTab === 'daily'">
-          <DailyView />
-          <template #fallback>
-            <div class="flex flex-1 items-center justify-center">
-              <Loader2 class="animate-spin text-accent" :size="24" />
-            </div>
-          </template>
-        </Suspense>
-        <Suspense v-else-if="activeTab === 'notes'">
-          <NotesView />
-          <template #fallback>
-            <div class="flex flex-1 items-center justify-center">
-              <Loader2 class="animate-spin text-accent" :size="24" />
-            </div>
-          </template>
-        </Suspense>
-        <Suspense v-else-if="activeTab === 'hub'">
-          <HubView />
-          <template #fallback>
-            <div class="flex flex-1 items-center justify-center">
-              <Loader2 class="animate-spin text-accent" :size="24" />
-            </div>
-          </template>
-        </Suspense>
+      <main class="tab-stage relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        <Transition name="tab-fade">
+          <KeepAlive :max="5">
+            <component
+              :is="tabViews[activeTab]"
+              :key="activeTab"
+              class="tab-panel flex min-h-0 w-full flex-1 flex-col"
+            />
+          </KeepAlive>
+        </Transition>
       </main>
       <AppFooter v-model:active-tab="activeTab" />
       <CardDetailPanel />
