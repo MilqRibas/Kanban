@@ -57,32 +57,36 @@
     }
   }
 
-  /* Quadro: respiro no fim do scroll horizontal */
+  /* Quadro: colunas centralizadas + scroll horizontal quando passam da tela */
   .board-scroll {
     scroll-padding-inline: 1.5rem;
-  }
-
-  .board-scroll::after {
-    content: '';
-    flex: 0 0 1.25rem;
+    scrollbar-gutter: stable;
   }
 
   .board-scroll::-webkit-scrollbar {
-    height: 10px;
+    height: 12px;
   }
 
   .board-scroll::-webkit-scrollbar-track {
-    background: transparent;
-    margin-inline: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 999px;
+    margin-inline: 1.5rem;
   }
 
   .board-scroll::-webkit-scrollbar-thumb {
-    background: #465a71;
-    border-radius: 8px;
+    background: #5a7189;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
   }
 
   .board-scroll::-webkit-scrollbar-thumb:hover {
-    background: #5a7189;
+    background: #7d90a4;
+    background-clip: padding-box;
+  }
+
+  .board-track {
+    box-sizing: border-box;
   }
 }
 
