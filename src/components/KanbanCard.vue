@@ -36,6 +36,22 @@ const fullDescription = computed(() =>
     .trim(),
 )
 
+const CARD_DESC_PREVIEW = 100
+const CARD_DESC_HOVER = 180
+
+function truncateText(text: string, limit: number) {
+  if (text.length <= limit) return text
+  return `${text.slice(0, limit).trimEnd()}...`
+}
+
+const previewDescription = computed(() =>
+  truncateText(fullDescription.value, CARD_DESC_PREVIEW),
+)
+
+const hoverDescription = computed(() =>
+  truncateText(fullDescription.value, CARD_DESC_HOVER),
+)
+
 const checklistProgress = computed(() => {
   const items = props.card.checklists.flatMap((list) => list.items)
   if (items.length === 0) return null
@@ -138,13 +154,17 @@ async function onToggleDone(event: Event) {
           {{ card.title }}
         </h3>
 
-        <p
-          v-if="fullDescription"
-          class="mt-1 line-clamp-2 text-[11px] leading-relaxed text-text-muted transition-[max-height] group-hover:line-clamp-none"
-          :title="fullDescription"
-        >
-          {{ fullDescription }}
-        </p>
+        <div v-if="fullDescription" class="mt-1 text-[11px] leading-relaxed text-text-muted">
+          <p class="line-clamp-2 group-hover:hidden" :title="fullDescription">
+            {{ previewDescription }}
+          </p>
+          <p
+            class="hidden line-clamp-4 group-hover:block"
+            :title="fullDescription"
+          >
+            {{ hoverDescription }}
+          </p>
+        </div>
 
         <div
           v-if="checklistProgress || card.comments.length || card.attachments.length"
