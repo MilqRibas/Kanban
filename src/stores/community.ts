@@ -60,6 +60,10 @@ export const useCommunityStore = defineStore('community', () => {
     return map
   })
 
+  const undatedItems = computed(() =>
+    sectionItems.value.filter((item) => !item.publishDate),
+  )
+
   function quietRealtime(ms = 800) {
     suppressRealtimeUntil = Date.now() + ms
   }
@@ -261,6 +265,7 @@ export const useCommunityStore = defineStore('community', () => {
     selected,
     sectionItems,
     byPublishDate,
+    undatedItems,
     loading,
     error,
     init,

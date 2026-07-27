@@ -256,18 +256,10 @@ function emptyLabel(value: string) {
                 <Calendar :size="15" class="opacity-70" />
                 Data de publicação
               </div>
-              <label class="relative inline-flex min-w-0 cursor-pointer items-center">
-                <span
-                  :class="[
-                    'rounded-md px-2 py-1 text-sm transition-colors hover:bg-white/5',
-                    publishLabel ? 'text-text-primary' : 'text-text-muted',
-                  ]"
-                >
-                  {{ publishLabel || 'Vazio' }}
-                </span>
+              <div class="flex min-w-0 flex-wrap items-center gap-2">
                 <input
                   type="date"
-                  class="absolute inset-0 cursor-pointer opacity-0"
+                  class="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent"
                   :value="community.selected.publishDate?.slice(0, 10) ?? ''"
                   @change="
                     saveField(
@@ -276,7 +268,21 @@ function emptyLabel(value: string) {
                     )
                   "
                 />
-              </label>
+                <span
+                  v-if="publishLabel"
+                  class="text-xs text-text-muted"
+                >
+                  {{ publishLabel }}
+                </span>
+                <button
+                  v-if="community.selected.publishDate"
+                  type="button"
+                  class="text-xs text-text-muted hover:text-text-primary"
+                  @click="saveField('publishDate', '')"
+                >
+                  Limpar
+                </button>
+              </div>
             </div>
 
             <!-- Content type -->

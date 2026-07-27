@@ -23,6 +23,8 @@ const newTodoText = ref('')
 const campaignDraft = ref('')
 const inputRef = ref<HTMLInputElement | null>(null)
 const celebratePin = ref(false)
+const addMenuDateKey = ref<string | null>(null)
+const memberPickerOpen = ref(false)
 
 const weekDaysHeader = ['dom.', 'seg.', 'ter.', 'qua.', 'qui.', 'sex.', 'sáb.']
 
@@ -68,6 +70,35 @@ function openDay(dateKey: string) {
   const memberId = focusMemberId.value ?? board.members[0]?.id
   if (!memberId) return
   daily.openEntry(memberId, dateKey)
+}
+
+function membersAvailableForDate(_dateKey: string) {
+  return board.members
+}
+
+function startAddForDay(dateKey: string) {
+  if (board.memberFilterId) {
+    daily.openEntry(board.memberFilterId, dateKey)
+    addMenuDateKey.value = null
+    return
+  }
+  if (board.members.length <= 1) {
+    const only = board.members[0]?.id
+    if (only) daily.openEntry(only, dateKey)
+    addMenuDateKey.value = null
+    return
+  }
+  addMenuDateKey.value = addMenuDateKey.value === dateKey ? null : dateKey
+}
+
+function pickMemberForDay(memberId: string, dateKey: string) {
+  addMenuDateKey.value = null
+  daily.openEntry(memberId, dateKey)
+}
+
+function setResponsible(memberId: string) {
+  memberPickerOpen.value = false
+  daily.openEntry(memberId, daily.selectedDateKey)
 }
 
 const focusedEntry = computed(() => {
@@ -289,20 +320,42 @@ function submitTodo() {
               </span>
             </button>
 
-            <button
-              v-if="!day.entries.length"
-              type="button"
-              class="flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border-subtle/60 px-2 py-5 text-center transition-colors hover:border-accent/40 hover:bg-white/5"
-              @click="openDay(day.dateKey)"
-            >
-              <Plus :size="14" class="text-text-muted" />
-              <span class="text-[11px] font-medium text-text-muted">
-                Adicionar tarefa
-              </span>
-              <span class="text-[10px] text-text-muted/70">
-                Clique para abrir o dia
-              </span>
-            </button>
+            <div class="relative">
+              <button
+                type="button"
+                class="flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border-subtle/60 px-2 py-3 text-center transition-colors hover:border-accent/40 hover:bg-white/5"
+                :title="
+                  day.entries.length
+                    ? 'Adicionar rotina de outro membro'
+                    : 'Adicionar tarefa'
+                "
+                @click.stop="startAddForDay(day.dateKey)"
+              >
+                <Plus :size="14" class="text-text-muted" />
+                <span class="text-[11px] font-medium text-text-muted">
+                  {{ day.entries.length ? 'Outro membro' : 'Adicionar tarefa' }}
+                </span>
+              </button>
+
+              <div
+                v-if="addMenuDateKey === day.dateKey"
+                class="absolute inset-x-0 bottom-full z-20 mb-1 max-h-48 overflow-y-auto rounded-xl border border-white/10 bg-board-elevated py-1 shadow-xl"
+              >
+                <p class="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+                  Criar para
+                </p>
+                <button
+                  v-for="member in membersAvailableForDate(day.dateKey)"
+                  :key="member.id"
+                  type="button"
+                  class="flex w-full items-center gap-2 px-2.5 py-2 text-left text-xs text-text-secondary hover:bg-white/10 hover:text-text-primary"
+                  @click.stop="pickMemberForDay(member.id, day.dateKey)"
+                >
+                  <MemberAvatar :member="member" size="sm" />
+                  <span class="truncate">{{ member.name }}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -427,17 +480,35 @@ function submitTodo() {
               <UserRound :size="15" />
               Responsável
             </dt>
-            <dd>
-              <span
-                class="inline-flex items-center gap-1.5 rounded-md bg-surface px-2 py-1 text-text-primary"
+            <dd class="relative">
+              <button
+                type="button"
+                class="inline-flex items-center gap-1.5 rounded-md bg-surface px-2 py-1 text-text-primary hover:bg-white/10"
+                :aria-expanded="memberPickerOpen"
+                @click="memberPickerOpen = !memberPickerOpen"
               >
                 <MemberAvatar
                   v-if="selectedMember"
                   :member="selectedMember"
                   size="sm"
                 />
-                {{ selectedMember?.name }}
-              </span>
+                {{ selectedMember?.name ?? 'Escolher' }}
+              </button>
+              <div
+                v-if="memberPickerOpen"
+                class="absolute left-0 top-full z-20 mt-1 min-w-[12rem] overflow-hidden rounded-xl border border-white/10 bg-board-elevated py-1 shadow-xl"
+              >
+                <button
+                  v-for="member in board.members"
+                  :key="member.id"
+                  type="button"
+                  class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-white/10 hover:text-text-primary"
+                  @click="setResponsible(member.id)"
+                >
+                  <MemberAvatar :member="member" size="sm" />
+                  {{ member.name }}
+                </button>
+              </div>
             </dd>
           </div>
 

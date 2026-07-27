@@ -18,6 +18,7 @@ const board = useBoardStore()
 const auth = useAuthStore()
 
 const search = ref('')
+const kindFilter = ref<'all' | NoteKind>('all')
 const draftTitle = ref('')
 const draftBody = ref('')
 
@@ -35,14 +36,23 @@ const canDeleteSelected = computed(() => {
 })
 
 const filteredNotes = computed(() => {
+  let list = notesStore.sortedNotes
+  if (kindFilter.value !== 'all') {
+    list = list.filter((note) => note.kind === kindFilter.value)
+  }
   const query = search.value.trim().toLowerCase()
-  if (!query) return notesStore.sortedNotes
-  return notesStore.sortedNotes.filter(
+  if (!query) return list
+  return list.filter(
     (note) =>
       note.title.toLowerCase().includes(query) ||
       note.body.toLowerCase().includes(query),
   )
 })
+
+async function createNote(kind: NoteKind) {
+  kindFilter.value = kind
+  await notesStore.createNote(kind)
+}
 
 watch(
   () => notesStore.selectedNote,
@@ -71,6 +81,7 @@ function setKind(kind: NoteKind) {
   const note = notesStore.selectedNote
   if (!note || !canEditSelected.value) return
   notesStore.updateNote(note.id, { kind })
+  if (kindFilter.value !== 'all') kindFilter.value = kind
 }
 
 function formatDate(iso: string) {
@@ -114,7 +125,7 @@ function confirmDelete() {
               type="button"
               class="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
               title="Nova anotação"
-              @click="notesStore.createNote('note')"
+              @click="createNote('note')"
             >
               <Plus :size="16" :stroke-width="2" />
             </button>
@@ -122,11 +133,32 @@ function confirmDelete() {
               type="button"
               class="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
               title="Nova ata de reunião"
-              @click="notesStore.createNote('meeting')"
+              @click="createNote('meeting')"
             >
               <Users :size="16" :stroke-width="2" />
             </button>
           </div>
+        </div>
+
+        <div class="mb-3 flex rounded-lg bg-column p-0.5">
+          <button
+            v-for="option in [
+              { id: 'all' as const, label: 'Todas' },
+              { id: 'note' as const, label: 'Notas' },
+              { id: 'meeting' as const, label: 'Atas' },
+            ]"
+            :key="option.id"
+            type="button"
+            :class="[
+              'flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors',
+              kindFilter === option.id
+                ? 'bg-surface text-text-primary'
+                : 'text-text-muted hover:text-text-secondary',
+            ]"
+            @click="kindFilter = option.id"
+          >
+            {{ option.label }}
+          </button>
         </div>
 
         <label class="relative block">
@@ -191,6 +223,7 @@ function confirmDelete() {
           class="flex flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-3 sm:px-5"
         >
           <NotebookPen :size="18" class="text-accent" />
+          <span class="hidden text-[11px] text-text-muted sm:inline">Tipo:</span>
           <div class="flex rounded-lg bg-column p-0.5">
             <button
               type="button"
