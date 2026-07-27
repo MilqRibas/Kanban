@@ -10,6 +10,7 @@ import type { Json } from '../lib/database.types'
 const STORAGE_KEY = 'kanban-daily-ui-v1'
 
 export type DailyViewMode = 'day' | 'week' | 'month'
+export type DailyCalendarMode = 'week' | 'month'
 
 function createId(prefix: string) {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`
@@ -31,9 +32,71 @@ export function startOfWeek(date: Date) {
   return copy
 }
 
+function normalizeTodo(raw: unknown): DailyTodoItem | null {
+  if (!raw || typeof raw !== 'object') return null
+  const row = raw as Record<string, unknown>
+  const kind = row.kind === 'toggle' ? 'toggle' : 'task'
+  const children = Array.isArray(row.children)
+    ? row.children
+        .map((child) => normalizeTodo(child))
+        .filter((child): child is DailyTodoItem => Boolean(child))
+    : []
+  return {
+    id: String(row.id ?? createId('td')),
+    text: String(row.text ?? ''),
+    completed: Boolean(row.completed),
+    highlighted: Boolean(row.highlighted) || undefined,
+    kind,
+    collapsed: Boolean(row.collapsed),
+    children: kind === 'toggle' ? children : undefined,
+  }
+}
+
 function asTodos(value: Json): DailyTodoItem[] {
   if (!Array.isArray(value)) return []
-  return value as unknown as DailyTodoItem[]
+  return value
+    .map((item) => normalizeTodo(item))
+    .filter((item): item is DailyTodoItem => Boolean(item))
+}
+
+/** Folhas (tarefas reais) — ignora cabeçalhos de lista alternante */
+export function leafTodos(todos: DailyTodoItem[]): DailyTodoItem[] {
+  const out: DailyTodoItem[] = []
+  for (const item of todos) {
+    if (item.kind === 'toggle') {
+      out.push(...leafTodos(item.children ?? []))
+    } else {
+      out.push(item)
+    }
+  }
+  return out
+}
+
+function findTodo(
+  todos: DailyTodoItem[],
+  id: string,
+): DailyTodoItem | null {
+  for (const item of todos) {
+    if (item.id === id) return item
+    if (item.children?.length) {
+      const found = findTodo(item.children, id)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+function removeTodoById(
+  todos: DailyTodoItem[],
+  id: string,
+): DailyTodoItem[] {
+  return todos
+    .filter((item) => item.id !== id)
+    .map((item) =>
+      item.children
+        ? { ...item, children: removeTodoById(item.children, id) }
+        : item,
+    )
 }
 
 function emptyEntry(memberId: string, dateKey: string): DailyEntry {
@@ -49,11 +112,15 @@ function emptyEntry(memberId: string, dateKey: string): DailyEntry {
 }
 
 export function entryProgress(entry: DailyEntry | null | undefined) {
-  if (!entry || entry.todos.length === 0) {
+  if (!entry) {
     return { done: 0, total: 0, percent: 0, complete: false }
   }
-  const done = entry.todos.filter((item) => item.completed).length
-  const total = entry.todos.length
+  const leaves = leafTodos(entry.todos)
+  if (leaves.length === 0) {
+    return { done: 0, total: 0, percent: 0, complete: false }
+  }
+  const done = leaves.filter((item) => item.completed).length
+  const total = leaves.length
   return {
     done,
     total,
@@ -66,11 +133,29 @@ function loadUiState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
-    return JSON.parse(raw) as {
+    const parsed = JSON.parse(raw) as {
       selectedDateKey?: string
       viewMode?: DailyViewMode
+      calendarViewMode?: DailyCalendarMode
+      dayDetailOpen?: boolean
       detailMemberId?: string | null
     }
+    if (parsed.calendarViewMode) return parsed
+    if (parsed.viewMode === 'day') {
+      return {
+        ...parsed,
+        calendarViewMode: 'week' as DailyCalendarMode,
+        dayDetailOpen: true,
+      }
+    }
+    if (parsed.viewMode === 'week' || parsed.viewMode === 'month') {
+      return {
+        ...parsed,
+        calendarViewMode: parsed.viewMode,
+        dayDetailOpen: parsed.dayDetailOpen ?? false,
+      }
+    }
+    return parsed
   } catch {
     return null
   }
@@ -81,7 +166,8 @@ export const useDailyStore = defineStore('daily', () => {
   const ui = loadUiState()
   const entries = ref<DailyEntry[]>([])
   const selectedDateKey = ref(ui?.selectedDateKey ?? toDateKey(new Date()))
-  const viewMode = ref<DailyViewMode>(ui?.viewMode ?? 'day')
+  const calendarViewMode = ref<DailyCalendarMode>(ui?.calendarViewMode ?? 'week')
+  const dayDetailOpen = ref(ui?.dayDetailOpen ?? false)
   const detailMemberId = ref<string | null>(ui?.detailMemberId ?? null)
   const loading = ref(false)
   const ready = ref(false)
@@ -239,7 +325,8 @@ export const useDailyStore = defineStore('daily', () => {
       STORAGE_KEY,
       JSON.stringify({
         selectedDateKey: selectedDateKey.value,
-        viewMode: viewMode.value,
+        calendarViewMode: calendarViewMode.value,
+        dayDetailOpen: dayDetailOpen.value,
         detailMemberId: detailMemberId.value,
       }),
     )
@@ -324,7 +411,7 @@ export const useDailyStore = defineStore('daily', () => {
 
   const periodLabel = computed(() => {
     const date = parseDateKey(selectedDateKey.value)
-    if (viewMode.value === 'day') {
+    if (dayDetailOpen.value || calendarViewMode.value === 'week') {
       return new Intl.DateTimeFormat('pt-BR', {
         day: 'numeric',
         month: 'long',
@@ -364,7 +451,17 @@ export const useDailyStore = defineStore('daily', () => {
   }
 
   function setViewMode(mode: DailyViewMode) {
-    viewMode.value = mode
+    if (mode === 'day') {
+      dayDetailOpen.value = true
+    } else {
+      calendarViewMode.value = mode
+      dayDetailOpen.value = false
+    }
+    persistUi()
+  }
+
+  function closeDayDetail() {
+    dayDetailOpen.value = false
     persistUi()
   }
 
@@ -379,14 +476,14 @@ export const useDailyStore = defineStore('daily', () => {
       board.setMemberFilter(memberId)
     }
     selectedDateKey.value = dateKey
-    viewMode.value = 'day'
+    dayDetailOpen.value = true
     persistUi()
   }
 
   function shiftPeriod(delta: number) {
     const date = parseDateKey(selectedDateKey.value)
-    if (viewMode.value === 'day') date.setDate(date.getDate() + delta)
-    else if (viewMode.value === 'week') date.setDate(date.getDate() + delta * 7)
+    if (dayDetailOpen.value) date.setDate(date.getDate() + delta)
+    else if (calendarViewMode.value === 'week') date.setDate(date.getDate() + delta * 7)
     else date.setMonth(date.getMonth() + delta)
     selectedDateKey.value = toDateKey(date)
     persistUi()
@@ -413,7 +510,7 @@ export const useDailyStore = defineStore('daily', () => {
     schedulePersist(entry)
   }
 
-  function addTodo(text: string) {
+  function addTodo(text: string, parentToggleId?: string | null) {
     const trimmed = text.trim()
     if (!trimmed) return
     const entry = ensureEntry()
@@ -422,24 +519,63 @@ export const useDailyStore = defineStore('daily', () => {
       id: createId('td'),
       text: trimmed,
       completed: false,
+      kind: 'task',
     }
-    entry.todos.push(todo)
+
+    if (parentToggleId) {
+      const parent = findTodo(entry.todos, parentToggleId)
+      if (!parent || parent.kind !== 'toggle') return
+      if (!parent.children) parent.children = []
+      parent.children.push(todo)
+      parent.collapsed = false
+    } else {
+      entry.todos.push(todo)
+    }
+
     entry.updatedAt = new Date().toISOString()
     if (entry.status === 'done') entry.status = 'in_progress'
+    schedulePersist(entry)
+  }
+
+  function addToggle(text = 'Nova lista') {
+    const entry = ensureEntry()
+    if (!entry) return null
+    const toggle: DailyTodoItem = {
+      id: createId('tg'),
+      text: text.trim() || 'Nova lista',
+      completed: false,
+      kind: 'toggle',
+      collapsed: false,
+      children: [],
+    }
+    entry.todos.push(toggle)
+    entry.updatedAt = new Date().toISOString()
+    schedulePersist(entry)
+    return toggle
+  }
+
+  function toggleCollapse(todoId: string) {
+    const entry = ensureEntry()
+    if (!entry) return
+    const todo = findTodo(entry.todos, todoId)
+    if (!todo || todo.kind !== 'toggle') return
+    todo.collapsed = !todo.collapsed
+    entry.updatedAt = new Date().toISOString()
     schedulePersist(entry)
   }
 
   function toggleTodo(todoId: string) {
     const entry = ensureEntry()
     if (!entry) return
-    const todo = entry.todos.find((item) => item.id === todoId)
-    if (!todo) return
+    const todo = findTodo(entry.todos, todoId)
+    if (!todo || todo.kind === 'toggle') return
     todo.completed = !todo.completed
     entry.updatedAt = new Date().toISOString()
 
-    if (entry.todos.length && entry.todos.every((item) => item.completed)) {
+    const leaves = leafTodos(entry.todos)
+    if (leaves.length && leaves.every((item) => item.completed)) {
       entry.status = 'done'
-    } else if (entry.todos.some((item) => item.completed)) {
+    } else if (leaves.some((item) => item.completed)) {
       entry.status = 'in_progress'
     } else {
       entry.status = 'todo'
@@ -450,7 +586,7 @@ export const useDailyStore = defineStore('daily', () => {
   function updateTodoText(todoId: string, text: string) {
     const entry = ensureEntry()
     if (!entry) return
-    const todo = entry.todos.find((item) => item.id === todoId)
+    const todo = findTodo(entry.todos, todoId)
     if (!todo) return
     todo.text = text
     entry.updatedAt = new Date().toISOString()
@@ -460,7 +596,7 @@ export const useDailyStore = defineStore('daily', () => {
   function removeTodo(todoId: string) {
     const entry = ensureEntry()
     if (!entry) return
-    entry.todos = entry.todos.filter((item) => item.id !== todoId)
+    entry.todos = removeTodoById(entry.todos, todoId)
     entry.updatedAt = new Date().toISOString()
     schedulePersist(entry)
   }
@@ -470,7 +606,8 @@ export const useDailyStore = defineStore('daily', () => {
   return {
     entries,
     selectedDateKey,
-    viewMode,
+    calendarViewMode,
+    dayDetailOpen,
     detailMemberId,
     activeMemberId,
     currentEntry,
@@ -485,6 +622,7 @@ export const useDailyStore = defineStore('daily', () => {
     reset,
     sanitizeDetailMember,
     setViewMode,
+    closeDayDetail,
     setDateKey,
     openEntry,
     shiftPeriod,
@@ -492,6 +630,8 @@ export const useDailyStore = defineStore('daily', () => {
     setStatus,
     setCampaign,
     addTodo,
+    addToggle,
+    toggleCollapse,
     toggleTodo,
     updateTodoText,
     removeTodo,

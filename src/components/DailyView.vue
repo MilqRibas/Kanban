@@ -1,30 +1,35 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
   Calendar,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleDashed,
   ListTodo,
+  ListTree,
   Plus,
   Trash2,
   UserRound,
+  X,
 } from '@lucide/vue'
 import { useBoardStore } from '../stores/board'
 import { entryProgress, toDateKey, useDailyStore } from '../stores/dailyTodos'
-import type { DailyEntry, DailyStatus } from '../types/daily'
+import type { DailyEntry, DailyStatus, DailyTodoItem } from '../types/daily'
 import MemberAvatar from './MemberAvatar.vue'
 
 const board = useBoardStore()
 const daily = useDailyStore()
 
 const newTodoText = ref('')
+const childDrafts = ref<Record<string, string>>({})
 const campaignDraft = ref('')
 const inputRef = ref<HTMLInputElement | null>(null)
 const celebratePin = ref(false)
 const addMenuDateKey = ref<string | null>(null)
 const memberPickerOpen = ref(false)
+const addBlockMenuOpen = ref(false)
 
 const weekDaysHeader = ['dom.', 'seg.', 'ter.', 'qua.', 'qui.', 'sex.', 'sáb.']
 
@@ -161,11 +166,73 @@ function saveCampaign() {
   daily.setCampaign(campaignDraft.value.trim())
 }
 
-function submitTodo() {
+function onDateChange(event: Event) {
+  const value = (event.target as HTMLInputElement).value
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return
+  const memberId = focusMemberId.value ?? board.members[0]?.id
+  if (!memberId) {
+    daily.setDateKey(value)
+    return
+  }
+  daily.openEntry(memberId, value)
+}
+
+function isToggle(todo: DailyTodoItem) {
+  return todo.kind === 'toggle'
+}
+
+function submitTodo(parentToggleId?: string | null) {
+  if (parentToggleId) {
+    const text = (childDrafts.value[parentToggleId] ?? '').trim()
+    if (!text) return
+    daily.addTodo(text, parentToggleId)
+    childDrafts.value[parentToggleId] = ''
+    return
+  }
   daily.addTodo(newTodoText.value)
   newTodoText.value = ''
   nextTick(() => inputRef.value?.focus())
 }
+
+function addToggleList() {
+  addBlockMenuOpen.value = false
+  daily.addToggle('Nova lista')
+}
+
+function addTaskFromMenu() {
+  addBlockMenuOpen.value = false
+  nextTick(() => inputRef.value?.focus())
+}
+
+function isTabActive(mode: 'day' | 'week' | 'month') {
+  if (mode === 'day') return daily.dayDetailOpen
+  if (mode === 'week') {
+    return !daily.dayDetailOpen && daily.calendarViewMode === 'week'
+  }
+  return !daily.dayDetailOpen && daily.calendarViewMode === 'month'
+}
+
+function closeDayDetail() {
+  memberPickerOpen.value = false
+  addBlockMenuOpen.value = false
+  addMenuDateKey.value = null
+  daily.closeDayDetail()
+}
+
+function onEscapeKey(event: KeyboardEvent) {
+  if (event.key === 'Escape' && daily.dayDetailOpen) closeDayDetail()
+}
+
+watch(
+  () => daily.dayDetailOpen,
+  (open) => {
+    if (open) window.addEventListener('keydown', onEscapeKey)
+    else window.removeEventListener('keydown', onEscapeKey)
+  },
+  { immediate: true },
+)
+
+onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
 </script>
 
 <template>
@@ -188,7 +255,7 @@ function submitTodo() {
           type="button"
           :class="[
             'rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
-            daily.viewMode === mode.id
+            isTabActive(mode.id)
               ? 'bg-surface text-text-primary'
               : 'text-text-secondary hover:text-text-primary',
           ]"
@@ -236,11 +303,11 @@ function submitTodo() {
       </div>
     </div>
 
-    <!-- SEMANAL / MENSAL / DIÁRIO -->
+    <!-- SEMANAL / MENSAL -->
     <div class="relative flex min-h-0 flex-1 flex-col overflow-hidden">
       <Transition name="view-fade">
         <section
-          v-if="daily.viewMode === 'week'"
+          v-if="daily.calendarViewMode === 'week'"
           key="week"
           class="panel-glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl"
         >
@@ -366,7 +433,7 @@ function submitTodo() {
         </section>
 
         <section
-          v-else-if="daily.viewMode === 'month'"
+          v-else
           key="month"
           class="panel-glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl"
         >
@@ -444,25 +511,60 @@ function submitTodo() {
         </div>
       </div>
         </section>
+      </Transition>
+    </div>
 
-        <section
-          v-else
-          key="day"
-          class="panel-glass relative mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-2xl shadow-xl shadow-black/20"
+    <!-- Detalhe do dia (overlay) -->
+    <Teleport to="body">
+      <Transition name="view-fade">
+        <div
+          v-if="daily.dayDetailOpen"
+          class="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="`Afazeres de ${selectedMember?.name ?? 'membro'}`"
         >
-      <div class="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-8 sm:py-7">
+          <button
+            type="button"
+            class="absolute inset-0 bg-black/65 backdrop-blur-[2px]"
+            aria-label="Fechar detalhe do dia"
+            @click="closeDayDetail"
+          />
+
+          <section
+            class="panel-glass relative z-10 flex max-h-[min(94dvh,900px)] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-white/10 shadow-2xl shadow-black/50 sm:rounded-2xl"
+          >
+            <div
+              class="flex shrink-0 justify-center pt-2 sm:hidden"
+              aria-hidden="true"
+            >
+              <span class="h-1 w-10 rounded-full bg-white/25" />
+            </div>
+
+            <button
+              type="button"
+              class="absolute right-3 top-3 z-20 rounded-lg p-1.5 text-text-muted transition-colors hover:bg-white/10 hover:text-text-primary sm:right-4 sm:top-4"
+              aria-label="Fechar"
+              @click="closeDayDetail"
+            >
+              <X :size="20" />
+            </button>
+
+            <div class="min-h-0 flex-1 overflow-y-auto px-5 py-5 pr-12 sm:px-8 sm:py-7 sm:pr-14">
         <header class="mb-6">
           <div class="mb-2 flex items-start justify-between gap-3">
             <h2 class="text-3xl font-bold tracking-tight text-text-primary">
               {{ selectedMember?.name ?? 'Usuário' }}
             </h2>
-            <div
-              v-if="focusedProgress.complete"
-              class="flex size-9 items-center justify-center rounded-full bg-success text-board shadow-md"
-              :class="{ 'daily-pin-pop': celebratePin }"
-              title="Dia concluído"
-            >
-              <Check :size="18" :stroke-width="3" />
+            <div class="flex items-center gap-2 pr-1">
+              <div
+                v-if="focusedProgress.complete"
+                class="flex size-9 items-center justify-center rounded-full bg-success text-board shadow-md"
+                :class="{ 'daily-pin-pop': celebratePin }"
+                title="Dia concluído"
+              >
+                <Check :size="18" :stroke-width="3" />
+              </div>
             </div>
           </div>
           <p class="text-sm text-text-muted">
@@ -476,7 +578,14 @@ function submitTodo() {
               <Calendar :size="15" />
               Data
             </dt>
-            <dd class="text-text-primary">{{ dateLabel }}</dd>
+            <dd>
+              <input
+                type="date"
+                :value="daily.selectedDateKey"
+                class="rounded-md border border-border-subtle/70 bg-surface px-2 py-1 text-text-primary outline-none hover:border-accent/40 focus:border-accent [color-scheme:dark]"
+                @change="onDateChange"
+              />
+            </dd>
           </div>
 
           <div class="grid grid-cols-[140px_1fr] items-center gap-3 sm:grid-cols-[160px_1fr]">
@@ -563,68 +672,220 @@ function submitTodo() {
         </h3>
 
         <ul class="space-y-1.5">
-          <li
-            v-for="todo in focusedEntry?.todos ?? []"
-            :key="todo.id"
-            :class="[
-              'group flex items-start gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-surface/60',
-              todo.highlighted && 'bg-amber-400/10',
-            ]"
-          >
-            <input
-              type="checkbox"
-              class="mt-1 size-4 shrink-0 accent-accent"
-              :checked="todo.completed"
-              @change="daily.toggleTodo(todo.id)"
-            />
-            <input
-              :value="todo.text"
-              type="text"
-              :class="[
-                'min-w-0 flex-1 bg-transparent text-sm outline-none',
-                todo.completed
-                  ? 'text-text-muted line-through'
-                  : 'text-text-primary',
-              ]"
-              @change="
-                daily.updateTodoText(
-                  todo.id,
-                  ($event.target as HTMLInputElement).value,
-                )
-              "
-            />
-            <button
-              type="button"
-              class="rounded-md p-1 text-text-muted opacity-0 transition-opacity hover:bg-danger/15 hover:text-danger group-hover:opacity-100"
-              aria-label="Remover tarefa"
-              @click="daily.removeTodo(todo.id)"
+          <template v-for="todo in focusedEntry?.todos ?? []" :key="todo.id">
+            <!-- Lista alternante (dropdown) -->
+            <li
+              v-if="isToggle(todo)"
+              class="rounded-lg"
             >
-              <Trash2 :size="14" />
-            </button>
-          </li>
+              <div
+                class="group flex items-start gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-surface/60"
+              >
+                <button
+                  type="button"
+                  class="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded text-text-muted hover:bg-white/10 hover:text-text-primary"
+                  :aria-expanded="!todo.collapsed"
+                  :aria-label="todo.collapsed ? 'Expandir lista' : 'Recolher lista'"
+                  @click="daily.toggleCollapse(todo.id)"
+                >
+                  <ChevronRight
+                    v-if="todo.collapsed"
+                    :size="16"
+                  />
+                  <ChevronDown
+                    v-else
+                    :size="16"
+                  />
+                </button>
+                <input
+                  :value="todo.text"
+                  type="text"
+                  class="min-w-0 flex-1 bg-transparent text-sm font-medium text-text-primary outline-none"
+                  @change="
+                    daily.updateTodoText(
+                      todo.id,
+                      ($event.target as HTMLInputElement).value,
+                    )
+                  "
+                />
+                <button
+                  type="button"
+                  class="rounded-md p-1 text-text-muted opacity-0 transition-opacity hover:bg-danger/15 hover:text-danger group-hover:opacity-100"
+                  aria-label="Remover lista"
+                  @click="daily.removeTodo(todo.id)"
+                >
+                  <Trash2 :size="14" />
+                </button>
+              </div>
+
+              <ul
+                v-if="!todo.collapsed"
+                class="ml-4 space-y-1 border-l border-border-subtle/50 pl-3"
+              >
+                <li
+                  v-for="child in todo.children ?? []"
+                  :key="child.id"
+                  :class="[
+                    'group flex items-start gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-surface/60',
+                    child.highlighted && 'bg-amber-400/10',
+                  ]"
+                >
+                  <input
+                    type="checkbox"
+                    class="mt-1 size-4 shrink-0 accent-accent"
+                    :checked="child.completed"
+                    @change="daily.toggleTodo(child.id)"
+                  />
+                  <input
+                    :value="child.text"
+                    type="text"
+                    :class="[
+                      'min-w-0 flex-1 bg-transparent text-sm outline-none',
+                      child.completed
+                        ? 'text-text-muted line-through'
+                        : 'text-text-primary',
+                    ]"
+                    @change="
+                      daily.updateTodoText(
+                        child.id,
+                        ($event.target as HTMLInputElement).value,
+                      )
+                    "
+                  />
+                  <button
+                    type="button"
+                    class="rounded-md p-1 text-text-muted opacity-0 transition-opacity hover:bg-danger/15 hover:text-danger group-hover:opacity-100"
+                    aria-label="Remover tarefa"
+                    @click="daily.removeTodo(child.id)"
+                  >
+                    <Trash2 :size="14" />
+                  </button>
+                </li>
+
+                <li>
+                  <form
+                    class="flex items-center gap-2 px-2"
+                    @submit.prevent="submitTodo(todo.id)"
+                  >
+                    <Plus :size="14" class="shrink-0 text-text-muted" />
+                    <input
+                      v-model="childDrafts[todo.id]"
+                      type="text"
+                      placeholder="Item nesta lista…"
+                      class="min-w-0 flex-1 bg-transparent py-1.5 text-sm text-text-primary outline-none placeholder:text-text-muted"
+                    />
+                  </form>
+                </li>
+              </ul>
+            </li>
+
+            <!-- Tarefa simples -->
+            <li
+              v-else
+              :class="[
+                'group flex items-start gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-surface/60',
+                todo.highlighted && 'bg-amber-400/10',
+              ]"
+            >
+              <input
+                type="checkbox"
+                class="mt-1 size-4 shrink-0 accent-accent"
+                :checked="todo.completed"
+                @change="daily.toggleTodo(todo.id)"
+              />
+              <input
+                :value="todo.text"
+                type="text"
+                :class="[
+                  'min-w-0 flex-1 bg-transparent text-sm outline-none',
+                  todo.completed
+                    ? 'text-text-muted line-through'
+                    : 'text-text-primary',
+                ]"
+                @change="
+                  daily.updateTodoText(
+                    todo.id,
+                    ($event.target as HTMLInputElement).value,
+                  )
+                "
+              />
+              <button
+                type="button"
+                class="rounded-md p-1 text-text-muted opacity-0 transition-opacity hover:bg-danger/15 hover:text-danger group-hover:opacity-100"
+                aria-label="Remover tarefa"
+                @click="daily.removeTodo(todo.id)"
+              >
+                <Trash2 :size="14" />
+              </button>
+            </li>
+          </template>
         </ul>
 
-        <form class="mt-3 flex items-center gap-2 px-2" @submit.prevent="submitTodo">
-          <Plus :size="16" class="shrink-0 text-text-muted" />
-          <input
-            ref="inputRef"
-            v-model="newTodoText"
-            type="text"
-            placeholder="Adicionar um afazer…"
-            class="min-w-0 flex-1 bg-transparent py-2 text-sm text-text-primary outline-none placeholder:text-text-muted"
-          />
+        <div class="relative mt-3 space-y-2 px-2">
+          <form class="flex items-center gap-2" @submit.prevent="submitTodo()">
+            <button
+              type="button"
+              class="shrink-0 rounded-md p-1 text-text-muted hover:bg-white/10 hover:text-text-primary"
+              title="Tipo de bloco"
+              aria-label="Adicionar bloco"
+              @click="addBlockMenuOpen = !addBlockMenuOpen"
+            >
+              <Plus :size="16" />
+            </button>
+            <input
+              ref="inputRef"
+              v-model="newTodoText"
+              type="text"
+              placeholder="Adicionar um afazer… ou / para blocos"
+              class="min-w-0 flex-1 bg-transparent py-2 text-sm text-text-primary outline-none placeholder:text-text-muted"
+              @keydown.slash.exact.prevent="addBlockMenuOpen = true"
+            />
+            <button
+              v-if="newTodoText.trim()"
+              type="submit"
+              class="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-board hover:bg-accent-hover"
+            >
+              Adicionar
+            </button>
+          </form>
+
           <button
-            v-if="newTodoText.trim()"
-            type="submit"
-            class="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-board hover:bg-accent-hover"
+            type="button"
+            class="inline-flex items-center gap-1.5 rounded-md px-1 py-1 text-xs text-text-muted transition-colors hover:bg-white/5 hover:text-text-primary"
+            @click="addToggleList"
           >
-            Adicionar
+            <ListTree :size="14" />
+            Adicionar lista alternante
           </button>
-        </form>
-      </div>
-        </section>
+
+          <div
+            v-if="addBlockMenuOpen"
+            class="absolute left-0 top-10 z-20 mt-1 min-w-[14rem] overflow-hidden rounded-xl border border-white/10 bg-board-elevated py-1 shadow-xl"
+          >
+            <button
+              type="button"
+              class="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-text-secondary hover:bg-white/10 hover:text-text-primary"
+              @click="addTaskFromMenu"
+            >
+              <ListTodo :size="16" class="shrink-0 text-text-muted" />
+              <span class="flex-1">Lista de tarefas</span>
+            </button>
+            <button
+              type="button"
+              class="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-text-secondary hover:bg-white/10 hover:text-text-primary"
+              @click="addToggleList"
+            >
+              <ListTree :size="16" class="shrink-0 text-text-muted" />
+              <span class="flex-1">Lista de alternantes</span>
+              <ChevronRight :size="14" class="text-text-muted" />
+            </button>
+          </div>
+        </div>
+            </div>
+          </section>
+        </div>
       </Transition>
-    </div>
+    </Teleport>
     </div>
   </div>
 </template>
