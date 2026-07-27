@@ -169,7 +169,8 @@ function submitTodo() {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col gap-2 px-2 pb-[4.75rem] pt-2 sm:gap-3 sm:px-5 sm:pb-16 sm:pt-3">
+  <div class="flex min-h-0 flex-1 flex-col pb-[4.75rem] pt-2 sm:pb-16 sm:pt-3">
+    <div class="page-shell flex min-h-0 flex-1 flex-col gap-2 sm:gap-3">
     <p v-if="daily.error" class="rounded-lg border border-red-400/30 bg-red-950/50 px-3 py-2 text-xs text-red-200">
       {{ daily.error }}
       <button type="button" class="ml-2 underline" @click="daily.error = null">fechar</button>
@@ -447,7 +448,7 @@ function submitTodo() {
         <section
           v-else
           key="day"
-          class="panel-glass relative mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col overflow-hidden rounded-2xl shadow-xl shadow-black/20"
+          class="panel-glass relative mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-2xl shadow-xl shadow-black/20"
         >
       <div class="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-8 sm:py-7">
         <header class="mb-6">
@@ -623,6 +624,7 @@ function submitTodo() {
       </div>
         </section>
       </Transition>
+    </div>
     </div>
   </div>
 </template>

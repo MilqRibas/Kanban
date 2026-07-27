@@ -44,7 +44,29 @@
     box-sizing: border-box;
   }
 
-  /* Scrollbar discreto no estilo board */
+  /* Área de conteúdo padronizada (Agenda / Tarefas) */
+  .page-shell {
+    width: min(100% - 1.5rem, 85%);
+    max-width: 85%;
+    margin-inline: auto;
+  }
+
+  @media (min-width: 640px) {
+    .page-shell {
+      width: 85%;
+    }
+  }
+
+  /* Quadro: respiro no fim do scroll horizontal */
+  .board-scroll {
+    scroll-padding-inline: 1.5rem;
+  }
+
+  .board-scroll::after {
+    content: '';
+    flex: 0 0 1.25rem;
+  }
+
   .board-scroll::-webkit-scrollbar {
     height: 10px;
   }

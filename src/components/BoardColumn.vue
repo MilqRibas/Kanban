@@ -162,7 +162,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section
-    class="column-glass flex max-h-full w-[min(85vw,20rem)] shrink-0 flex-col rounded-2xl sm:w-80"
+    class="column-glass flex max-h-full w-[min(78vw,18.5rem)] shrink-0 flex-col rounded-2xl sm:w-72"
   >
     <header class="flex items-center gap-1 px-3 pb-3 pt-4">
       <button
