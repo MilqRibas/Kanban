@@ -10,6 +10,49 @@ function createId() {
   return `note-${crypto.randomUUID().slice(0, 8)}`
 }
 
+function friendlyError(raw: string | null | undefined) {
+  const message = (raw ?? '').trim()
+  if (!message) return 'Não foi possível salvar a nota.'
+  if (/failed to fetch|networkerror|load failed|fetch failed/i.test(message)) {
+    return 'Falha de conexão ao salvar. Verifique a internet e tente de novo.'
+  }
+  if (/TypeError:/i.test(message)) {
+    return 'Falha de conexão ao sincronizar as notas.'
+  }
+  return message
+}
+
+function isTransientNetworkError(raw: string | null | undefined) {
+  return /failed to fetch|networkerror|load failed|fetch failed|TypeError:/i.test(
+    raw ?? '',
+  )
+}
+
+async function withRetry<T>(
+  run: () => PromiseLike<{ data: T; error: { message: string } | null }>,
+  attempts = 3,
+) {
+  let lastError: { message: string } | null = null
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      const result = await run()
+      if (!result.error) return result
+      lastError = result.error
+      if (!isTransientNetworkError(result.error.message) || attempt === attempts - 1) {
+        return result
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      lastError = { message }
+      if (!isTransientNetworkError(message) || attempt === attempts - 1) {
+        return { data: null as T, error: lastError }
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 280 * (attempt + 1)))
+  }
+  return { data: null as T, error: lastError }
+}
+
 export const useNotesStore = defineStore('notes', () => {
   const notes = ref<Note[]>([])
   const selectedNoteId = ref<string | null>(null)
@@ -18,6 +61,13 @@ export const useNotesStore = defineStore('notes', () => {
   let channel: RealtimeChannel | null = null
   let suppressRealtimeUntil = 0
   let reloadTimer: ReturnType<typeof setTimeout> | null = null
+  let loadGeneration = 0
+  const pendingPatches = new Map<
+    string,
+    Partial<Pick<Note, 'title' | 'body' | 'kind'>>
+  >()
+  const flushTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  const inFlight = new Map<string, Promise<void>>()
 
   const selectedNote = computed(
     () => notes.value.find((note) => note.id === selectedNoteId.value) ?? null,
@@ -30,22 +80,44 @@ export const useNotesStore = defineStore('notes', () => {
     ),
   )
 
-  function quietRealtime(ms = 800) {
+  function quietRealtime(ms = 1600) {
     suppressRealtimeUntil = Date.now() + ms
   }
 
-  async function loadNotes() {
-    loading.value = true
-    error.value = null
-    const { data, error: loadError } = await supabase
-      .from('notes')
-      .select('*')
-      .eq('board_id', BOARD_ID)
-      .order('updated_at', { ascending: false })
+  function reportError(raw: string, opts?: { toast?: boolean; soft?: boolean }) {
+    const message = friendlyError(raw)
+    // Soft: não sobrescreve UI se já há notas carregadas e o erro é de rede transitório
+    if (opts?.soft && notes.value.length && isTransientNetworkError(raw)) {
+      console.warn('[notes]', message)
+      return
+    }
+    error.value = message
+    if (opts?.toast !== false) useToastStore().error(message)
+  }
+
+  async function loadNotes(opts?: { background?: boolean }) {
+    const generation = ++loadGeneration
+    if (!opts?.background) {
+      loading.value = true
+      error.value = null
+    }
+
+    const { data, error: loadError } = await withRetry(
+      () =>
+        supabase
+          .from('notes')
+          .select('*')
+          .eq('board_id', BOARD_ID)
+          .order('updated_at', { ascending: false }),
+    )
+
+    if (generation !== loadGeneration) return
 
     if (loadError) {
-      error.value = loadError.message
-      useToastStore().error(loadError.message)
+      reportError(loadError.message, {
+        toast: !opts?.background,
+        soft: Boolean(opts?.background),
+      })
       loading.value = false
       return
     }
@@ -66,6 +138,8 @@ export const useNotesStore = defineStore('notes', () => {
     ) {
       selectedNoteId.value = notes.value[0]?.id ?? null
     }
+
+    error.value = null
     loading.value = false
   }
 
@@ -82,8 +156,8 @@ export const useNotesStore = defineStore('notes', () => {
           reloadTimer = setTimeout(() => {
             reloadTimer = null
             if (Date.now() < suppressRealtimeUntil) return
-            void loadNotes()
-          }, 700)
+            void loadNotes({ background: true })
+          }, 900)
         },
       )
       .subscribe()
@@ -106,9 +180,14 @@ export const useNotesStore = defineStore('notes', () => {
   }
 
   function reset() {
+    for (const timer of flushTimers.values()) clearTimeout(timer)
+    flushTimers.clear()
+    pendingPatches.clear()
+    inFlight.clear()
     unsubscribeRealtime()
     notes.value = []
     selectedNoteId.value = null
+    error.value = null
   }
 
   function selectNote(id: string) {
@@ -118,8 +197,7 @@ export const useNotesStore = defineStore('notes', () => {
   async function createNote(kind: NoteKind = 'note') {
     const auth = useAuthStore()
     if (!auth.memberId) {
-      error.value = 'Faça login novamente para criar notas.'
-      useToastStore().error(error.value)
+      reportError('Faça login novamente para criar notas.')
       return null
     }
     const note: Note = {
@@ -134,54 +212,116 @@ export const useNotesStore = defineStore('notes', () => {
     notes.value.unshift(note)
     selectedNoteId.value = note.id
     quietRealtime()
-    const { error: insertError } = await supabase.from('notes').insert({
-      id: note.id,
-      board_id: BOARD_ID,
-      title: note.title,
-      body: note.body,
-      kind: note.kind,
-      author_id: note.authorId,
-      created_at: note.createdAt,
-      updated_at: note.updatedAt,
-    })
+    const { error: insertError } = await withRetry(() =>
+      supabase.from('notes').insert({
+        id: note.id,
+        board_id: BOARD_ID,
+        title: note.title,
+        body: note.body,
+        kind: note.kind,
+        author_id: note.authorId,
+        created_at: note.createdAt,
+        updated_at: note.updatedAt,
+      }),
+    )
     if (insertError) {
-      error.value = insertError.message
-      useToastStore().error(insertError.message)
+      reportError(insertError.message)
       notes.value = notes.value.filter((item) => item.id !== note.id)
       selectedNoteId.value = notes.value[0]?.id ?? null
       return null
     }
+    error.value = null
     return note
+  }
+
+  async function flushNote(id: string) {
+    const existing = inFlight.get(id)
+    if (existing) await existing
+
+    const run = (async () => {
+      const note = notes.value.find((item) => item.id === id)
+      const patch = pendingPatches.get(id)
+      pendingPatches.delete(id)
+      if (!note || !patch || !Object.keys(patch).length) return
+
+      const auth = useAuthStore()
+      if (!auth.memberId) {
+        reportError('Faça login novamente para editar notas.')
+        return
+      }
+
+      Object.assign(note, patch, { updatedAt: new Date().toISOString() })
+      quietRealtime()
+
+      const { error: updateError } = await withRetry(() =>
+        supabase
+          .from('notes')
+          .update({
+            title: note.title,
+            body: note.body,
+            kind: note.kind,
+            updated_at: note.updatedAt,
+          })
+          .eq('id', id),
+      )
+
+      if (updateError) {
+        reportError(updateError.message)
+        return
+      }
+      error.value = null
+    })()
+
+    inFlight.set(id, run)
+    try {
+      await run
+    } finally {
+      if (inFlight.get(id) === run) inFlight.delete(id)
+    }
+
+    // Se chegou patch novo durante o flush, agenda outro
+    if (pendingPatches.has(id)) scheduleFlush(id, 0)
+  }
+
+  function scheduleFlush(id: string, delayMs = 350) {
+    const prev = flushTimers.get(id)
+    if (prev) clearTimeout(prev)
+    flushTimers.set(
+      id,
+      setTimeout(() => {
+        flushTimers.delete(id)
+        void flushNote(id)
+      }, delayMs),
+    )
   }
 
   async function updateNote(
     id: string,
     patch: Partial<Pick<Note, 'title' | 'body' | 'kind'>>,
+    opts?: { immediate?: boolean },
   ) {
     const note = notes.value.find((item) => item.id === id)
     if (!note) return
     const auth = useAuthStore()
-    // Time B2C: qualquer membro autenticado pode editar notas do quadro
     if (!auth.memberId) {
-      error.value = 'Faça login novamente para editar notas.'
-      useToastStore().error(error.value)
+      reportError('Faça login novamente para editar notas.')
       return
     }
+
+    const merged = { ...(pendingPatches.get(id) ?? {}), ...patch }
+    pendingPatches.set(id, merged)
+    // Atualiza UI na hora
     Object.assign(note, patch, { updatedAt: new Date().toISOString() })
-    quietRealtime()
-    const { error: updateError } = await supabase
-      .from('notes')
-      .update({
-        title: note.title,
-        body: note.body,
-        kind: note.kind,
-        updated_at: note.updatedAt,
-      })
-      .eq('id', id)
-    if (updateError) {
-      error.value = updateError.message
-      useToastStore().error(updateError.message)
+
+    if (opts?.immediate) {
+      const timer = flushTimers.get(id)
+      if (timer) clearTimeout(timer)
+      flushTimers.delete(id)
+      await flushNote(id)
+      return
     }
+
+    scheduleFlush(id, patch.body !== undefined ? 450 : 200)
   }
 
   async function deleteNote(id: string) {
@@ -189,20 +329,32 @@ export const useNotesStore = defineStore('notes', () => {
     if (index === -1) return
     const note = notes.value[index]
     const auth = useAuthStore()
-    if (!auth.memberId || (note.authorId && note.authorId !== auth.memberId && !auth.isAdmin)) {
-      error.value = 'Só o autor (ou admin) pode excluir a nota.'
-      useToastStore().error(error.value)
+    if (
+      !auth.memberId ||
+      (note.authorId && note.authorId !== auth.memberId && !auth.isAdmin)
+    ) {
+      reportError('Só o autor (ou admin) pode excluir a nota.')
       return
     }
+
+    const timer = flushTimers.get(id)
+    if (timer) clearTimeout(timer)
+    flushTimers.delete(id)
+    pendingPatches.delete(id)
+
     notes.value.splice(index, 1)
     if (selectedNoteId.value === id) {
       selectedNoteId.value = notes.value[0]?.id ?? null
     }
     quietRealtime()
-    const { error: deleteError } = await supabase.from('notes').delete().eq('id', id)
+    const { error: deleteError } = await withRetry(() =>
+      supabase.from('notes').delete().eq('id', id),
+    )
     if (deleteError) {
-      error.value = deleteError.message
-      useToastStore().error(deleteError.message)
+      reportError(deleteError.message)
+      await loadNotes({ background: true })
+    } else {
+      error.value = null
     }
   }
 

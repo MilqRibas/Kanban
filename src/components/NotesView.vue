@@ -68,19 +68,32 @@ function saveTitle() {
   if (!note || !canEditSelected.value) return
   const title = draftTitle.value.trim() || 'Sem título'
   draftTitle.value = title
-  notesStore.updateNote(note.id, { title })
+  if (title === note.title) return
+  void notesStore.updateNote(note.id, { title })
 }
 
 function saveBody() {
   const note = notesStore.selectedNote
   if (!note || !canEditSelected.value) return
-  notesStore.updateNote(note.id, { body: draftBody.value })
+  if (draftBody.value === note.body) return
+  void notesStore.updateNote(note.id, { body: draftBody.value })
 }
 
 function setKind(kind: NoteKind) {
   const note = notesStore.selectedNote
   if (!note || !canEditSelected.value) return
-  notesStore.updateNote(note.id, { kind })
+  const title = draftTitle.value.trim() || note.title
+  draftTitle.value = title
+  // Um único save: evita corrida blur do textarea + clique no tipo
+  void notesStore.updateNote(
+    note.id,
+    {
+      kind,
+      title,
+      body: draftBody.value,
+    },
+    { immediate: true },
+  )
   if (kindFilter.value !== 'all') kindFilter.value = kind
 }
 
@@ -235,6 +248,7 @@ function confirmDelete() {
                   : 'text-text-muted hover:text-text-secondary',
                 !canEditSelected && 'cursor-default opacity-60',
               ]"
+              @mousedown.prevent
               @click="setKind('note')"
             >
               Anotação
@@ -249,6 +263,7 @@ function confirmDelete() {
                   : 'text-text-muted hover:text-text-secondary',
                 !canEditSelected && 'cursor-default opacity-60',
               ]"
+              @mousedown.prevent
               @click="setKind('meeting')"
             >
               Ata de reunião
