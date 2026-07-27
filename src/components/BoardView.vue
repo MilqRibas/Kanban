@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
-import { Plus, X } from '@lucide/vue'
+import { Check, Plus, X } from '@lucide/vue'
 import draggable from 'vuedraggable'
 import type { Column } from '../types/board'
 import { useBoardStore } from '../stores/board'
@@ -16,6 +16,8 @@ const boardColumns = computed({
   set: (value: Column[]) => board.reorderColumns(value),
 })
 
+const canConfirmList = computed(() => Boolean(newListTitle.value.trim()))
+
 async function startAddList() {
   isAddingList.value = true
   await nextTick()
@@ -30,7 +32,7 @@ function cancelAddList() {
 function confirmAddList() {
   const title = newListTitle.value.trim()
   if (!title) {
-    cancelAddList()
+    listInputRef.value?.focus()
     return
   }
   board.addColumn(title)
@@ -65,30 +67,40 @@ function confirmAddList() {
         class="column-glass rounded-2xl p-3"
         @submit.prevent="confirmAddList"
       >
-        <input
-          ref="listInputRef"
-          v-model="newListTitle"
-          type="text"
-          placeholder="Digite o título da lista…"
-          class="mb-3 w-full rounded-lg border border-border-subtle bg-card px-3 py-2.5 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
-          @keydown.escape="cancelAddList"
-        />
+        <label class="mb-2 block text-[11px] font-medium text-text-muted">
+          Nome da lista
+        </label>
         <div class="flex items-center gap-2">
+          <input
+            ref="listInputRef"
+            v-model="newListTitle"
+            type="text"
+            placeholder="Digite o título da lista…"
+            class="min-w-0 flex-1 rounded-lg border border-border-subtle bg-card px-3 py-2.5 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+            @keydown.escape="cancelAddList"
+          />
           <button
             type="submit"
-            class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-board hover:bg-accent-hover"
+            :disabled="!canConfirmList"
+            class="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent text-board transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+            title="Confirmar"
+            aria-label="Confirmar nova lista"
           >
-            Adicionar lista
+            <Check :size="18" :stroke-width="2.5" />
           </button>
           <button
             type="button"
-            class="rounded-md p-1.5 text-text-secondary hover:bg-column-hover"
+            class="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
+            title="Cancelar"
             aria-label="Cancelar"
             @click="cancelAddList"
           >
-            <X :size="16" :stroke-width="2" />
+            <X :size="18" :stroke-width="2.25" />
           </button>
         </div>
+        <p class="mt-2 text-[11px] text-text-muted">
+          Enter confirma · Esc cancela
+        </p>
       </form>
 
       <button
