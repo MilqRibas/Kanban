@@ -93,7 +93,7 @@ const hasItems = computed(() => notifications.grouped.length > 0)
               <button
                 type="button"
                 class="flex w-full gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-surface/60"
-                :class="group.unreadCount && 'bg-accent/5'"
+                :class="group.unreadCount > 0 ? 'bg-accent/5' : undefined"
                 @click="notifications.openGroup(group)"
               >
                 <MemberAvatar
