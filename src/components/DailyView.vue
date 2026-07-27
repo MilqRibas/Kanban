@@ -532,7 +532,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
           />
 
           <section
-            class="panel-glass relative z-10 flex max-h-[min(94dvh,900px)] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-white/10 shadow-2xl shadow-black/50 sm:rounded-2xl"
+            class="panel-glass relative z-10 mb-[4.75rem] flex max-h-[min(88dvh,900px)] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-white/10 shadow-2xl shadow-black/50 sm:mb-0 sm:max-h-[min(92dvh,900px)] sm:rounded-2xl"
           >
             <div
               class="flex shrink-0 justify-center pt-2 sm:hidden"
@@ -550,7 +550,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
               <X :size="20" />
             </button>
 
-            <div class="min-h-0 flex-1 overflow-y-auto px-5 py-5 pr-12 sm:px-8 sm:py-7 sm:pr-14">
+            <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-10 pt-5 pr-12 sm:px-8 sm:pb-12 sm:pt-7 sm:pr-14">
         <header class="mb-6">
           <div class="mb-2 flex items-start justify-between gap-3">
             <h2 class="text-3xl font-bold tracking-tight text-text-primary">
@@ -821,7 +821,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
           </template>
         </ul>
 
-        <div class="relative mt-3 space-y-2 px-2">
+        <div class="relative mt-3 space-y-2 px-2 pb-2">
           <form class="flex items-center gap-2" @submit.prevent="submitTodo()">
             <button
               type="button"
@@ -860,7 +860,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
 
           <div
             v-if="addBlockMenuOpen"
-            class="absolute left-0 top-10 z-20 mt-1 min-w-[14rem] overflow-hidden rounded-xl border border-white/10 bg-board-elevated py-1 shadow-xl"
+            class="absolute bottom-full left-0 z-30 mb-1 min-w-[14rem] overflow-hidden rounded-xl border border-white/10 bg-board-elevated py-1 shadow-xl"
           >
             <button
               type="button"
