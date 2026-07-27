@@ -22,6 +22,9 @@ import { useHubSectionsStore } from '../stores/hubSections'
 import type { HubSection } from '../types/community'
 import CommunityCalendar from './CommunityCalendar.vue'
 
+const ACCESS_SHEET_URL =
+  'https://netorgft12516109.sharepoint.com/:x:/r/sites/B2C328/_layouts/15/Doc.aspx?action=edit&sourcedoc=%7B97cf99de-0dba-4de4-8179-53beac4a5b97%7D&wdExp=TEAMS-TREATMENT&web=1&TeamsCID=bc017502-bdfb-4487-a26e-40d7f92b691c'
+
 type HubScreen = 'home' | 'conteudo' | 'section'
 
 const screen = ref<HubScreen>('home')
@@ -29,6 +32,7 @@ const activeSectionId = ref<string | null>(null)
 const community = useCommunityStore()
 const hubSections = useHubSectionsStore()
 const ready = ref(false)
+const suppressClick = ref(false)
 
 const menuId = ref<string | null>(null)
 const formOpen = ref(false)
@@ -69,17 +73,66 @@ function cardIcon(card: HubSection) {
   return StickyNote
 }
 
-function openCard(card: HubSection) {
+function resolveCardUrl(card: HubSection) {
+  if (card.url?.trim()) return card.url.trim()
+  // Fallback histórico do card ACESSOS
+  if (card.id === 'hub-acessos') return ACCESS_SHEET_URL
+  return null
+}
+
+function isFolderCard(card: HubSection) {
+  return card.kind === 'folder' || card.id === 'hub-conteudo'
+}
+
+function cardTag(card: HubSection) {
+  return !isFolderCard(card) && resolveCardUrl(card) ? 'a' : 'div'
+}
+
+function onDragStart() {
+  suppressClick.value = true
   menuId.value = null
-  if (card.kind === 'folder' || card.id === 'hub-conteudo') {
+}
+
+function onDragEnd() {
+  window.setTimeout(() => {
+    suppressClick.value = false
+  }, 50)
+}
+
+function openExternalUrl(url: string) {
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.target = '_blank'
+  anchor.rel = 'noopener noreferrer'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+}
+
+function openCard(card: HubSection, event?: MouseEvent) {
+  if (suppressClick.value) {
+    event?.preventDefault()
+    return
+  }
+  menuId.value = null
+
+  if (isFolderCard(card)) {
+    event?.preventDefault()
     screen.value = 'conteudo'
     return
   }
-  if (card.url) {
-    window.open(card.url, '_blank', 'noopener,noreferrer')
+
+  const url = resolveCardUrl(card)
+  if (url) {
+    // <a> já navega; se o clique veio de div/fallback, abre via âncora
+    if (cardTag(card) !== 'a') {
+      event?.preventDefault()
+      openExternalUrl(url)
+    }
     return
   }
-  // Card sem link: abre formulário de edição
+
+  event?.preventDefault()
   openEditForm(card)
 }
 
@@ -240,16 +293,25 @@ async function addSection() {
         item-key="id"
         :animation="180"
         handle=".hub-drag-handle"
+        filter=".hub-card-actions"
+        :prevent-on-filter="true"
         ghost-class="opacity-40"
         class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3"
+        @start="onDragStart"
+        @end="onDragEnd"
       >
         <template #item="{ element: card }">
-          <div
-            class="panel-glass panel-glass-accent group relative flex min-h-[9.5rem] cursor-pointer flex-col justify-between rounded-3xl p-5 text-left transition-all hover:brightness-110 sm:min-h-[11rem] sm:p-6"
+          <component
+            :is="cardTag(card)"
+            class="panel-glass panel-glass-accent group relative flex min-h-[9.5rem] cursor-pointer flex-col justify-between rounded-3xl p-5 text-left no-underline transition-all hover:brightness-110 sm:min-h-[11rem] sm:p-6"
+            :href="resolveCardUrl(card) ?? undefined"
+            :target="resolveCardUrl(card) ? '_blank' : undefined"
+            :rel="resolveCardUrl(card) ? 'noopener noreferrer' : undefined"
+            :draggable="false"
             role="button"
             tabindex="0"
             :aria-label="`Abrir ${card.title}`"
-            @click="openCard(card)"
+            @click="openCard(card, $event)"
             @keydown.enter.prevent="openCard(card)"
           >
             <div class="pointer-events-none absolute right-3 top-3 flex items-center gap-1">
@@ -267,7 +329,7 @@ async function addSection() {
                 class="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-accent/90"
               >
                 <component :is="cardIcon(card)" :size="13" />
-                {{ card.eyebrow || (card.url ? 'Link' : 'Card') }}
+                {{ card.eyebrow || (resolveCardUrl(card) ? 'Link' : 'Card') }}
               </p>
               <h3 class="mt-2 text-lg font-semibold text-text-primary">
                 {{ card.title }}
@@ -278,20 +340,23 @@ async function addSection() {
               <p class="pointer-events-none line-clamp-2 text-xs text-text-muted">
                 {{ card.description || 'Sem descrição' }}
                 <span
-                  v-if="card.kind === 'folder'"
+                  v-if="isFolderCard(card)"
                   class="ml-1 inline-flex items-center gap-0.5"
                 >
                   <ChevronRight :size="11" class="inline" />
                 </span>
                 <span
-                  v-else-if="card.url"
+                  v-else-if="resolveCardUrl(card)"
                   class="ml-1 inline-flex items-center gap-0.5"
                 >
                   <ExternalLink :size="11" class="inline" />
                 </span>
               </p>
 
-              <div class="relative flex shrink-0 items-center gap-0.5" @click.stop>
+              <div
+                class="hub-card-actions relative flex shrink-0 items-center gap-0.5"
+                @click.stop.prevent
+              >
                 <button
                   type="button"
                   class="hub-drag-handle pointer-events-auto cursor-grab rounded-lg p-1.5 text-text-muted opacity-0 hover:bg-white/10 hover:text-text-primary active:cursor-grabbing group-hover:opacity-100"
@@ -344,7 +409,7 @@ async function addSection() {
                 </div>
               </div>
             </div>
-          </div>
+          </component>
         </template>
       </draggable>
 
