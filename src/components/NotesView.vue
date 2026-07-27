@@ -24,7 +24,14 @@ const draftBody = ref('')
 const canEditSelected = computed(() => {
   const note = notesStore.selectedNote
   if (!note || !auth.memberId) return false
-  return note.authorId === auth.memberId
+  // Qualquer membro logado pode editar; exclusão fica restrita no store
+  return true
+})
+
+const canDeleteSelected = computed(() => {
+  const note = notesStore.selectedNote
+  if (!note || !auth.memberId) return false
+  return !note.authorId || note.authorId === auth.memberId || auth.isAdmin
 })
 
 const filteredNotes = computed(() => {
@@ -85,7 +92,7 @@ function authorName(authorId: string) {
 
 function confirmDelete() {
   const note = notesStore.selectedNote
-  if (!note || !canEditSelected.value) return
+  if (!note || !canDeleteSelected.value) return
   if (window.confirm(`Excluir “${note.title}”?`)) {
     notesStore.deleteNote(note.id)
   }
@@ -218,13 +225,10 @@ function confirmDelete() {
           <p class="ml-auto text-xs text-text-muted">
             {{ authorName(notesStore.selectedNote.authorId) }} ·
             {{ formatDate(notesStore.selectedNote.updatedAt) }}
-            <span v-if="!canEditSelected" class="ml-1 text-text-muted/80">
-              · só leitura
-            </span>
           </p>
 
           <button
-            v-if="canEditSelected"
+            v-if="canDeleteSelected"
             type="button"
             class="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-danger/15 hover:text-danger"
             title="Excluir nota"
@@ -233,6 +237,20 @@ function confirmDelete() {
             <Trash2 :size="16" :stroke-width="2" />
           </button>
         </header>
+
+        <p
+          v-if="notesStore.error"
+          class="mx-4 mt-3 rounded-lg border border-red-400/30 bg-red-950/40 px-3 py-2 text-xs text-red-200 sm:mx-5"
+        >
+          {{ notesStore.error }}
+          <button
+            type="button"
+            class="ml-2 underline"
+            @click="notesStore.error = null"
+          >
+            fechar
+          </button>
+        </p>
 
         <div class="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-5">
           <input

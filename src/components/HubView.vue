@@ -229,16 +229,14 @@ async function addSection() {
         <div
           v-for="card in hubSections.homeCards"
           :key="card.id"
-          class="panel-glass panel-glass-accent group relative flex min-h-[9.5rem] flex-col justify-between rounded-3xl p-5 text-left transition-all hover:brightness-110 sm:min-h-[11rem] sm:p-6"
+          class="panel-glass panel-glass-accent group relative flex min-h-[9.5rem] cursor-pointer flex-col justify-between rounded-3xl p-5 text-left transition-all hover:brightness-110 sm:min-h-[11rem] sm:p-6"
+          role="button"
+          tabindex="0"
+          :aria-label="`Abrir ${card.title}`"
+          @click="openCard(card)"
+          @keydown.enter.prevent="openCard(card)"
         >
-          <button
-            type="button"
-            class="absolute inset-0 rounded-3xl"
-            :aria-label="`Abrir ${card.title}`"
-            @click="openCard(card)"
-          />
-
-          <div class="relative z-10 pointer-events-none">
+          <div class="pointer-events-none">
             <p
               class="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-accent/90"
             >
@@ -250,7 +248,7 @@ async function addSection() {
             </h3>
           </div>
 
-          <div class="relative z-10 mt-4 flex items-end justify-between gap-2">
+          <div class="mt-4 flex items-end justify-between gap-2">
             <p class="pointer-events-none line-clamp-2 text-xs text-text-muted">
               {{ card.description || 'Sem descrição' }}
               <span
@@ -270,7 +268,7 @@ async function addSection() {
             <div class="relative shrink-0" @click.stop>
               <button
                 type="button"
-                class="rounded-lg p-1.5 text-text-muted opacity-70 hover:bg-white/10 hover:text-text-primary group-hover:opacity-100"
+                class="pointer-events-auto rounded-lg p-1.5 text-text-muted opacity-70 hover:bg-white/10 hover:text-text-primary group-hover:opacity-100"
                 title="Opções"
                 @click="menuId = menuId === card.id ? null : card.id"
               >
@@ -343,16 +341,14 @@ async function addSection() {
         <div
           v-for="section in hubSections.conteudoSections"
           :key="section.id"
-          class="panel-glass panel-glass-accent relative flex min-h-[8rem] flex-col justify-between rounded-3xl p-5 text-left transition-all hover:brightness-110"
+          class="panel-glass panel-glass-accent relative flex min-h-[8rem] cursor-pointer flex-col justify-between rounded-3xl p-5 text-left transition-all hover:brightness-110"
+          role="button"
+          tabindex="0"
+          :aria-label="`Abrir ${section.title}`"
+          @click="openSection(section)"
+          @keydown.enter.prevent="openSection(section)"
         >
-          <button
-            type="button"
-            class="absolute inset-0 rounded-3xl"
-            :aria-label="`Abrir ${section.title}`"
-            @click="openSection(section)"
-          />
-
-          <div class="relative z-10 pointer-events-none">
+          <div class="pointer-events-none">
             <p
               class="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-accent/90"
             >
@@ -374,14 +370,14 @@ async function addSection() {
             </h3>
           </div>
 
-          <div class="relative z-10 mt-3 flex items-center justify-between gap-2">
+          <div class="mt-3 flex items-center justify-between gap-2">
             <p class="pointer-events-none text-xs text-text-muted">
               Agenda de posts e conteúdos por dia
             </p>
             <div class="relative" @click.stop>
               <button
                 type="button"
-                class="rounded-lg p-1.5 text-text-muted hover:bg-white/10 hover:text-text-primary"
+                class="pointer-events-auto rounded-lg p-1.5 text-text-muted hover:bg-white/10 hover:text-text-primary"
                 title="Opções"
                 @click="menuId = menuId === section.id ? null : section.id"
               >

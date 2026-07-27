@@ -54,14 +54,21 @@ watch(
 )
 
 watch(
-  [focusMemberId, () => daily.selectedDateKey],
+  [focusMemberId, () => daily.selectedDateKey, () => daily.ready],
   () => {
+    if (!daily.ready || daily.loading) return
     if (focusMemberId.value) {
       daily.ensureEntry(focusMemberId.value, daily.selectedDateKey)
     }
   },
   { immediate: true },
 )
+
+function openDay(dateKey: string) {
+  const memberId = focusMemberId.value ?? board.members[0]?.id
+  if (!memberId) return
+  daily.openEntry(memberId, dateKey)
+}
 
 const focusedEntry = computed(() => {
   const memberId = focusMemberId.value
@@ -128,6 +135,10 @@ function submitTodo() {
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-2 px-2 pb-[4.75rem] pt-2 sm:gap-3 sm:px-5 sm:pb-16 sm:pt-3">
+    <p v-if="daily.error" class="rounded-lg border border-red-400/30 bg-red-950/50 px-3 py-2 text-xs text-red-200">
+      {{ daily.error }}
+      <button type="button" class="ml-2 underline" @click="daily.error = null">fechar</button>
+    </p>
     <!-- Controles: só modo + navegação (dropdown fica no header) -->
     <div class="flex flex-wrap items-center gap-2">
       <div class="flex rounded-xl border border-border-subtle/70 bg-board-elevated/90 p-1">
@@ -202,7 +213,12 @@ function submitTodo() {
           :key="day.dateKey"
           class="flex min-h-0 flex-col gap-2 overflow-hidden bg-column p-2"
         >
-          <div class="flex items-center justify-between gap-1">
+          <button
+            type="button"
+            class="flex w-full items-center justify-between gap-1 rounded-lg px-0.5 text-left hover:bg-white/5"
+            :title="`Abrir diário de ${day.dayNumber}`"
+            @click="openDay(day.dateKey)"
+          >
             <span class="text-[11px] capitalize text-text-muted">{{ day.weekday }}</span>
             <span
               :class="[
@@ -212,7 +228,7 @@ function submitTodo() {
             >
               {{ day.dayNumber }}
             </span>
-          </div>
+          </button>
 
           <div class="min-h-0 flex-1 space-y-2 overflow-y-auto">
             <button
@@ -256,12 +272,14 @@ function submitTodo() {
               </span>
             </button>
 
-            <p
+            <button
               v-if="!day.entries.length"
-              class="rounded-xl border border-dashed border-border-subtle/60 px-2 py-6 text-center text-[11px] text-text-muted/70"
+              type="button"
+              class="w-full rounded-xl border border-dashed border-border-subtle/60 px-2 py-6 text-center text-[11px] text-text-muted/80 transition-colors hover:border-accent/40 hover:bg-white/5 hover:text-text-secondary"
+              @click="openDay(day.dateKey)"
             >
-              Sem tarefas
-            </p>
+              + Adicionar tarefa
+            </button>
           </div>
         </div>
       </div>
@@ -295,9 +313,10 @@ function submitTodo() {
           v-for="cell in daily.monthCells"
           :key="cell.dateKey"
           :class="[
-            'flex min-h-0 flex-col gap-1 overflow-hidden p-1.5',
+            'flex min-h-0 cursor-pointer flex-col gap-1 overflow-hidden p-1.5 transition-colors hover:bg-white/5',
             cell.inMonth ? 'bg-column' : 'bg-board/80 opacity-55',
           ]"
+          @click="openDay(cell.dateKey)"
         >
           <span
             :class="[
@@ -314,7 +333,7 @@ function submitTodo() {
               :key="entry.id"
               type="button"
               class="relative w-full rounded-lg border border-border-subtle/60 bg-card px-1.5 py-1.5 pr-6 text-left hover:bg-card-hover"
-              @click="daily.openEntry(entry.memberId, cell.dateKey)"
+              @click.stop="daily.openEntry(entry.memberId, cell.dateKey)"
             >
               <div
                 v-if="entryProgress(entry).complete"

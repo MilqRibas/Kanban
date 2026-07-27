@@ -4,7 +4,6 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import type { Note, NoteKind } from '../types/notes'
 import { BOARD_ID, supabase } from '../lib/supabase'
 import { useAuthStore } from './auth'
-import { useBoardStore } from './board'
 
 function createId() {
   return `note-${crypto.randomUUID().slice(0, 8)}`
@@ -54,7 +53,7 @@ export const useNotesStore = defineStore('notes', () => {
       title: row.title,
       body: row.body,
       kind: row.kind as NoteKind,
-      authorId: row.author_id ?? 'm3',
+      authorId: row.author_id ?? '',
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     }))
@@ -116,13 +115,16 @@ export const useNotesStore = defineStore('notes', () => {
 
   async function createNote(kind: NoteKind = 'note') {
     const auth = useAuthStore()
-    const board = useBoardStore()
+    if (!auth.memberId) {
+      error.value = 'Faça login novamente para criar notas.'
+      return null
+    }
     const note: Note = {
       id: createId(),
       title: kind === 'meeting' ? 'Nova ata de reunião' : 'Nova anotação',
       body: '',
       kind,
-      authorId: auth.memberId ?? board.members[0]?.id ?? 'm3',
+      authorId: auth.memberId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
@@ -139,7 +141,12 @@ export const useNotesStore = defineStore('notes', () => {
       created_at: note.createdAt,
       updated_at: note.updatedAt,
     })
-    if (insertError) error.value = insertError.message
+    if (insertError) {
+      error.value = insertError.message
+      notes.value = notes.value.filter((item) => item.id !== note.id)
+      selectedNoteId.value = notes.value[0]?.id ?? null
+      return null
+    }
     return note
   }
 
@@ -150,13 +157,14 @@ export const useNotesStore = defineStore('notes', () => {
     const note = notes.value.find((item) => item.id === id)
     if (!note) return
     const auth = useAuthStore()
-    if (!auth.memberId || note.authorId !== auth.memberId) {
-      error.value = 'Só quem criou a nota pode editá-la.'
+    // Time B2C: qualquer membro autenticado pode editar notas do quadro
+    if (!auth.memberId) {
+      error.value = 'Faça login novamente para editar notas.'
       return
     }
     Object.assign(note, patch, { updatedAt: new Date().toISOString() })
     quietRealtime()
-    await supabase
+    const { error: updateError } = await supabase
       .from('notes')
       .update({
         title: note.title,
@@ -165,6 +173,7 @@ export const useNotesStore = defineStore('notes', () => {
         updated_at: note.updatedAt,
       })
       .eq('id', id)
+    if (updateError) error.value = updateError.message
   }
 
   async function deleteNote(id: string) {
@@ -172,8 +181,8 @@ export const useNotesStore = defineStore('notes', () => {
     if (index === -1) return
     const note = notes.value[index]
     const auth = useAuthStore()
-    if (!auth.memberId || note.authorId !== auth.memberId) {
-      error.value = 'Só quem criou a nota pode excluí-la.'
+    if (!auth.memberId || (note.authorId && note.authorId !== auth.memberId && !auth.isAdmin)) {
+      error.value = 'Só o autor (ou admin) pode excluir a nota.'
       return
     }
     notes.value.splice(index, 1)
@@ -181,7 +190,8 @@ export const useNotesStore = defineStore('notes', () => {
       selectedNoteId.value = notes.value[0]?.id ?? null
     }
     quietRealtime()
-    await supabase.from('notes').delete().eq('id', id)
+    const { error: deleteError } = await supabase.from('notes').delete().eq('id', id)
+    if (deleteError) error.value = deleteError.message
   }
 
   return {

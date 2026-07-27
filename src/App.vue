@@ -62,6 +62,7 @@ watch(
 )
 
 watch(activeTab, async (tab) => {
+  board.closeCard()
   if (!auth.isAuthenticated || auth.passwordRecovery) return
   if (tab === 'notes' && !notesReady.value) {
     await notes.init()
@@ -69,6 +70,7 @@ watch(activeTab, async (tab) => {
   }
   if (tab === 'daily' && !dailyReady.value) {
     await daily.init()
+    daily.sanitizeDetailMember()
     dailyReady.value = true
   }
 })

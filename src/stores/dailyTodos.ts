@@ -80,13 +80,14 @@ export const useDailyStore = defineStore('daily', () => {
   const ui = loadUiState()
   const entries = ref<DailyEntry[]>([])
   const selectedDateKey = ref(ui?.selectedDateKey ?? toDateKey(new Date()))
-  const viewMode = ref<DailyViewMode>(ui?.viewMode ?? 'week')
+  const viewMode = ref<DailyViewMode>(ui?.viewMode ?? 'day')
   const detailMemberId = ref<string | null>(ui?.detailMemberId ?? null)
   const loading = ref(false)
+  const ready = ref(false)
   const error = ref<string | null>(null)
   let channel: RealtimeChannel | null = null
   let suppressRealtimeUntil = 0
-  let persistTimer: ReturnType<typeof setTimeout> | null = null
+  const persistTimers = new Map<string, ReturnType<typeof setTimeout>>()
   let reloadTimer: ReturnType<typeof setTimeout> | null = null
 
   function quietRealtime(ms = 800) {
@@ -94,10 +95,25 @@ export const useDailyStore = defineStore('daily', () => {
   }
 
   function schedulePersist(entry: DailyEntry) {
-    if (persistTimer) clearTimeout(persistTimer)
-    persistTimer = setTimeout(() => {
-      void persistEntry(entry)
-    }, 350)
+    const existing = persistTimers.get(entry.id)
+    if (existing) clearTimeout(existing)
+    persistTimers.set(
+      entry.id,
+      setTimeout(() => {
+        persistTimers.delete(entry.id)
+        void persistEntry(entry)
+      }, 350),
+    )
+  }
+
+  function sanitizeDetailMember() {
+    if (
+      detailMemberId.value &&
+      !board.members.some((member) => member.id === detailMemberId.value)
+    ) {
+      detailMemberId.value = board.members[0]?.id ?? null
+      persistUi()
+    }
   }
 
   async function persistEntry(entry: DailyEntry) {
@@ -132,7 +148,10 @@ export const useDailyStore = defineStore('daily', () => {
       return
     }
 
-    entries.value = (data ?? []).map((row) => ({
+    const localByKey = new Map(
+      entries.value.map((entry) => [`${entry.memberId}:${entry.dateKey}`, entry]),
+    )
+    const remote = (data ?? []).map((row) => ({
       id: row.id,
       memberId: row.member_id,
       dateKey: row.date_key,
@@ -141,6 +160,26 @@ export const useDailyStore = defineStore('daily', () => {
       todos: asTodos(row.todos),
       updatedAt: row.updated_at,
     }))
+
+    const merged = remote.map((row) => {
+      const local = localByKey.get(`${row.memberId}:${row.dateKey}`)
+      // Mantém edição local ainda não persistida
+      if (local && persistTimers.has(local.id)) return local
+      return row
+    })
+
+    for (const [key, local] of localByKey) {
+      if (
+        persistTimers.has(local.id) &&
+        !merged.some(
+          (entry) => `${entry.memberId}:${entry.dateKey}` === key,
+        )
+      ) {
+        merged.push(local)
+      }
+    }
+
+    entries.value = merged
     loading.value = false
   }
 
@@ -177,12 +216,17 @@ export const useDailyStore = defineStore('daily', () => {
 
   async function init() {
     await loadEntries()
+    sanitizeDetailMember()
     subscribeRealtime()
+    ready.value = true
   }
 
   function reset() {
     unsubscribeRealtime()
+    for (const timer of persistTimers.values()) clearTimeout(timer)
+    persistTimers.clear()
     entries.value = []
+    ready.value = false
   }
 
   function persistUi() {
@@ -291,15 +335,24 @@ export const useDailyStore = defineStore('daily', () => {
   function ensureEntry(
     memberId = activeMemberId.value,
     dateKey = selectedDateKey.value,
+    options?: { persistEmpty?: boolean },
   ) {
     if (!memberId) return null
+    if (
+      board.members.length &&
+      !board.members.some((member) => member.id === memberId)
+    ) {
+      error.value = 'Membro inválido para criar tarefa.'
+      return null
+    }
     let entry = entries.value.find(
       (item) => item.memberId === memberId && item.dateKey === dateKey,
     )
     if (!entry) {
       entry = emptyEntry(memberId, dateKey)
       entries.value.push(entry)
-      schedulePersist(entry)
+      // Só grava no banco quando há conteúdo real (evita race com load)
+      if (options?.persistEmpty) schedulePersist(entry)
     }
     return entry
   }
@@ -420,9 +473,11 @@ export const useDailyStore = defineStore('daily', () => {
     monthCells,
     periodLabel,
     loading,
+    ready,
     error,
     init,
     reset,
+    sanitizeDetailMember,
     setViewMode,
     setDateKey,
     openEntry,
