@@ -14,6 +14,12 @@ export const supabase = createClient(url, anonKey, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
+    /**
+     * Evita deadlock do navigator.locks (AbortError / "Failed to fetch")
+     * quando writes (ex.: notas) competem com refresh de sessão / realtime.
+     * Ver: supabase-js#2013, #2111
+     */
+    lock: async (_name, _acquireTimeout, fn) => fn(),
   },
 })
 
