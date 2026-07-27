@@ -252,30 +252,34 @@ export const useNotesStore = defineStore('notes', () => {
     Object.assign(note, patch, { updatedAt: new Date().toISOString() })
     quietRealtime()
 
-    const payload = {
+    // Usa UPSERT (POST) em vez de UPDATE (PATCH).
+    // Alguns navegadores/extensões CORS bloqueiam PATCH no preflight,
+    // mesmo com o Supabase liberando o método.
+    const row = {
+      id: note.id,
+      board_id: BOARD_ID,
       title: note.title,
       body: note.body,
       kind: note.kind,
+      author_id: note.authorId || auth.memberId,
+      created_at: note.createdAt,
       updated_at: note.updatedAt,
     }
 
     try {
-      let { error: updateError } = await supabase
+      let { error: saveError } = await supabase
         .from('notes')
-        .update(payload)
-        .eq('id', id)
+        .upsert(row, { onConflict: 'id' })
 
-      // Uma nova tentativa silenciosa só para falha transitória
-      if (updateError && isTransient(updateError.message)) {
+      if (saveError && isTransient(saveError.message)) {
         await new Promise((resolve) => setTimeout(resolve, 400))
-        ;({ error: updateError } = await supabase
+        ;({ error: saveError } = await supabase
           .from('notes')
-          .update(payload)
-          .eq('id', id))
+          .upsert(row, { onConflict: 'id' }))
       }
 
-      if (updateError) {
-        reportError(updateError.message)
+      if (saveError) {
+        reportError(saveError.message)
         return
       }
       error.value = null
@@ -286,8 +290,7 @@ export const useNotesStore = defineStore('notes', () => {
         try {
           const { error: retryError } = await supabase
             .from('notes')
-            .update(payload)
-            .eq('id', id)
+            .upsert(row, { onConflict: 'id' })
           if (retryError) {
             reportError(retryError.message)
             return
