@@ -4,6 +4,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import type { CommunityContent } from '../types/community'
 import { BOARD_ID, supabase } from '../lib/supabase'
 import { useAuthStore } from './auth'
+import { useToastStore } from './toast'
 
 function createId() {
   return `cc-${crypto.randomUUID().slice(0, 8)}`
@@ -12,6 +13,7 @@ function createId() {
 function mapRow(row: Record<string, unknown>): CommunityContent {
   return {
     id: String(row.id),
+    sectionId: (row.section_id as string | null) ?? null,
     title: String(row.title ?? ''),
     body: String(row.body ?? ''),
     status: String(row.status ?? 'Rascunho'),
@@ -29,6 +31,7 @@ function mapRow(row: Record<string, unknown>): CommunityContent {
 export const useCommunityStore = defineStore('community', () => {
   const items = ref<CommunityContent[]>([])
   const selectedId = ref<string | null>(null)
+  const activeSectionId = ref<string | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
   let channel: RealtimeChannel | null = null
@@ -39,9 +42,16 @@ export const useCommunityStore = defineStore('community', () => {
     () => items.value.find((item) => item.id === selectedId.value) ?? null,
   )
 
+  const sectionItems = computed(() => {
+    if (!activeSectionId.value) return items.value
+    return items.value.filter(
+      (item) => item.sectionId === activeSectionId.value,
+    )
+  })
+
   const byPublishDate = computed(() => {
     const map: Record<string, CommunityContent[]> = {}
-    for (const item of items.value) {
+    for (const item of sectionItems.value) {
       if (!item.publishDate) continue
       const key = item.publishDate.slice(0, 10)
       if (!map[key]) map[key] = []
@@ -52,6 +62,10 @@ export const useCommunityStore = defineStore('community', () => {
 
   function quietRealtime(ms = 800) {
     suppressRealtimeUntil = Date.now() + ms
+  }
+
+  function setActiveSection(sectionId: string | null) {
+    activeSectionId.value = sectionId
   }
 
   async function load() {
@@ -65,6 +79,7 @@ export const useCommunityStore = defineStore('community', () => {
 
     if (loadError) {
       error.value = loadError.message
+      useToastStore().error(loadError.message)
       loading.value = false
       return
     }
@@ -113,6 +128,7 @@ export const useCommunityStore = defineStore('community', () => {
     unsubscribeRealtime()
     items.value = []
     selectedId.value = null
+    activeSectionId.value = null
     loading.value = false
     error.value = null
   }
@@ -130,13 +146,17 @@ export const useCommunityStore = defineStore('community', () => {
     body?: string
     publishDate?: string | null
     status?: string
+    sectionId?: string | null
   }) {
     const auth = useAuthStore()
+    const toast = useToastStore()
     const now = new Date().toISOString()
     const id = createId()
+    const sectionId = params.sectionId ?? activeSectionId.value
     const row = {
       id,
       board_id: BOARD_ID,
+      section_id: sectionId,
       title: params.title?.trim() || 'Novo conteúdo',
       body: params.body ?? '',
       status: params.status ?? 'Rascunho',
@@ -157,6 +177,7 @@ export const useCommunityStore = defineStore('community', () => {
 
     if (insertError) {
       error.value = insertError.message
+      toast.error(insertError.message)
       return null
     }
 
@@ -177,10 +198,12 @@ export const useCommunityStore = defineStore('community', () => {
       community: string
       fds: string
       publishDate: string | null
+      sectionId: string | null
     }>,
   ) {
     const item = items.value.find((entry) => entry.id === id)
     if (!item) return
+    const toast = useToastStore()
 
     const dbPatch: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
@@ -193,6 +216,7 @@ export const useCommunityStore = defineStore('community', () => {
     if (patch.community !== undefined) dbPatch.community = patch.community
     if (patch.fds !== undefined) dbPatch.fds = patch.fds
     if (patch.publishDate !== undefined) dbPatch.publish_date = patch.publishDate
+    if (patch.sectionId !== undefined) dbPatch.section_id = patch.sectionId
 
     quietRealtime()
     const { error: updateError } = await supabase
@@ -202,6 +226,7 @@ export const useCommunityStore = defineStore('community', () => {
 
     if (updateError) {
       error.value = updateError.message
+      toast.error(updateError.message)
       return
     }
 
@@ -212,6 +237,7 @@ export const useCommunityStore = defineStore('community', () => {
   }
 
   async function remove(id: string) {
+    const toast = useToastStore()
     quietRealtime()
     const { error: deleteError } = await supabase
       .from('community_contents')
@@ -220,6 +246,7 @@ export const useCommunityStore = defineStore('community', () => {
 
     if (deleteError) {
       error.value = deleteError.message
+      toast.error(deleteError.message)
       return
     }
 
@@ -230,13 +257,16 @@ export const useCommunityStore = defineStore('community', () => {
   return {
     items,
     selectedId,
+    activeSectionId,
     selected,
+    sectionItems,
     byPublishDate,
     loading,
     error,
     init,
     reset,
     load,
+    setActiveSection,
     open,
     close,
     create,

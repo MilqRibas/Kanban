@@ -60,9 +60,19 @@ export const useBoardStore = defineStore('board', () => {
   const members = ref<Member[]>([])
   const selectedCardId = ref<string | null>(null)
   const memberFilterId = ref<string | null>(null)
+  const labelFilterId = ref<string | null>(null)
   const searchQuery = ref('')
-  /** manual | dueAsc | dueDesc */
-  const dateSortMode = ref<'manual' | 'dueAsc' | 'dueDesc'>('manual')
+  /** Sort por coluna: manual | dueAsc | dueDesc */
+  const dateSortByColumn = ref<Record<string, 'manual' | 'dueAsc' | 'dueDesc'>>(
+    {},
+  )
+  /** @deprecated use dateSortByColumn — mantido só para leitura agregada */
+  const dateSortMode = computed(() => {
+    const modes = Object.values(dateSortByColumn.value)
+    if (!modes.length) return 'manual' as const
+    const first = modes[0]
+    return modes.every((mode) => mode === first) ? first : 'manual'
+  })
   const loading = ref(false)
   const ready = ref(false)
   const error = ref<string | null>(null)
@@ -113,6 +123,11 @@ export const useBoardStore = defineStore('board', () => {
         card.memberIds.includes(memberFilterId.value!),
       )
     }
+    if (labelFilterId.value) {
+      list = list.filter((card) =>
+        card.labelIds.includes(labelFilterId.value!),
+      )
+    }
     const query = searchQuery.value.trim().toLowerCase()
     if (!query) return list
     return list.filter((card) => {
@@ -136,21 +151,38 @@ export const useBoardStore = defineStore('board', () => {
     searchQuery.value = value
   }
 
+  function getColumnDateSort(columnId: string) {
+    return dateSortByColumn.value[columnId] ?? 'manual'
+  }
+
+  function cycleColumnDateSort(columnId: string) {
+    const current = getColumnDateSort(columnId)
+    const next =
+      current === 'manual' ? 'dueAsc' : current === 'dueAsc' ? 'dueDesc' : 'manual'
+    dateSortByColumn.value = {
+      ...dateSortByColumn.value,
+      [columnId]: next,
+    }
+  }
+
+  /** @deprecated use cycleColumnDateSort */
   function cycleDateSortMode() {
-    if (dateSortMode.value === 'manual') dateSortMode.value = 'dueAsc'
-    else if (dateSortMode.value === 'dueAsc') dateSortMode.value = 'dueDesc'
-    else dateSortMode.value = 'manual'
+    const firstColumn = sortedColumns.value[0]
+    if (firstColumn) cycleColumnDateSort(firstColumn.id)
   }
 
   function setDateSortMode(mode: 'manual' | 'dueAsc' | 'dueDesc') {
-    dateSortMode.value = mode
+    const next: Record<string, 'manual' | 'dueAsc' | 'dueDesc'> = {}
+    for (const column of columns.value) next[column.id] = mode
+    dateSortByColumn.value = next
   }
 
-  function sortCardsForColumn(list: Card[]) {
-    if (dateSortMode.value === 'manual') {
+  function sortCardsForColumn(columnId: string, list: Card[]) {
+    const mode = getColumnDateSort(columnId)
+    if (mode === 'manual') {
       return [...list].sort((a, b) => a.position - b.position)
     }
-    const dir = dateSortMode.value === 'dueAsc' ? 1 : -1
+    const dir = mode === 'dueAsc' ? 1 : -1
     return [...list].sort((a, b) => {
       const aDate = a.dueDate ?? a.startDate
       const bDate = b.dueDate ?? b.startDate
@@ -173,7 +205,7 @@ export const useBoardStore = defineStore('board', () => {
       map[card.columnId].push(card)
     }
     for (const columnId of Object.keys(map)) {
-      map[columnId] = sortCardsForColumn(map[columnId])
+      map[columnId] = sortCardsForColumn(columnId, map[columnId])
     }
     return map
   })
@@ -468,7 +500,9 @@ export const useBoardStore = defineStore('board', () => {
     members.value = []
     selectedCardId.value = null
     memberFilterId.value = null
+    labelFilterId.value = null
     searchQuery.value = ''
+    dateSortByColumn.value = {}
     ready.value = false
     error.value = null
   }
@@ -476,6 +510,17 @@ export const useBoardStore = defineStore('board', () => {
   function setMemberFilter(memberId: string | null) {
     memberFilterId.value = memberId
   }
+
+  function setLabelFilter(labelId: string | null) {
+    labelFilterId.value = labelId
+  }
+
+  const activeLabelFilter = computed(
+    () =>
+      labelFilterId.value
+        ? (labels.value.find((label) => label.id === labelFilterId.value) ?? null)
+        : null,
+  )
 
   async function addMember(name: string) {
     const trimmed = name.trim()
@@ -1103,6 +1148,7 @@ export const useBoardStore = defineStore('board', () => {
       return false
     }
     labels.value = labels.value.filter((label) => label.id !== labelId)
+    if (labelFilterId.value === labelId) labelFilterId.value = null
     for (const card of cards.value) {
       if (card.labelIds.includes(labelId)) {
         card.labelIds = card.labelIds.filter((id) => id !== labelId)
@@ -1498,9 +1544,12 @@ export const useBoardStore = defineStore('board', () => {
     selectedCardId,
     selectedCard,
     memberFilterId,
+    labelFilterId,
     searchQuery,
     dateSortMode,
+    dateSortByColumn,
     activeMemberFilter,
+    activeLabelFilter,
     sortedColumns,
     cardsByColumn,
     cardsWithDueDate,
@@ -1515,7 +1564,10 @@ export const useBoardStore = defineStore('board', () => {
     getMembersForCard,
     getMemberById,
     setMemberFilter,
+    setLabelFilter,
     setSearchQuery,
+    getColumnDateSort,
+    cycleColumnDateSort,
     cycleDateSortMode,
     setDateSortMode,
     addMember,

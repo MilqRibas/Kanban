@@ -534,7 +534,7 @@ function renderCommentBody(body: string) {
   <Teleport to="body">
     <div
       v-if="card"
-      class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+      class="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6"
       role="dialog"
       aria-modal="true"
       :aria-label="card.title"
@@ -547,10 +547,16 @@ function renderCommentBody(body: string) {
       />
 
       <article
-        class="relative z-10 flex max-h-[min(92vh,900px)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-board-elevated/95 shadow-2xl shadow-black/50 backdrop-blur-md"
+        class="relative z-10 flex max-h-[min(94dvh,900px)] w-full max-w-5xl flex-col overflow-hidden rounded-t-2xl border border-white/10 bg-board-elevated/95 shadow-2xl shadow-black/50 backdrop-blur-md sm:rounded-2xl"
         tabindex="-1"
         ref="modalRef"
       >
+        <div
+          class="flex shrink-0 justify-center pt-2 sm:hidden"
+          aria-hidden="true"
+        >
+          <span class="h-1 w-10 rounded-full bg-white/25" />
+        </div>
         <div class="flex min-h-0 flex-1 flex-col lg:flex-row">
           <div class="flex min-h-0 min-w-0 flex-1 flex-col">
             <header class="flex shrink-0 items-start gap-3 px-5 pb-3 pt-5 sm:px-6 sm:pt-6">

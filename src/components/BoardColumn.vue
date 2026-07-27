@@ -26,6 +26,8 @@ const menuStyle = ref<Record<string, string>>({
   left: '0px',
 })
 
+const columnSortMode = computed(() => board.getColumnDateSort(props.column.id))
+
 const columnCards = computed({
   get: () => board.cardsByColumn[props.column.id] ?? [],
   set: (value: Card[]) => board.setColumnCards(props.column.id, value),
@@ -197,20 +199,20 @@ onBeforeUnmount(() => {
         type="button"
         :class="[
           'column-menu-btn relative rounded-md p-1 transition-colors',
-          board.dateSortMode === 'manual'
+          columnSortMode === 'manual'
             ? 'text-text-muted hover:bg-column-hover hover:text-text-secondary'
             : 'bg-accent/15 text-accent hover:bg-accent/25',
         ]"
         :title="
-          board.dateSortMode === 'manual'
-            ? 'Ordenar por data'
-            : board.dateSortMode === 'dueAsc'
+          columnSortMode === 'manual'
+            ? 'Ordenar esta coluna por data'
+            : columnSortMode === 'dueAsc'
               ? 'Data: mais próxima primeiro (clique para inverter)'
               : 'Data: mais distante primeiro (clique para ordem manual)'
         "
-        aria-label="Ordenar cartões por data"
+        aria-label="Ordenar cartões desta coluna por data"
         @pointerdown.stop
-        @click.stop="board.cycleDateSortMode()"
+        @click.stop="board.cycleColumnDateSort(column.id)"
       >
         <ArrowDownUp :size="14" :stroke-width="2" />
       </button>
@@ -266,7 +268,7 @@ onBeforeUnmount(() => {
       v-model="columnCards"
       group="cards"
       item-key="id"
-      :disabled="board.dateSortMode !== 'manual'"
+      :disabled="columnSortMode !== 'manual'"
       :animation="180"
       ghost-class="card-ghost"
       drag-class="card-drag"

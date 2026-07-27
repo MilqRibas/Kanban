@@ -25,6 +25,41 @@ export const useNotificationsStore = defineStore('notifications', () => {
     ),
   )
 
+  /** Agrupa notificações semelhantes (mesmo tipo + cartão + título) */
+  const grouped = computed(() => {
+    const buckets = new Map<
+      string,
+      {
+        key: string
+        items: AppNotification[]
+        latest: AppNotification
+        unreadCount: number
+      }
+    >()
+
+    for (const item of sorted.value) {
+      const key = `${item.type}|${item.cardId ?? ''}|${item.title}`
+      const existing = buckets.get(key)
+      if (existing) {
+        existing.items.push(item)
+        if (!item.readAt) existing.unreadCount += 1
+      } else {
+        buckets.set(key, {
+          key,
+          items: [item],
+          latest: item,
+          unreadCount: item.readAt ? 0 : 1,
+        })
+      }
+    }
+
+    return [...buckets.values()]
+  })
+
+  const readCount = computed(
+    () => items.value.filter((item) => item.readAt).length,
+  )
+
   function mapRow(row: {
     id: string
     board_id: string
@@ -201,17 +236,85 @@ export const useNotificationsStore = defineStore('notifications', () => {
     }
   }
 
+  async function openGroup(group: {
+    items: AppNotification[]
+    latest: AppNotification
+  }) {
+    const unreadIds = group.items
+      .filter((item) => !item.readAt)
+      .map((item) => item.id)
+    if (unreadIds.length) {
+      const now = new Date().toISOString()
+      for (const item of group.items) {
+        if (!item.readAt) item.readAt = now
+      }
+      const ok = await persistReadAt(unreadIds, now)
+      if (!ok) await load()
+    }
+    open.value = false
+    if (group.latest.cardId) {
+      const board = useBoardStore()
+      board.openCard(group.latest.cardId)
+    }
+  }
+
+  async function clearRead() {
+    const auth = useAuthStore()
+    if (!auth.memberId) return
+    const readIds = items.value
+      .filter((item) => item.readAt)
+      .map((item) => item.id)
+    if (!readIds.length) return
+
+    quietRealtime()
+    const { error } = await supabase
+      .from('notifications')
+      .delete()
+      .in('id', readIds)
+    if (error) {
+      console.error('[notifications] falha ao limpar lidas', error.message)
+      return
+    }
+    items.value = items.value.filter((item) => !item.readAt)
+  }
+
+  async function clearOlderThanDays(days = 14) {
+    const auth = useAuthStore()
+    if (!auth.memberId) return
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
+    const oldIds = items.value
+      .filter((item) => new Date(item.createdAt).getTime() < cutoff)
+      .map((item) => item.id)
+    if (!oldIds.length) return
+
+    quietRealtime()
+    const { error } = await supabase
+      .from('notifications')
+      .delete()
+      .in('id', oldIds)
+    if (error) {
+      console.error('[notifications] falha ao limpar antigas', error.message)
+      return
+    }
+    items.value = items.value.filter((item) => !oldIds.includes(item.id))
+  }
+
   return {
     items,
     sorted,
+    grouped,
     loading,
     open,
     unreadCount,
+    readCount,
     init,
     reset,
     load,
     markRead,
     markAllRead,
     openNotification,
+    openGroup,
+    clearRead,
+    clearOlderThanDays,
   }
 })

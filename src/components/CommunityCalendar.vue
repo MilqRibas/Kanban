@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ChevronLeft, ChevronRight, Plus, X } from '@lucide/vue'
 import { useCommunityStore } from '../stores/community'
 import CommunityContentPanel from './CommunityContentPanel.vue'
@@ -8,13 +8,22 @@ const community = useCommunityStore()
 const today = new Date()
 const viewDate = ref(new Date(today.getFullYear(), today.getMonth(), 1))
 
-defineProps<{
+const props = defineProps<{
   title?: string
+  sectionId?: string | null
 }>()
 
 const emit = defineEmits<{
   back: []
 }>()
+
+watch(
+  () => props.sectionId,
+  (sectionId) => {
+    community.setActiveSection(sectionId ?? null)
+  },
+  { immediate: true },
+)
 
 const monthLabel = computed(() =>
   new Intl.DateTimeFormat('pt-BR', {
@@ -85,6 +94,7 @@ async function createOnDay(dateKey: string | null) {
   await community.create({
     publishDate: dateKey,
     title: 'Novo conteúdo',
+    sectionId: props.sectionId ?? null,
   })
 }
 </script>

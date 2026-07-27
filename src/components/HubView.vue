@@ -4,16 +4,19 @@ import {
   ChevronRight,
   ExternalLink,
   FileText,
+  GripVertical,
   KeyRound,
   Link2,
   MoreHorizontal,
   Pencil,
   Plus,
+  Star,
   StickyNote,
   Trash2,
   Users,
   X,
 } from '@lucide/vue'
+import draggable from 'vuedraggable'
 import { useCommunityStore } from '../stores/community'
 import { useHubSectionsStore } from '../stores/hubSections'
 import type { HubSection } from '../types/community'
@@ -45,6 +48,13 @@ const activeSection = computed(
       (section) => section.id === activeSectionId.value,
     ) ?? null,
 )
+
+const homeCardsModel = computed({
+  get: () => hubSections.homeCards,
+  set: (cards: HubSection[]) => {
+    void hubSections.reorderHome(cards.map((card) => card.id))
+  },
+})
 
 onMounted(async () => {
   if (!ready.value) {
@@ -225,89 +235,127 @@ async function addSection() {
         {{ hubSections.error }}
       </p>
 
-      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
-        <div
-          v-for="card in hubSections.homeCards"
-          :key="card.id"
-          class="panel-glass panel-glass-accent group relative flex min-h-[9.5rem] cursor-pointer flex-col justify-between rounded-3xl p-5 text-left transition-all hover:brightness-110 sm:min-h-[11rem] sm:p-6"
-          role="button"
-          tabindex="0"
-          :aria-label="`Abrir ${card.title}`"
-          @click="openCard(card)"
-          @keydown.enter.prevent="openCard(card)"
-        >
-          <div class="pointer-events-none">
-            <p
-              class="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-accent/90"
-            >
-              <component :is="cardIcon(card)" :size="13" />
-              {{ card.eyebrow || (card.url ? 'Link' : 'Card') }}
-            </p>
-            <h3 class="mt-2 text-lg font-semibold text-text-primary">
-              {{ card.title }}
-            </h3>
-          </div>
-
-          <div class="mt-4 flex items-end justify-between gap-2">
-            <p class="pointer-events-none line-clamp-2 text-xs text-text-muted">
-              {{ card.description || 'Sem descrição' }}
+      <draggable
+        v-model="homeCardsModel"
+        item-key="id"
+        :animation="180"
+        handle=".hub-drag-handle"
+        ghost-class="opacity-40"
+        class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3"
+      >
+        <template #item="{ element: card }">
+          <div
+            class="panel-glass panel-glass-accent group relative flex min-h-[9.5rem] cursor-pointer flex-col justify-between rounded-3xl p-5 text-left transition-all hover:brightness-110 sm:min-h-[11rem] sm:p-6"
+            role="button"
+            tabindex="0"
+            :aria-label="`Abrir ${card.title}`"
+            @click="openCard(card)"
+            @keydown.enter.prevent="openCard(card)"
+          >
+            <div class="pointer-events-none absolute right-3 top-3 flex items-center gap-1">
               <span
-                v-if="card.kind === 'folder'"
-                class="ml-1 inline-flex items-center gap-0.5"
+                v-if="card.starred"
+                class="rounded-full bg-amber-400/20 p-1 text-amber-300"
+                title="Favorito"
               >
-                <ChevronRight :size="11" class="inline" />
+                <Star :size="12" fill="currentColor" />
               </span>
-              <span
-                v-else-if="card.url"
-                class="ml-1 inline-flex items-center gap-0.5"
-              >
-                <ExternalLink :size="11" class="inline" />
-              </span>
-            </p>
+            </div>
 
-            <div class="relative shrink-0" @click.stop>
-              <button
-                type="button"
-                class="pointer-events-auto rounded-lg p-1.5 text-text-muted opacity-70 hover:bg-white/10 hover:text-text-primary group-hover:opacity-100"
-                title="Opções"
-                @click="menuId = menuId === card.id ? null : card.id"
+            <div class="pointer-events-none pr-8">
+              <p
+                class="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-accent/90"
               >
-                <MoreHorizontal :size="16" />
-              </button>
-              <div
-                v-if="menuId === card.id"
-                class="absolute bottom-full right-0 z-20 mb-1 min-w-[9.5rem] overflow-hidden rounded-xl border border-white/10 bg-board-elevated py-1 shadow-xl"
-              >
+                <component :is="cardIcon(card)" :size="13" />
+                {{ card.eyebrow || (card.url ? 'Link' : 'Card') }}
+              </p>
+              <h3 class="mt-2 text-lg font-semibold text-text-primary">
+                {{ card.title }}
+              </h3>
+            </div>
+
+            <div class="mt-4 flex items-end justify-between gap-2">
+              <p class="pointer-events-none line-clamp-2 text-xs text-text-muted">
+                {{ card.description || 'Sem descrição' }}
+                <span
+                  v-if="card.kind === 'folder'"
+                  class="ml-1 inline-flex items-center gap-0.5"
+                >
+                  <ChevronRight :size="11" class="inline" />
+                </span>
+                <span
+                  v-else-if="card.url"
+                  class="ml-1 inline-flex items-center gap-0.5"
+                >
+                  <ExternalLink :size="11" class="inline" />
+                </span>
+              </p>
+
+              <div class="relative flex shrink-0 items-center gap-0.5" @click.stop>
                 <button
                   type="button"
-                  class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-white/10 hover:text-text-primary"
-                  @click="openEditForm(card)"
+                  class="hub-drag-handle pointer-events-auto cursor-grab rounded-lg p-1.5 text-text-muted opacity-0 hover:bg-white/10 hover:text-text-primary active:cursor-grabbing group-hover:opacity-100"
+                  title="Arrastar para reordenar"
+                  aria-label="Arrastar para reordenar"
                 >
-                  <Pencil :size="14" />
-                  Editar
+                  <GripVertical :size="15" />
                 </button>
                 <button
                   type="button"
-                  class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-danger hover:bg-danger/10"
-                  @click="removeCard(card)"
+                  :class="[
+                    'pointer-events-auto rounded-lg p-1.5 transition-colors',
+                    card.starred
+                      ? 'text-amber-300 hover:bg-amber-400/15'
+                      : 'text-text-muted opacity-70 hover:bg-white/10 hover:text-text-primary group-hover:opacity-100',
+                  ]"
+                  :title="card.starred ? 'Remover dos favoritos' : 'Favoritar'"
+                  @click="hubSections.toggleStar(card.id)"
                 >
-                  <Trash2 :size="14" />
-                  Excluir
+                  <Star :size="15" :fill="card.starred ? 'currentColor' : 'none'" />
                 </button>
+                <button
+                  type="button"
+                  class="pointer-events-auto rounded-lg p-1.5 text-text-muted opacity-70 hover:bg-white/10 hover:text-text-primary group-hover:opacity-100"
+                  title="Opções"
+                  @click="menuId = menuId === card.id ? null : card.id"
+                >
+                  <MoreHorizontal :size="16" />
+                </button>
+                <div
+                  v-if="menuId === card.id"
+                  class="absolute bottom-full right-0 z-20 mb-1 min-w-[9.5rem] overflow-hidden rounded-xl border border-white/10 bg-board-elevated py-1 shadow-xl"
+                >
+                  <button
+                    type="button"
+                    class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-white/10 hover:text-text-primary"
+                    @click="openEditForm(card)"
+                  >
+                    <Pencil :size="14" />
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-danger hover:bg-danger/10"
+                    @click="removeCard(card)"
+                  >
+                    <Trash2 :size="14" />
+                    Excluir
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </template>
+      </draggable>
 
-        <button
-          type="button"
-          class="flex min-h-[9.5rem] flex-col items-center justify-center gap-2 rounded-3xl border border-dashed border-white/15 text-text-muted transition-colors hover:border-accent/40 hover:bg-white/5 hover:text-text-secondary sm:min-h-[11rem]"
-          @click="openCreateForm"
-        >
-          <Plus :size="22" />
-          <span class="text-sm font-medium">Adicionar card</span>
-        </button>
-      </div>
+      <button
+        type="button"
+        class="mt-3 flex min-h-[9.5rem] w-full flex-col items-center justify-center gap-2 rounded-3xl border border-dashed border-white/15 text-text-muted transition-colors hover:border-accent/40 hover:bg-white/5 hover:text-text-secondary sm:mt-4 sm:min-h-[11rem] sm:w-auto sm:max-w-xs"
+        @click="openCreateForm"
+      >
+        <Plus :size="22" />
+        <span class="text-sm font-medium">Adicionar card</span>
+      </button>
     </template>
 
     <template v-else-if="screen === 'conteudo'">
@@ -421,6 +469,7 @@ async function addSection() {
       v-else-if="activeSection"
       class="min-h-0 flex-1"
       :title="activeSection.title"
+      :section-id="activeSection.id"
       @back="screen = 'conteudo'"
     />
 

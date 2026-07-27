@@ -4,6 +4,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import type { Note, NoteKind } from '../types/notes'
 import { BOARD_ID, supabase } from '../lib/supabase'
 import { useAuthStore } from './auth'
+import { useToastStore } from './toast'
 
 function createId() {
   return `note-${crypto.randomUUID().slice(0, 8)}`
@@ -44,6 +45,7 @@ export const useNotesStore = defineStore('notes', () => {
 
     if (loadError) {
       error.value = loadError.message
+      useToastStore().error(loadError.message)
       loading.value = false
       return
     }
@@ -117,6 +119,7 @@ export const useNotesStore = defineStore('notes', () => {
     const auth = useAuthStore()
     if (!auth.memberId) {
       error.value = 'Faça login novamente para criar notas.'
+      useToastStore().error(error.value)
       return null
     }
     const note: Note = {
@@ -143,6 +146,7 @@ export const useNotesStore = defineStore('notes', () => {
     })
     if (insertError) {
       error.value = insertError.message
+      useToastStore().error(insertError.message)
       notes.value = notes.value.filter((item) => item.id !== note.id)
       selectedNoteId.value = notes.value[0]?.id ?? null
       return null
@@ -160,6 +164,7 @@ export const useNotesStore = defineStore('notes', () => {
     // Time B2C: qualquer membro autenticado pode editar notas do quadro
     if (!auth.memberId) {
       error.value = 'Faça login novamente para editar notas.'
+      useToastStore().error(error.value)
       return
     }
     Object.assign(note, patch, { updatedAt: new Date().toISOString() })
@@ -173,7 +178,10 @@ export const useNotesStore = defineStore('notes', () => {
         updated_at: note.updatedAt,
       })
       .eq('id', id)
-    if (updateError) error.value = updateError.message
+    if (updateError) {
+      error.value = updateError.message
+      useToastStore().error(updateError.message)
+    }
   }
 
   async function deleteNote(id: string) {
@@ -183,6 +191,7 @@ export const useNotesStore = defineStore('notes', () => {
     const auth = useAuthStore()
     if (!auth.memberId || (note.authorId && note.authorId !== auth.memberId && !auth.isAdmin)) {
       error.value = 'Só o autor (ou admin) pode excluir a nota.'
+      useToastStore().error(error.value)
       return
     }
     notes.value.splice(index, 1)
@@ -191,7 +200,10 @@ export const useNotesStore = defineStore('notes', () => {
     }
     quietRealtime()
     const { error: deleteError } = await supabase.from('notes').delete().eq('id', id)
-    if (deleteError) error.value = deleteError.message
+    if (deleteError) {
+      error.value = deleteError.message
+      useToastStore().error(deleteError.message)
+    }
   }
 
   return {

@@ -4,6 +4,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import type { DailyEntry, DailyStatus, DailyTodoItem } from '../types/daily'
 import { BOARD_ID, supabase } from '../lib/supabase'
 import { useBoardStore } from './board'
+import { useToastStore } from './toast'
 import type { Json } from '../lib/database.types'
 
 const STORAGE_KEY = 'kanban-daily-ui-v1'
@@ -131,7 +132,10 @@ export const useDailyStore = defineStore('daily', () => {
       },
       { onConflict: 'member_id,date_key' },
     )
-    if (upsertError) error.value = upsertError.message
+    if (upsertError) {
+      error.value = upsertError.message
+      useToastStore().error(upsertError.message)
+    }
   }
 
   async function loadEntries() {
@@ -144,6 +148,7 @@ export const useDailyStore = defineStore('daily', () => {
 
     if (loadError) {
       error.value = loadError.message
+      useToastStore().error(loadError.message)
       loading.value = false
       return
     }
@@ -343,6 +348,7 @@ export const useDailyStore = defineStore('daily', () => {
       !board.members.some((member) => member.id === memberId)
     ) {
       error.value = 'Membro inválido para criar tarefa.'
+      useToastStore().error(error.value)
       return null
     }
     let entry = entries.value.find(

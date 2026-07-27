@@ -12,7 +12,7 @@ import {
   UserRound,
 } from '@lucide/vue'
 import { useBoardStore } from '../stores/board'
-import { entryProgress, useDailyStore } from '../stores/dailyTodos'
+import { entryProgress, toDateKey, useDailyStore } from '../stores/dailyTodos'
 import type { DailyEntry, DailyStatus } from '../types/daily'
 import MemberAvatar from './MemberAvatar.vue'
 
@@ -112,6 +112,10 @@ const dateLabel = computed(() => {
   }).format(new Date(y, m - 1, d))
 })
 
+const isViewingToday = computed(
+  () => daily.selectedDateKey === toDateKey(new Date()),
+)
+
 function memberOf(entry: DailyEntry) {
   return board.getMemberById(entry.memberId)
 }
@@ -167,7 +171,20 @@ function submitTodo() {
         <span v-if="selectedMember"> · {{ selectedMember.name }}</span>
       </p>
 
-      <div class="ml-auto flex items-center gap-0.5 rounded-xl bg-board-elevated/90 p-1">
+      <div class="ml-auto flex items-center gap-1 rounded-xl bg-board-elevated/90 p-1">
+        <button
+          type="button"
+          :class="[
+            'rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors',
+            isViewingToday
+              ? 'bg-accent text-board'
+              : 'bg-accent/15 text-accent hover:bg-accent/25',
+          ]"
+          title="Ir para hoje"
+          @click="daily.goToday()"
+        >
+          Hoje
+        </button>
         <button
           type="button"
           class="rounded-lg p-1.5 text-text-secondary hover:bg-surface hover:text-text-primary"
@@ -275,10 +292,16 @@ function submitTodo() {
             <button
               v-if="!day.entries.length"
               type="button"
-              class="w-full rounded-xl border border-dashed border-border-subtle/60 px-2 py-6 text-center text-[11px] text-text-muted/80 transition-colors hover:border-accent/40 hover:bg-white/5 hover:text-text-secondary"
+              class="flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border-subtle/60 px-2 py-5 text-center transition-colors hover:border-accent/40 hover:bg-white/5"
               @click="openDay(day.dateKey)"
             >
-              + Adicionar tarefa
+              <Plus :size="14" class="text-text-muted" />
+              <span class="text-[11px] font-medium text-text-muted">
+                Adicionar tarefa
+              </span>
+              <span class="text-[10px] text-text-muted/70">
+                Clique para abrir o dia
+              </span>
             </button>
           </div>
         </div>

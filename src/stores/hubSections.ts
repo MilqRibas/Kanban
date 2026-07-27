@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import type { HubSection, HubSectionKind } from '../types/community'
 import { BOARD_ID, supabase } from '../lib/supabase'
+import { useToastStore } from './toast'
 
 function createId() {
   return `hub-${crypto.randomUUID().slice(0, 8)}`
@@ -29,10 +30,16 @@ function mapRow(row: Record<string, unknown>): HubSection {
     description: String(row.description ?? ''),
     eyebrow: String(row.eyebrow ?? ''),
     url: (row.url as string | null) ?? null,
+    starred: Boolean(row.starred),
     position: Number(row.position ?? 0),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   }
+}
+
+function sortHome(a: HubSection, b: HubSection) {
+  if (a.starred !== b.starred) return a.starred ? -1 : 1
+  return a.position - b.position
 }
 
 export const useHubSectionsStore = defineStore('hubSections', () => {
@@ -42,9 +49,7 @@ export const useHubSectionsStore = defineStore('hubSections', () => {
   let channel: RealtimeChannel | null = null
 
   const homeCards = computed(() =>
-    [...sections.value]
-      .filter((section) => section.parent === 'home')
-      .sort((a, b) => a.position - b.position),
+    [...sections.value].filter((section) => section.parent === 'home').sort(sortHome),
   )
 
   const conteudoSections = computed(() =>
@@ -64,6 +69,7 @@ export const useHubSectionsStore = defineStore('hubSections', () => {
 
     if (loadError) {
       error.value = loadError.message
+      useToastStore().error(loadError.message)
       loading.value = false
       return
     }
@@ -121,6 +127,7 @@ export const useHubSectionsStore = defineStore('hubSections', () => {
     eyebrow?: string
     url?: string | null
   }) {
+    const toast = useToastStore()
     const parent = params.parent ?? 'home'
     const kind = params.kind ?? (parent === 'conteudo' ? 'community_calendar' : 'note')
     const now = new Date().toISOString()
@@ -134,6 +141,7 @@ export const useHubSectionsStore = defineStore('hubSections', () => {
       description: params.description?.trim() ?? '',
       eyebrow: params.eyebrow?.trim() ?? (kind === 'link' ? 'Link' : 'Card'),
       url: params.url?.trim() || null,
+      starred: false,
       position: nextPosition(parent),
       created_at: now,
       updated_at: now,
@@ -141,10 +149,12 @@ export const useHubSectionsStore = defineStore('hubSections', () => {
     const { error: insertError } = await supabase.from('hub_sections').insert(row)
     if (insertError) {
       error.value = insertError.message
+      toast.error(insertError.message)
       return null
     }
     const section = mapRow(row)
     sections.value = [...sections.value, section]
+    toast.success('Card criado')
     return section
   }
 
@@ -156,10 +166,13 @@ export const useHubSectionsStore = defineStore('hubSections', () => {
       eyebrow: string
       url: string | null
       kind: HubSectionKind
+      starred: boolean
+      position: number
     }>,
   ) {
     const section = sections.value.find((item) => item.id === id)
     if (!section) return
+    const toast = useToastStore()
 
     const dbPatch: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
@@ -169,6 +182,8 @@ export const useHubSectionsStore = defineStore('hubSections', () => {
     if (patch.eyebrow !== undefined) dbPatch.eyebrow = patch.eyebrow.trim()
     if (patch.url !== undefined) dbPatch.url = patch.url?.trim() || null
     if (patch.kind !== undefined) dbPatch.kind = patch.kind
+    if (patch.starred !== undefined) dbPatch.starred = patch.starred
+    if (patch.position !== undefined) dbPatch.position = patch.position
 
     const { error: updateError } = await supabase
       .from('hub_sections')
@@ -177,6 +192,7 @@ export const useHubSectionsStore = defineStore('hubSections', () => {
 
     if (updateError) {
       error.value = updateError.message
+      toast.error(updateError.message)
       return
     }
 
@@ -199,13 +215,44 @@ export const useHubSectionsStore = defineStore('hubSections', () => {
     await update(id, { title })
   }
 
+  async function toggleStar(id: string) {
+    const section = sections.value.find((item) => item.id === id)
+    if (!section) return
+    await update(id, { starred: !section.starred })
+  }
+
+  async function reorderHome(orderedIds: string[]) {
+    const toast = useToastStore()
+    const now = new Date().toISOString()
+    const updates = orderedIds.map((id, index) => {
+      const section = sections.value.find((item) => item.id === id)
+      if (section) {
+        section.position = index
+        section.updatedAt = now
+      }
+      return supabase
+        .from('hub_sections')
+        .update({ position: index, updated_at: now })
+        .eq('id', id)
+    })
+    const results = await Promise.all(updates)
+    const failed = results.find((result) => result.error)
+    if (failed?.error) {
+      error.value = failed.error.message
+      toast.error(failed.error.message)
+      await load()
+    }
+  }
+
   async function remove(id: string) {
+    const toast = useToastStore()
     const { error: deleteError } = await supabase
       .from('hub_sections')
       .delete()
       .eq('id', id)
     if (deleteError) {
       error.value = deleteError.message
+      toast.error(deleteError.message)
       return false
     }
     sections.value = sections.value.filter((item) => item.id !== id)
@@ -224,6 +271,8 @@ export const useHubSectionsStore = defineStore('hubSections', () => {
     create,
     update,
     rename,
+    toggleStar,
+    reorderHome,
     remove,
   }
 })

@@ -1,5 +1,6 @@
 export interface CommunityContent {
   id: string
+  sectionId: string | null
   title: string
   body: string
   status: string
@@ -23,6 +24,7 @@ export interface HubSection {
   description: string
   eyebrow: string
   url: string | null
+  starred: boolean
   position: number
   createdAt: string
   updatedAt: string
