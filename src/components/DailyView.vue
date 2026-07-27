@@ -208,12 +208,59 @@ function isToggle(todo: DailyTodoItem) {
   return todo.kind === 'toggle'
 }
 
+function focusTodoInput(todoId: string) {
+  nextTick(() => {
+    const el = document.querySelector(
+      `[data-todo-input="${todoId}"]`,
+    ) as HTMLInputElement | null
+    el?.focus()
+    el?.select()
+  })
+}
+
+function focusChildDraft(toggleId: string) {
+  nextTick(() => {
+    const el = document.querySelector(
+      `[data-child-draft="${toggleId}"]`,
+    ) as HTMLInputElement | null
+    el?.focus()
+  })
+}
+
+function onToggleTitleEnter(todo: DailyTodoItem, event: KeyboardEvent) {
+  event.preventDefault()
+  const value = (event.target as HTMLInputElement).value
+  daily.updateTodoText(todo.id, value)
+  daily.expandToggle(todo.id)
+  focusChildDraft(todo.id)
+}
+
+function onChildItemEnter(
+  toggleId: string,
+  child: DailyTodoItem,
+  event: KeyboardEvent,
+) {
+  event.preventDefault()
+  const value = (event.target as HTMLInputElement).value
+  daily.updateTodoText(child.id, value)
+
+  if (!value.trim()) {
+    daily.removeTodo(child.id)
+    focusChildDraft(toggleId)
+    return
+  }
+
+  const created = daily.addTodo('', toggleId, { afterId: child.id })
+  if (created) focusTodoInput(created.id)
+}
+
 function submitTodo(parentToggleId?: string | null) {
   if (parentToggleId) {
     const text = (childDrafts.value[parentToggleId] ?? '').trim()
     if (!text) return
     daily.addTodo(text, parentToggleId)
     childDrafts.value[parentToggleId] = ''
+    nextTick(() => focusChildDraft(parentToggleId))
     return
   }
   daily.addTodo(newTodoText.value)
@@ -223,7 +270,10 @@ function submitTodo(parentToggleId?: string | null) {
 
 function addToggleList() {
   addBlockMenuOpen.value = false
-  daily.addToggle('Nova lista')
+  const toggle = daily.addToggle('Nova lista')
+  if (toggle) {
+    nextTick(() => focusTodoInput(toggle.id))
+  }
 }
 
 function addTaskFromMenu() {
@@ -743,6 +793,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
                 <input
                   :value="todo.text"
                   type="text"
+                  :data-todo-input="todo.id"
                   class="min-w-0 flex-1 bg-transparent text-sm font-medium text-text-primary outline-none"
                   @change="
                     daily.updateTodoText(
@@ -750,6 +801,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
                       ($event.target as HTMLInputElement).value,
                     )
                   "
+                  @keydown.enter.prevent="onToggleTitleEnter(todo, $event)"
                 />
                 <button
                   type="button"
@@ -782,6 +834,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
                   <input
                     :value="child.text"
                     type="text"
+                    :data-todo-input="child.id"
                     :class="[
                       'min-w-0 flex-1 bg-transparent text-sm outline-none',
                       child.completed
@@ -793,6 +846,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
                         child.id,
                         ($event.target as HTMLInputElement).value,
                       )
+                    "
+                    @keydown.enter.prevent="
+                      onChildItemEnter(todo.id, child, $event)
                     "
                   />
                   <button
@@ -814,6 +870,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
                     <input
                       v-model="childDrafts[todo.id]"
                       type="text"
+                      :data-child-draft="todo.id"
                       placeholder="Item nesta lista…"
                       class="min-w-0 flex-1 bg-transparent py-1.5 text-sm text-text-primary outline-none placeholder:text-text-muted"
                     />

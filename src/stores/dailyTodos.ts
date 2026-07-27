@@ -531,11 +531,38 @@ export const useDailyStore = defineStore('daily', () => {
     schedulePersist(entry)
   }
 
-  function addTodo(text: string, parentToggleId?: string | null) {
-    const trimmed = text.trim()
-    if (!trimmed) return
+  function toggleCollapse(todoId: string) {
     const entry = ensureEntry()
     if (!entry) return
+    const todo = findTodo(entry.todos, todoId)
+    if (!todo || todo.kind !== 'toggle') return
+    todo.collapsed = !todo.collapsed
+    entry.updatedAt = new Date().toISOString()
+    schedulePersist(entry)
+  }
+
+  function expandToggle(todoId: string) {
+    const entry = ensureEntry()
+    if (!entry) return
+    const todo = findTodo(entry.todos, todoId)
+    if (!todo || todo.kind !== 'toggle') return
+    if (!todo.collapsed) return
+    todo.collapsed = false
+    entry.updatedAt = new Date().toISOString()
+    schedulePersist(entry)
+  }
+
+  function addTodo(
+    text: string,
+    parentToggleId?: string | null,
+    options?: { afterId?: string },
+  ) {
+    const trimmed = text.trim()
+    // Permite item vazio ao criar linha com Enter (estilo Notion)
+    const allowEmpty = Boolean(parentToggleId && options?.afterId !== undefined)
+    if (!trimmed && !allowEmpty) return null
+    const entry = ensureEntry()
+    if (!entry) return null
     const todo: DailyTodoItem = {
       id: createId('td'),
       text: trimmed,
@@ -545,9 +572,16 @@ export const useDailyStore = defineStore('daily', () => {
 
     if (parentToggleId) {
       const parent = findTodo(entry.todos, parentToggleId)
-      if (!parent || parent.kind !== 'toggle') return
+      if (!parent || parent.kind !== 'toggle') return null
       if (!parent.children) parent.children = []
-      parent.children.push(todo)
+      const afterId = options?.afterId
+      if (afterId) {
+        const index = parent.children.findIndex((child) => child.id === afterId)
+        if (index >= 0) parent.children.splice(index + 1, 0, todo)
+        else parent.children.push(todo)
+      } else {
+        parent.children.push(todo)
+      }
       parent.collapsed = false
     } else {
       entry.todos.push(todo)
@@ -556,6 +590,7 @@ export const useDailyStore = defineStore('daily', () => {
     entry.updatedAt = new Date().toISOString()
     if (entry.status === 'done') entry.status = 'in_progress'
     schedulePersist(entry)
+    return todo
   }
 
   function addToggle(text = 'Nova lista') {
@@ -573,16 +608,6 @@ export const useDailyStore = defineStore('daily', () => {
     entry.updatedAt = new Date().toISOString()
     schedulePersist(entry)
     return toggle
-  }
-
-  function toggleCollapse(todoId: string) {
-    const entry = ensureEntry()
-    if (!entry) return
-    const todo = findTodo(entry.todos, todoId)
-    if (!todo || todo.kind !== 'toggle') return
-    todo.collapsed = !todo.collapsed
-    entry.updatedAt = new Date().toISOString()
-    schedulePersist(entry)
   }
 
   function toggleTodo(todoId: string) {
@@ -653,6 +678,7 @@ export const useDailyStore = defineStore('daily', () => {
     addTodo,
     addToggle,
     toggleCollapse,
+    expandToggle,
     toggleTodo,
     updateTodoText,
     removeTodo,
