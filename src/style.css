@@ -44,6 +44,16 @@
     box-sizing: border-box;
   }
 
+  /* Scroll vertical invisível em toda a app (ainda funciona o scroll) */
+  * {
+    scrollbar-width: none;
+  }
+
+  *::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+
   /* Área de conteúdo padronizada (Agenda / Tarefas) */
   .page-shell {
     width: min(100% - 1.5rem, 85%);
@@ -57,32 +67,30 @@
     }
   }
 
-  /* Quadro: colunas centralizadas + scroll horizontal quando passam da tela */
+  /* Quadro: só o scroll horizontal inferior, bem discreto */
   .board-scroll {
     scroll-padding-inline: 1.5rem;
-    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(125, 144, 164, 0.35) transparent;
   }
 
   .board-scroll::-webkit-scrollbar {
-    height: 12px;
+    width: 0;
+    height: 5px;
   }
 
   .board-scroll::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.04);
-    border-radius: 999px;
-    margin-inline: 1.5rem;
+    background: transparent;
+    margin-inline: 2rem;
   }
 
   .board-scroll::-webkit-scrollbar-thumb {
-    background: #5a7189;
+    background: rgba(125, 144, 164, 0.35);
     border-radius: 999px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
   }
 
   .board-scroll::-webkit-scrollbar-thumb:hover {
-    background: #7d90a4;
-    background-clip: padding-box;
+    background: rgba(125, 144, 164, 0.55);
   }
 
   .board-track {
