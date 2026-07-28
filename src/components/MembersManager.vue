@@ -3,6 +3,7 @@ import { computed, nextTick, ref } from 'vue'
 import { Loader2, Mail, Trash2, X } from '@lucide/vue'
 import { useBoardStore } from '../stores/board'
 import { useAuthStore } from '../stores/auth'
+import { useEscapeKey } from '../composables/useEscapeKey'
 import MemberAvatar from './MemberAvatar.vue'
 
 const board = useBoardStore()
@@ -18,6 +19,10 @@ const inviteLink = ref<string | null>(null)
 const emailInputRef = ref<HTMLInputElement | null>(null)
 
 const canManageRemovals = computed(() => auth.isAdmin)
+
+useEscapeKey(open, () => {
+  if (open.value) closeModal()
+})
 
 function canRemove(memberId: string) {
   if (!auth.isAdmin) return false

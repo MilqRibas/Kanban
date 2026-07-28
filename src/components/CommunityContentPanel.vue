@@ -17,6 +17,7 @@ import {
 import { useCommunityStore } from '../stores/community'
 import { CONTENT_STATUS_OPTIONS } from '../types/community'
 import { renderMarkdown, wrapSelection } from '../lib/markdown'
+import { useEscapeKey } from '../composables/useEscapeKey'
 
 const community = useCommunityStore()
 const draftTitle = ref('')
@@ -26,6 +27,21 @@ const showMoreProps = ref(false)
 const statusOpen = ref(false)
 const menuOpen = ref(false)
 const bodyRef = ref<HTMLTextAreaElement | null>(null)
+
+useEscapeKey(
+  () => Boolean(community.selected),
+  () => {
+    if (menuOpen.value) {
+      menuOpen.value = false
+      return
+    }
+    if (statusOpen.value) {
+      statusOpen.value = false
+      return
+    }
+    community.close()
+  },
+)
 
 const STATUS_STYLES: Record<string, string> = {
   Rascunho: 'bg-white/10 text-text-secondary',
@@ -155,7 +171,7 @@ function emptyLabel(value: string) {
       />
 
       <div
-        class="panel-glass relative z-10 flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl shadow-2xl shadow-black/50"
+        class="panel-glass relative z-10 flex h-[min(88dvh,820px)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl shadow-2xl shadow-black/50"
       >
         <!-- Top bar -->
         <div class="flex shrink-0 items-center justify-between gap-3 px-5 pb-2 pt-4">

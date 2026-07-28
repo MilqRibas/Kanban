@@ -37,6 +37,7 @@ const fullDescription = computed(() =>
 )
 
 const CARD_DESC_PREVIEW = 100
+const CARD_DESC_HOVER = 180
 
 function truncateText(text: string, limit: number) {
   if (text.length <= limit) return text
@@ -45,6 +46,10 @@ function truncateText(text: string, limit: number) {
 
 const previewDescription = computed(() =>
   truncateText(fullDescription.value, CARD_DESC_PREVIEW),
+)
+
+const hoverDescription = computed(() =>
+  truncateText(fullDescription.value, CARD_DESC_HOVER),
 )
 
 const checklistProgress = computed(() => {
@@ -101,13 +106,13 @@ async function onToggleDone(event: Event) {
 
 <template>
   <article
-    class="group flex min-h-[9rem] cursor-pointer flex-col rounded-xl border border-white/10 bg-card p-3 shadow-md shadow-black/25 transition-colors hover:border-white/15 hover:bg-card-hover"
+    class="group cursor-pointer rounded-xl border border-white/10 bg-card p-3 shadow-md shadow-black/25 transition-colors hover:border-white/15 hover:bg-card-hover"
     role="button"
     tabindex="0"
     @click="board.openCard(card.id)"
     @keydown.enter="board.openCard(card.id)"
   >
-    <div class="mb-2 flex min-h-[0.375rem] flex-wrap gap-1.5 pl-7">
+    <div v-if="labels.length" class="mb-2 flex flex-wrap gap-1.5 pl-7">
       <span
         v-for="label in labels"
         :key="label.id"
@@ -117,7 +122,7 @@ async function onToggleDone(event: Event) {
       />
     </div>
 
-    <div class="flex min-h-0 flex-1 items-start gap-2">
+    <div class="flex items-start gap-2">
       <button
         type="button"
         :title="
@@ -139,26 +144,31 @@ async function onToggleDone(event: Event) {
         <Check :size="11" :stroke-width="3" />
       </button>
 
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div class="min-w-0 flex-1">
         <h3
           :class="[
-            'line-clamp-2 min-h-[2.5rem] text-[15px] font-semibold leading-snug',
+            'text-[15px] font-semibold leading-snug',
             isDone ? 'text-text-muted line-through' : 'text-text-primary',
           ]"
-          :title="card.title"
         >
           {{ card.title }}
         </h3>
 
-        <p
-          class="mt-1 line-clamp-2 min-h-[2.125rem] text-[11px] leading-relaxed text-text-muted"
-          :title="fullDescription || undefined"
-        >
-          {{ previewDescription || '\u00A0' }}
-        </p>
+        <div v-if="fullDescription" class="mt-1 text-[11px] leading-relaxed text-text-muted">
+          <p class="line-clamp-2 group-hover:hidden" :title="fullDescription">
+            {{ previewDescription }}
+          </p>
+          <p
+            class="hidden line-clamp-4 group-hover:block"
+            :title="fullDescription"
+          >
+            {{ hoverDescription }}
+          </p>
+        </div>
 
         <div
-          class="mt-2 flex min-h-[1.375rem] flex-wrap items-center gap-2 text-text-muted"
+          v-if="checklistProgress || card.comments.length || card.attachments.length"
+          class="mt-2.5 flex flex-wrap items-center gap-2 text-text-muted"
         >
           <span
             v-if="card.comments.length"
@@ -190,7 +200,8 @@ async function onToggleDone(event: Event) {
         </div>
 
         <footer
-          class="mt-auto flex min-h-[1.75rem] items-center gap-2 border-t border-white/10 pt-2.5"
+          v-if="dateMeta || members.length"
+          class="mt-3 flex items-center gap-2 border-t border-white/10 pt-2.5"
         >
           <span
             v-if="dateMeta"

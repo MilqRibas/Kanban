@@ -9,6 +9,7 @@ import LabelFilterSelect from './LabelFilterSelect.vue'
 import NotificationCenter from './NotificationCenter.vue'
 import HeaderSearch from './HeaderSearch.vue'
 import ArchivedCardsModal from './ArchivedCardsModal.vue'
+import { useEscapeKey } from '../composables/useEscapeKey'
 import logoSxB2c from '../assets/brand/sx-b2c.svg'
 
 const board = useBoardStore()
@@ -16,6 +17,10 @@ const auth = useAuthStore()
 const membersManager = ref<{ openModal: () => void } | null>(null)
 const archivedModal = ref<{ openModal: () => void } | null>(null)
 const menuOpen = ref(false)
+
+useEscapeKey(menuOpen, () => {
+  menuOpen.value = false
+})
 
 async function onAvatarChange(event: Event) {
   const input = event.target as HTMLInputElement

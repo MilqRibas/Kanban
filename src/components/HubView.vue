@@ -20,6 +20,7 @@ import draggable from 'vuedraggable'
 import { useCommunityStore } from '../stores/community'
 import { useHubSectionsStore } from '../stores/hubSections'
 import type { HubSection } from '../types/community'
+import { useEscapeKey } from '../composables/useEscapeKey'
 import CommunityCalendar from './CommunityCalendar.vue'
 
 const ACCESS_SHEET_URL =
@@ -164,6 +165,10 @@ function closeForm() {
   formOpen.value = false
   editingId.value = null
 }
+
+useEscapeKey(formOpen, () => {
+  if (formOpen.value) closeForm()
+})
 
 async function saveForm() {
   const title = draftTitle.value.trim()

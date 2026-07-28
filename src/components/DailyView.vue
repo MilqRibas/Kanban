@@ -609,7 +609,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
           />
 
           <section
-            class="panel-glass relative z-10 mb-[4.75rem] flex max-h-[min(88dvh,900px)] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-white/10 shadow-2xl shadow-black/50 sm:mb-0 sm:max-h-[min(92dvh,900px)] sm:rounded-2xl"
+            class="panel-glass relative z-10 mb-[4.75rem] flex h-[min(88dvh,820px)] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-white/10 shadow-2xl shadow-black/50 sm:mb-0 sm:rounded-2xl"
           >
             <div
               class="flex shrink-0 justify-center pt-2 sm:hidden"

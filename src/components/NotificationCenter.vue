@@ -3,10 +3,18 @@ import { computed } from 'vue'
 import { Bell, CheckCheck, Trash2 } from '@lucide/vue'
 import { useNotificationsStore } from '../stores/notifications'
 import { useBoardStore } from '../stores/board'
+import { useEscapeKey } from '../composables/useEscapeKey'
 import MemberAvatar from './MemberAvatar.vue'
 
 const notifications = useNotificationsStore()
 const board = useBoardStore()
+
+useEscapeKey(
+  () => notifications.open,
+  () => {
+    notifications.open = false
+  },
+)
 
 const fallback = {
   name: 'Usuário',
