@@ -177,8 +177,63 @@ const rangeTotals = computed(() => {
 })
 
 const maxDone = computed(() =>
-  Math.max(1, ...chartBars.value.map((bar) => bar.done)),
+  Math.max(0, ...chartBars.value.map((bar) => bar.done)),
 )
+
+const chartScale = computed(() => {
+  const peak = Math.max(
+    1,
+    ...chartBars.value.map((bar) => Math.max(bar.done, bar.total)),
+  )
+  // Arredonda para escala legível (múltiplos de 2/5/10)
+  if (peak <= 4) return 4
+  if (peak <= 8) return 8
+  if (peak <= 12) return 12
+  if (peak <= 20) return Math.ceil(peak / 5) * 5
+  return Math.ceil(peak / 10) * 10
+})
+
+const chartSvg = computed(() => {
+  const bars = chartBars.value
+  const n = Math.max(bars.length, 1)
+  const width = 720
+  const height = 240
+  const pad = { top: 28, right: 16, bottom: 48, left: 40 }
+  const plotW = width - pad.left - pad.right
+  const plotH = height - pad.top - pad.bottom
+  const maxY = chartScale.value
+  const slot = plotW / n
+  const barW = Math.min(42, Math.max(18, slot * 0.52))
+  const tickCount = 4
+  const ticks = Array.from({ length: tickCount + 1 }, (_, i) =>
+    Math.round((maxY * i) / tickCount),
+  )
+
+  return {
+    width,
+    height,
+    pad,
+    plotH,
+    maxY,
+    ticks,
+    bars: bars.map((bar, index) => {
+      const centerX = pad.left + slot * index + slot / 2
+      const totalH = bar.total > 0 ? (bar.total / maxY) * plotH : 0
+      const doneH = bar.done > 0 ? (bar.done / maxY) * plotH : 0
+      return {
+        ...bar,
+        centerX,
+        barW,
+        x: centerX - barW / 2,
+        totalY: pad.top + plotH - totalH,
+        totalH: Math.max(totalH, bar.total > 0 ? 4 : 0),
+        doneY: pad.top + plotH - doneH,
+        doneH: Math.max(doneH, bar.done > 0 ? 4 : 0),
+        valueY: pad.top + plotH - Math.max(doneH, totalH) - 8,
+      }
+    }),
+  }
+})
 
 const chartTitle = computed(() => {
   if (range.value === 'daily') return 'Concluídas nos últimos 7 dias'
@@ -193,6 +248,10 @@ const periodHint = computed(() => {
   if (range.value === 'weekly') return 'Período'
   return 'Período'
 })
+
+const hasChartData = computed(() =>
+  chartBars.value.some((bar) => bar.total > 0 || bar.done > 0),
+)
 </script>
 
 <template>
@@ -285,66 +344,152 @@ const periodHint = computed(() => {
           </span>
         </div>
         <p class="mt-2 text-2xl font-semibold tabular-nums text-text-primary">
-          {{ maxDone === 1 && chartBars.every((b) => b.done === 0) ? 0 : maxDone }}
+          {{ maxDone }}
         </p>
         <p class="mt-0.5 text-xs text-text-muted">máx. no gráfico</p>
       </div>
     </div>
 
     <div class="panel-glass rounded-2xl p-4 sm:p-5">
-      <div class="mb-4 flex items-center justify-between gap-2">
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h4 class="text-sm font-semibold text-text-primary">
           {{ chartTitle }}
         </h4>
-        <p class="text-[11px] text-text-muted">
-          <span class="inline-block size-2 rounded-full bg-accent align-middle" />
-          concluídas
-        </p>
-      </div>
-
-      <div
-        class="flex h-44 items-end gap-1.5 sm:h-52 sm:gap-2"
-        role="img"
-        :aria-label="chartTitle"
-      >
-        <div
-          v-for="bar in chartBars"
-          :key="bar.key"
-          class="group flex min-w-0 flex-1 flex-col items-center justify-end gap-1.5"
-        >
-          <span
-            class="text-[10px] font-medium tabular-nums text-text-muted opacity-0 transition-opacity group-hover:opacity-100 sm:text-[11px]"
-          >
-            {{ bar.done }}
+        <div class="flex items-center gap-3 text-[11px] text-text-muted">
+          <span class="inline-flex items-center gap-1.5">
+            <span class="inline-block size-2.5 rounded-sm bg-white/15" />
+            total
           </span>
-          <div
-            class="relative flex w-full max-w-[2.75rem] flex-1 items-end justify-center"
-          >
-            <div
-              class="w-full rounded-t-md bg-accent/85 transition-[height] duration-300 ease-out group-hover:bg-accent"
-              :style="{
-                height: `${Math.max(bar.done ? 8 : 2, (bar.done / maxDone) * 100)}%`,
-              }"
-              :title="`${bar.label}: ${bar.done}/${bar.total} (${bar.percent}%)`"
-            />
-          </div>
-          <div class="text-center leading-tight">
-            <p class="truncate text-[10px] font-medium capitalize text-text-secondary sm:text-[11px]">
-              {{ bar.label }}
-            </p>
-            <p
-              v-if="bar.sublabel"
-              class="truncate text-[9px] text-text-muted sm:text-[10px]"
-            >
-              {{ bar.sublabel }}
-            </p>
-          </div>
+          <span class="inline-flex items-center gap-1.5">
+            <span class="inline-block size-2.5 rounded-sm bg-accent" />
+            concluídas
+          </span>
         </div>
       </div>
 
+      <div class="relative w-full overflow-hidden" role="img" :aria-label="chartTitle">
+        <svg
+          class="h-56 w-full sm:h-64"
+          :viewBox="`0 0 ${chartSvg.width} ${chartSvg.height}`"
+          preserveAspectRatio="xMidYMid meet"
+        >
+          <!-- Grade horizontal -->
+          <g>
+            <line
+              v-for="tick in chartSvg.ticks"
+              :key="`grid-${tick}`"
+              :x1="chartSvg.pad.left"
+              :x2="chartSvg.width - chartSvg.pad.right"
+              :y1="
+                chartSvg.pad.top +
+                chartSvg.plotH -
+                (tick / chartSvg.maxY) * chartSvg.plotH
+              "
+              :y2="
+                chartSvg.pad.top +
+                chartSvg.plotH -
+                (tick / chartSvg.maxY) * chartSvg.plotH
+              "
+              stroke="rgba(255,255,255,0.06)"
+              stroke-width="1"
+            />
+            <text
+              v-for="tick in chartSvg.ticks"
+              :key="`label-${tick}`"
+              :x="chartSvg.pad.left - 8"
+              :y="
+                chartSvg.pad.top +
+                chartSvg.plotH -
+                (tick / chartSvg.maxY) * chartSvg.plotH +
+                4
+              "
+              text-anchor="end"
+              fill="#7d90a4"
+              font-size="11"
+            >
+              {{ tick }}
+            </text>
+          </g>
+
+          <!-- Barras -->
+          <g v-for="bar in chartSvg.bars" :key="bar.key">
+            <!-- Total (fundo) -->
+            <rect
+              v-if="bar.totalH > 0"
+              :x="bar.x"
+              :y="bar.totalY"
+              :width="bar.barW"
+              :height="bar.totalH"
+              rx="6"
+              ry="6"
+              fill="rgba(255,255,255,0.1)"
+            />
+            <!-- Concluídas -->
+            <rect
+              v-if="bar.doneH > 0"
+              :x="bar.x"
+              :y="bar.doneY"
+              :width="bar.barW"
+              :height="bar.doneH"
+              rx="6"
+              ry="6"
+              fill="#39bcff"
+            >
+              <title>
+                {{ bar.label }}: {{ bar.done }}/{{ bar.total }} ({{ bar.percent }}%)
+              </title>
+            </rect>
+            <!-- Placeholder quando vazio -->
+            <rect
+              v-if="bar.totalH === 0 && bar.doneH === 0"
+              :x="bar.x"
+              :y="chartSvg.pad.top + chartSvg.plotH - 4"
+              :width="bar.barW"
+              height="4"
+              rx="2"
+              ry="2"
+              fill="rgba(255,255,255,0.06)"
+            />
+            <!-- Valor no topo -->
+            <text
+              v-if="bar.done > 0"
+              :x="bar.centerX"
+              :y="bar.valueY"
+              text-anchor="middle"
+              fill="#a8b9cb"
+              font-size="11"
+              font-weight="600"
+            >
+              {{ bar.done }}
+            </text>
+            <!-- Labels do eixo X -->
+            <text
+              :x="bar.centerX"
+              :y="chartSvg.height - 22"
+              text-anchor="middle"
+              fill="#a8b9cb"
+              font-size="11"
+              class="capitalize"
+            >
+              {{ bar.label }}
+            </text>
+            <text
+              v-if="bar.sublabel"
+              :x="bar.centerX"
+              :y="chartSvg.height - 8"
+              text-anchor="middle"
+              fill="#7d90a4"
+              font-size="10"
+            >
+              {{ bar.sublabel }}
+            </text>
+          </g>
+        </svg>
+      </div>
+
       <p
-        v-if="rangeTotals.total === 0 && todayStats.total === 0"
-        class="mt-4 text-center text-xs text-text-muted"
+        v-if="!hasChartData"
+        class="mt-1 text-center text-xs text-text-muted"
       >
         Sem tarefas registradas neste período. Crie afazeres na aba Tarefas.
       </p>
