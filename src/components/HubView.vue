@@ -22,6 +22,7 @@ import { useHubSectionsStore } from '../stores/hubSections'
 import type { HubSection } from '../types/community'
 import { useEscapeKey } from '../composables/useEscapeKey'
 import CommunityCalendar from './CommunityCalendar.vue'
+import HubMetrics from './HubMetrics.vue'
 
 const ACCESS_SHEET_URL =
   'https://netorgft12516109.sharepoint.com/:x:/r/sites/B2C328/_layouts/15/Doc.aspx?action=edit&sourcedoc=%7B97cf99de-0dba-4de4-8179-53beac4a5b97%7D&wdExp=TEAMS-TREATMENT&web=1&TeamsCID=bc017502-bdfb-4487-a26e-40d7f92b691c'
@@ -271,20 +272,24 @@ async function addSection() {
       <div
         v-if="screen === 'home'"
         key="home"
-        class="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-[4.75rem] pt-2 sm:px-4 sm:pb-16 sm:pt-3"
+        class="flex min-h-0 flex-1 flex-col overflow-y-auto pb-[4.75rem] pt-2 sm:pb-16 sm:pt-3"
       >
-      <header class="mb-4 flex shrink-0 flex-wrap items-end justify-between gap-3 sm:mb-5">
+      <div class="page-shell flex flex-col gap-6 sm:gap-8">
+      <header class="flex shrink-0 flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 class="text-xl font-semibold tracking-tight text-text-primary sm:text-2xl">
+          <p class="text-[11px] font-semibold uppercase tracking-wide text-accent/90">
+            Central do time
+          </p>
+          <h2 class="mt-0.5 text-2xl font-semibold tracking-tight text-text-primary sm:text-3xl">
             HUB
           </h2>
-          <p class="mt-1 text-sm text-text-muted">
-            Crie cards livres — atalhos, links ou notas do time
+          <p class="mt-1.5 max-w-xl text-sm text-text-muted">
+            Acompanhe a produtividade e acesse atalhos, conteúdos e links do B2C
           </p>
         </div>
         <button
           type="button"
-          class="inline-flex items-center gap-1.5 rounded-xl bg-accent px-3 py-2 text-sm font-semibold text-board hover:bg-accent-hover"
+          class="inline-flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-sm font-semibold text-board hover:bg-accent-hover"
           @click="openCreateForm"
         >
           <Plus :size="16" />
@@ -292,9 +297,23 @@ async function addSection() {
         </button>
       </header>
 
-      <p v-if="hubSections.error" class="mb-3 text-xs text-red-300">
+      <p v-if="hubSections.error" class="rounded-lg border border-red-400/30 bg-red-950/40 px-3 py-2 text-xs text-red-200">
         {{ hubSections.error }}
       </p>
+
+      <HubMetrics />
+
+      <section class="space-y-3">
+        <div class="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <p class="text-[11px] font-semibold uppercase tracking-wide text-accent/90">
+              Atalhos
+            </p>
+            <h3 class="mt-0.5 text-lg font-semibold tracking-tight text-text-primary">
+              Cards do time
+            </h3>
+          </div>
+        </div>
 
       <draggable
         v-model="homeCardsModel"
@@ -304,14 +323,14 @@ async function addSection() {
         filter=".hub-card-actions"
         :prevent-on-filter="true"
         ghost-class="opacity-40"
-        class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3"
+        class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3"
         @start="onDragStart"
         @end="onDragEnd"
       >
         <template #item="{ element: card }">
           <component
             :is="cardTag(card)"
-            class="panel-glass panel-glass-accent group relative flex min-h-[9.5rem] cursor-pointer flex-col justify-between rounded-3xl p-5 text-left no-underline transition-all hover:brightness-110 sm:min-h-[11rem] sm:p-6"
+            class="panel-glass panel-glass-accent group relative flex min-h-[8.5rem] cursor-pointer flex-col justify-between rounded-2xl p-4 text-left no-underline transition-all hover:brightness-110 sm:min-h-[9.5rem] sm:p-5"
             :href="resolveCardUrl(card) ?? undefined"
             :target="resolveCardUrl(card) ? '_blank' : undefined"
             :rel="resolveCardUrl(card) ? 'noopener noreferrer' : undefined"
@@ -339,12 +358,12 @@ async function addSection() {
                 <component :is="cardIcon(card)" :size="13" />
                 {{ card.eyebrow || (resolveCardUrl(card) ? 'Link' : 'Card') }}
               </p>
-              <h3 class="mt-2 text-lg font-semibold text-text-primary">
+              <h3 class="mt-2 text-base font-semibold text-text-primary sm:text-lg">
                 {{ card.title }}
               </h3>
             </div>
 
-            <div class="mt-4 flex items-end justify-between gap-2">
+            <div class="mt-3 flex items-end justify-between gap-2">
               <p class="pointer-events-none line-clamp-2 text-xs text-text-muted">
                 {{ card.description || 'Sem descrição' }}
                 <span
@@ -423,19 +442,22 @@ async function addSection() {
 
       <button
         type="button"
-        class="mt-3 flex min-h-[9.5rem] w-full flex-col items-center justify-center gap-2 rounded-3xl border border-dashed border-white/15 text-text-muted transition-colors hover:border-accent/40 hover:bg-white/5 hover:text-text-secondary sm:mt-4 sm:min-h-[11rem] sm:w-auto sm:max-w-xs"
+        class="flex min-h-[5.5rem] w-full flex-col items-center justify-center gap-1.5 rounded-2xl border border-dashed border-white/15 text-text-muted transition-colors hover:border-accent/40 hover:bg-white/5 hover:text-text-secondary sm:min-h-[6rem]"
         @click="openCreateForm"
       >
-        <Plus :size="22" />
+        <Plus :size="18" />
         <span class="text-sm font-medium">Adicionar card</span>
       </button>
+      </section>
+      </div>
       </div>
 
       <div
         v-else-if="screen === 'conteudo'"
         key="conteudo"
-        class="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-[4.75rem] pt-2 sm:px-4 sm:pb-16 sm:pt-3"
+        class="flex min-h-0 flex-1 flex-col overflow-y-auto pb-[4.75rem] pt-2 sm:pb-16 sm:pt-3"
       >
+      <div class="page-shell">
       <header class="mb-4 shrink-0">
         <button
           type="button"
@@ -446,14 +468,19 @@ async function addSection() {
         </button>
         <div class="flex flex-wrap items-end justify-between gap-2">
           <div>
-            <h2 class="text-xl font-semibold text-text-primary">Conteúdo</h2>
+            <p class="text-[11px] font-semibold uppercase tracking-wide text-accent/90">
+              Produção
+            </p>
+            <h2 class="mt-0.5 text-xl font-semibold text-text-primary sm:text-2xl">
+              Conteúdo
+            </h2>
             <p class="mt-1 text-sm text-text-muted">
               Subdivisões — renomeie ou exclua pelo menu de cada card
             </p>
           </div>
           <button
             type="button"
-            class="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-text-secondary hover:bg-white/10 hover:text-text-primary"
+            class="inline-flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs font-medium text-text-secondary hover:bg-white/10 hover:text-text-primary"
             @click="addSection"
           >
             <Plus :size="14" />
@@ -539,6 +566,7 @@ async function addSection() {
         >
           Nenhuma subdivisão. Crie uma para organizar o calendário.
         </p>
+      </div>
       </div>
       </div>
 

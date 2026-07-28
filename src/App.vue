@@ -114,6 +114,11 @@ watch(activeTab, async (tab) => {
     daily.sanitizeDetailMember()
     dailyReady.value = true
   }
+  if (tab === 'hub' && !dailyReady.value) {
+    await daily.init()
+    daily.sanitizeDetailMember()
+    dailyReady.value = true
+  }
 })
 </script>
 
