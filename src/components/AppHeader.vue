@@ -6,6 +6,7 @@ import { useAuthStore } from '../stores/auth'
 import MembersManager from './MembersManager.vue'
 import MemberFilterSelect from './MemberFilterSelect.vue'
 import LabelFilterSelect from './LabelFilterSelect.vue'
+import DateFilterSelect from './DateFilterSelect.vue'
 import NotificationCenter from './NotificationCenter.vue'
 import HeaderSearch from './HeaderSearch.vue'
 import ArchivedCardsModal from './ArchivedCardsModal.vue'
@@ -114,6 +115,7 @@ onBeforeUnmount(() => {
     <div class="hidden min-w-0 flex-1 items-center justify-center gap-2 px-2 md:flex">
       <MemberFilterSelect compact />
       <LabelFilterSelect compact />
+      <DateFilterSelect compact />
     </div>
 
     <!-- Direita: busca + filtro mini (mobile) + notificações + avatar -->
@@ -140,6 +142,7 @@ onBeforeUnmount(() => {
       <div class="flex items-center gap-1 md:hidden">
         <MemberFilterSelect mini />
         <LabelFilterSelect mini />
+        <DateFilterSelect mini />
       </div>
 
       <NotificationCenter />

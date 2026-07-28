@@ -48,6 +48,103 @@ function asChecklists(value: Json): Checklist[] {
   }))
 }
 
+export type DateFilterMode =
+  | null
+  | 'overdue'
+  | 'today'
+  | 'week'
+  | 'month'
+  | 'withDate'
+  | 'withoutDate'
+  | 'custom'
+
+export const DATE_FILTER_OPTIONS: { id: Exclude<DateFilterMode, null | 'custom'>; label: string }[] = [
+  { id: 'overdue', label: 'Atrasadas' },
+  { id: 'today', label: 'Hoje' },
+  { id: 'week', label: 'Esta semana' },
+  { id: 'month', label: 'Este mês' },
+  { id: 'withDate', label: 'Com data' },
+  { id: 'withoutDate', label: 'Sem data' },
+]
+
+function startOfLocalDay(date = new Date()) {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function parseYmdLocal(ymd: string) {
+  const [y, m, d] = ymd.split('-').map(Number)
+  if (!y || !m || !d) return null
+  return new Date(y, m - 1, d, 0, 0, 0, 0)
+}
+
+function cardFilterDate(card: Card): Date | null {
+  const iso = card.dueDate ?? card.startDate
+  if (!iso) return null
+  return startOfLocalDay(new Date(iso))
+}
+
+function weekBounds(today = startOfLocalDay()) {
+  const day = today.getDay()
+  const mondayOffset = day === 0 ? -6 : 1 - day
+  const start = new Date(today)
+  start.setDate(today.getDate() + mondayOffset)
+  const end = new Date(start)
+  end.setDate(start.getDate() + 6)
+  return { start, end }
+}
+
+function monthBounds(today = startOfLocalDay()) {
+  const start = new Date(today.getFullYear(), today.getMonth(), 1)
+  const end = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+  return { start, end }
+}
+
+function cardMatchesDateFilter(
+  card: Card,
+  mode: DateFilterMode,
+  fromYmd: string,
+  toYmd: string,
+): boolean {
+  if (!mode) return true
+
+  const date = cardFilterDate(card)
+  const today = startOfLocalDay()
+
+  if (mode === 'withDate') return date !== null
+  if (mode === 'withoutDate') return date === null
+  if (mode === 'overdue') {
+    if (!card.dueDate) return false
+    const due = startOfLocalDay(new Date(card.dueDate))
+    return due.getTime() < today.getTime() && !card.completed
+  }
+  if (date === null) return false
+
+  if (mode === 'today') return date.getTime() === today.getTime()
+
+  if (mode === 'week') {
+    const { start, end } = weekBounds(today)
+    return date.getTime() >= start.getTime() && date.getTime() <= end.getTime()
+  }
+
+  if (mode === 'month') {
+    const { start, end } = monthBounds(today)
+    return date.getTime() >= start.getTime() && date.getTime() <= end.getTime()
+  }
+
+  if (mode === 'custom') {
+    const from = fromYmd ? parseYmdLocal(fromYmd) : null
+    const to = toYmd ? parseYmdLocal(toYmd) : null
+    if (!from && !to) return true
+    if (from && date.getTime() < from.getTime()) return false
+    if (to && date.getTime() > to.getTime()) return false
+    return true
+  }
+
+  return true
+}
+
 function createNotificationId() {
   return `ntf-${crypto.randomUUID().slice(0, 8)}`
 }
@@ -61,6 +158,10 @@ export const useBoardStore = defineStore('board', () => {
   const selectedCardId = ref<string | null>(null)
   const memberFilterId = ref<string | null>(null)
   const labelFilterId = ref<string | null>(null)
+  /** Filtro por data de entrega (dueDate, com fallback em startDate) */
+  const dateFilterMode = ref<DateFilterMode>(null)
+  const dateFilterFrom = ref('')
+  const dateFilterTo = ref('')
   const searchQuery = ref('')
   /** Sort por coluna: manual | dueAsc | dueDesc */
   const dateSortByColumn = ref<Record<string, 'manual' | 'dueAsc' | 'dueDesc'>>(
@@ -126,6 +227,16 @@ export const useBoardStore = defineStore('board', () => {
     if (labelFilterId.value) {
       list = list.filter((card) =>
         card.labelIds.includes(labelFilterId.value!),
+      )
+    }
+    if (dateFilterMode.value) {
+      list = list.filter((card) =>
+        cardMatchesDateFilter(
+          card,
+          dateFilterMode.value,
+          dateFilterFrom.value,
+          dateFilterTo.value,
+        ),
       )
     }
     const query = searchQuery.value.trim().toLowerCase()
@@ -501,6 +612,9 @@ export const useBoardStore = defineStore('board', () => {
     selectedCardId.value = null
     memberFilterId.value = null
     labelFilterId.value = null
+    dateFilterMode.value = null
+    dateFilterFrom.value = ''
+    dateFilterTo.value = ''
     searchQuery.value = ''
     dateSortByColumn.value = {}
     ready.value = false
@@ -513,6 +627,16 @@ export const useBoardStore = defineStore('board', () => {
 
   function setLabelFilter(labelId: string | null) {
     labelFilterId.value = labelId
+  }
+
+  function setDateFilter(
+    mode: DateFilterMode,
+    from = '',
+    to = '',
+  ) {
+    dateFilterMode.value = mode
+    dateFilterFrom.value = mode === 'custom' ? from : ''
+    dateFilterTo.value = mode === 'custom' ? to : ''
   }
 
   const activeLabelFilter = computed(
@@ -1545,6 +1669,9 @@ export const useBoardStore = defineStore('board', () => {
     selectedCard,
     memberFilterId,
     labelFilterId,
+    dateFilterMode,
+    dateFilterFrom,
+    dateFilterTo,
     searchQuery,
     dateSortMode,
     dateSortByColumn,
@@ -1565,6 +1692,7 @@ export const useBoardStore = defineStore('board', () => {
     getMemberById,
     setMemberFilter,
     setLabelFilter,
+    setDateFilter,
     setSearchQuery,
     getColumnDateSort,
     cycleColumnDateSort,
