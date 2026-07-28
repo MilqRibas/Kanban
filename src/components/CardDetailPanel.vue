@@ -40,8 +40,10 @@ const draftTitle = ref('')
 const draftDescription = ref('')
 const commentBody = ref('')
 const commentInputRef = ref<HTMLTextAreaElement | null>(null)
+const descriptionInputRef = ref<HTMLTextAreaElement | null>(null)
 const editingCommentId = ref<string | null>(null)
 const editingCommentBody = ref('')
+const editingCommentInputRef = ref<HTMLTextAreaElement | null>(null)
 const isEditingDescription = ref(false)
 const modalRef = ref<HTMLElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -202,22 +204,58 @@ function onDescriptionClick(event: MouseEvent) {
   isEditingDescription.value = true
 }
 
-function applyCommentFormat(kind: 'bold' | 'italic') {
-  const el = commentInputRef.value
+function applyFormat(
+  kind: 'bold' | 'italic',
+  target: 'description' | 'comment' | 'editComment',
+) {
+  const el =
+    target === 'description'
+      ? descriptionInputRef.value
+      : target === 'comment'
+        ? commentInputRef.value
+        : editingCommentInputRef.value
   if (!el) return
-  const start = el.selectionStart ?? commentBody.value.length
+
+  const source =
+    target === 'description'
+      ? draftDescription
+      : target === 'comment'
+        ? commentBody
+        : editingCommentBody
+
+  const start = el.selectionStart ?? source.value.length
   const end = el.selectionEnd ?? start
   const wrapper =
     kind === 'bold'
       ? { before: '**', after: '**' }
       : { before: '*', after: '*' }
-  const { next, cursor } = wrapSelection(commentBody.value, start, end, wrapper)
-  commentBody.value = next
+  const { next, cursor } = wrapSelection(source.value, start, end, wrapper)
+  source.value = next
   nextTick(() => {
     el.focus()
     el.setSelectionRange(cursor, cursor)
-    onCommentInput()
+    if (target === 'comment') onCommentInput()
   })
+}
+
+function applyCommentFormat(kind: 'bold' | 'italic') {
+  applyFormat(kind, 'comment')
+}
+
+function onFormatKeydown(
+  event: KeyboardEvent,
+  target: 'description' | 'comment' | 'editComment',
+) {
+  const mod = event.ctrlKey || event.metaKey
+  if (!mod) return
+  const key = event.key.toLowerCase()
+  if (key === 'b') {
+    event.preventDefault()
+    applyFormat('bold', target)
+  } else if (key === 'i') {
+    event.preventDefault()
+    applyFormat('italic', target)
+  }
 }
 
 function startEditChecklistItem(itemId: string, text: string) {
@@ -765,11 +803,38 @@ function renderCommentBody(body: string) {
             </div>
 
             <div v-if="isEditingDescription" class="space-y-2">
+              <div
+                class="flex items-center gap-1"
+                role="toolbar"
+                aria-label="Formatação da descrição"
+              >
+                <button
+                  type="button"
+                  class="inline-flex size-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-text-secondary hover:bg-white/10 hover:text-text-primary"
+                  title="Negrito (Ctrl+B)"
+                  @click="applyFormat('bold', 'description')"
+                >
+                  <Bold :size="14" />
+                </button>
+                <button
+                  type="button"
+                  class="inline-flex size-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-text-secondary hover:bg-white/10 hover:text-text-primary"
+                  title="Itálico (Ctrl+I)"
+                  @click="applyFormat('italic', 'description')"
+                >
+                  <Italic :size="14" />
+                </button>
+                <span class="ml-1 text-[11px] text-text-muted">
+                  Selecione o texto e formate
+                </span>
+              </div>
               <textarea
+                ref="descriptionInputRef"
                 v-model="draftDescription"
                 rows="6"
-                placeholder="Adicione uma descrição mais detalhada… (Markdown suportado)"
+                placeholder="Adicione uma descrição… Use **negrito** e *itálico*"
                 class="w-full resize-y rounded-xl border border-border-subtle bg-column px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+                @keydown="onFormatKeydown($event, 'description')"
               />
               <div class="flex gap-2">
                 <button
@@ -1260,7 +1325,7 @@ function renderCommentBody(body: string) {
                       <button
                         type="button"
                         class="inline-flex size-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-text-secondary hover:bg-white/10 hover:text-text-primary"
-                        title="Negrito (**texto**)"
+                        title="Negrito (Ctrl+B)"
                         @click="applyCommentFormat('bold')"
                       >
                         <Bold :size="14" />
@@ -1268,7 +1333,7 @@ function renderCommentBody(body: string) {
                       <button
                         type="button"
                         class="inline-flex size-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-text-secondary hover:bg-white/10 hover:text-text-primary"
-                        title="Itálico (*texto*)"
+                        title="Itálico (Ctrl+I)"
                         @click="applyCommentFormat('italic')"
                       >
                         <Italic :size="14" />
@@ -1278,9 +1343,10 @@ function renderCommentBody(body: string) {
                       ref="commentInputRef"
                       v-model="commentBody"
                       rows="2"
-                      placeholder="Escrever um comentário… Use @"
+                      placeholder="Escrever um comentário… Use @ · Ctrl+B negrito · Ctrl+I itálico"
                       class="w-full resize-none rounded-xl border border-border-subtle bg-board-elevated px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
                       @input="onCommentInput"
+                      @keydown="onFormatKeydown($event, 'comment')"
                     />
                     <div
                       v-if="mentionOpen && mentionCandidates.length"
@@ -1363,10 +1429,34 @@ function renderCommentBody(body: string) {
                       v-if="editingCommentId === comment.id"
                       class="mt-1 space-y-2"
                     >
+                      <div
+                        class="flex items-center gap-1"
+                        role="toolbar"
+                        aria-label="Formatação"
+                      >
+                        <button
+                          type="button"
+                          class="inline-flex size-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-text-secondary hover:bg-white/10 hover:text-text-primary"
+                          title="Negrito (Ctrl+B)"
+                          @click="applyFormat('bold', 'editComment')"
+                        >
+                          <Bold :size="14" />
+                        </button>
+                        <button
+                          type="button"
+                          class="inline-flex size-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-text-secondary hover:bg-white/10 hover:text-text-primary"
+                          title="Itálico (Ctrl+I)"
+                          @click="applyFormat('italic', 'editComment')"
+                        >
+                          <Italic :size="14" />
+                        </button>
+                      </div>
                       <textarea
+                        ref="editingCommentInputRef"
                         v-model="editingCommentBody"
                         rows="2"
                         class="w-full resize-none rounded-xl border border-border-subtle bg-board-elevated px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+                        @keydown="onFormatKeydown($event, 'editComment')"
                       />
                       <div class="flex gap-2">
                         <button

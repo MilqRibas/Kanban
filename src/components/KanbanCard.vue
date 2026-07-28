@@ -9,6 +9,7 @@ import {
 } from '@lucide/vue'
 import type { Card } from '../types/board'
 import { LABEL_COLOR_MAP } from '../types/board'
+import { renderCommentMarkdown } from '../lib/markdown'
 import { useBoardStore } from '../stores/board'
 import MemberAvatar from './MemberAvatar.vue'
 
@@ -29,27 +30,45 @@ const isDone = computed(() => {
   )
 })
 
-const fullDescription = computed(() =>
-  props.card.description
-    .replace(/[#>*_`~\-\[\]\(\)]/g, ' ')
+/** Mantém **negrito** / *itálico* e limpa o restante do markdown. */
+const formattedDescription = computed(() => {
+  const cleaned = props.card.description
+    .replace(/[#>`_~\-\[\]\(\)]/g, ' ')
     .replace(/\s+/g, ' ')
-    .trim(),
-)
+    .trim()
+  return cleaned
+})
 
 const CARD_DESC_PREVIEW = 100
 const CARD_DESC_HOVER = 180
 
-function truncateText(text: string, limit: number) {
+function truncateKeepingFormat(text: string, limit: number) {
   if (text.length <= limit) return text
-  return `${text.slice(0, limit).trimEnd()}...`
+  let cut = text.slice(0, limit)
+  const boldCount = (cut.match(/\*\*/g) ?? []).length
+  if (boldCount % 2 === 1) {
+    const last = cut.lastIndexOf('**')
+    if (last >= 0) cut = cut.slice(0, last)
+  }
+  // Conta * simples restantes (fora de **)
+  const singles = (cut.replace(/\*\*/g, '').match(/\*/g) ?? []).length
+  if (singles % 2 === 1) {
+    const last = cut.lastIndexOf('*')
+    if (last >= 0) cut = cut.slice(0, last)
+  }
+  return `${cut.trimEnd()}...`
 }
 
-const previewDescription = computed(() =>
-  truncateText(fullDescription.value, CARD_DESC_PREVIEW),
+const previewDescriptionHtml = computed(() =>
+  renderCommentMarkdown(
+    truncateKeepingFormat(formattedDescription.value, CARD_DESC_PREVIEW),
+  ),
 )
 
-const hoverDescription = computed(() =>
-  truncateText(fullDescription.value, CARD_DESC_HOVER),
+const hoverDescriptionHtml = computed(() =>
+  renderCommentMarkdown(
+    truncateKeepingFormat(formattedDescription.value, CARD_DESC_HOVER),
+  ),
 )
 
 const checklistProgress = computed(() => {
@@ -154,16 +173,20 @@ async function onToggleDone(event: Event) {
           {{ card.title }}
         </h3>
 
-        <div v-if="fullDescription" class="mt-1 text-[11px] leading-relaxed text-text-muted">
-          <p class="line-clamp-2 group-hover:hidden" :title="fullDescription">
-            {{ previewDescription }}
-          </p>
+        <div
+          v-if="formattedDescription"
+          class="mt-1 text-[11px] leading-relaxed text-text-muted"
+        >
           <p
-            class="hidden line-clamp-4 group-hover:block"
-            :title="fullDescription"
-          >
-            {{ hoverDescription }}
-          </p>
+            class="line-clamp-2 group-hover:hidden [&_em]:italic [&_strong]:font-semibold [&_strong]:text-text-secondary"
+            :title="formattedDescription"
+            v-html="previewDescriptionHtml"
+          />
+          <p
+            class="hidden line-clamp-4 group-hover:block [&_em]:italic [&_strong]:font-semibold [&_strong]:text-text-secondary"
+            :title="formattedDescription"
+            v-html="hoverDescriptionHtml"
+          />
         </div>
 
         <div
