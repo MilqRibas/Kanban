@@ -349,8 +349,12 @@ const periodHint = computed(() => {
   return 'Período'
 })
 
-const focusDayKey = computed(() => {
-  if (hasCustomRange.value && filterFrom.value === filterTo.value) {
+const focusDayKey = computed((): string => {
+  if (
+    hasCustomRange.value &&
+    filterFrom.value &&
+    filterFrom.value === filterTo.value
+  ) {
     return filterFrom.value
   }
   return todayKey.value
