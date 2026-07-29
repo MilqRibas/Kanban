@@ -34,5 +34,22 @@ export const CONTENT_STATUS_OPTIONS = [
   'Rascunho',
   'Em produção',
   'Pronto',
+  'Não enviado',
   'Enviado',
 ] as const
+
+export type ContentStatus = (typeof CONTENT_STATUS_OPTIONS)[number]
+
+/** Cores compartilhadas: painel do conteúdo + chips do calendário */
+export const CONTENT_STATUS_STYLES: Record<string, string> = {
+  Rascunho: 'bg-white/10 text-text-secondary',
+  'Em produção': 'bg-amber-500/20 text-amber-200',
+  Pronto: 'bg-sky-500/20 text-sky-200',
+  'Não enviado': 'bg-danger/25 text-danger',
+  Enviado: 'bg-emerald-500/20 text-emerald-300',
+}
+
+export function contentStatusStyle(status: string | null | undefined) {
+  if (!status) return CONTENT_STATUS_STYLES.Rascunho
+  return CONTENT_STATUS_STYLES[status] ?? CONTENT_STATUS_STYLES.Rascunho
+}

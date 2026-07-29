@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import {
+  Bold,
   FileText,
+  Italic,
   NotebookPen,
-  Plus,
   Search,
   Trash2,
   Users,
@@ -12,6 +13,12 @@ import { useNotesStore } from '../stores/notes'
 import { useBoardStore } from '../stores/board'
 import { useAuthStore } from '../stores/auth'
 import type { NoteKind } from '../types/notes'
+import {
+  insertAtCursor,
+  renderMarkdown,
+  wrapSelection,
+} from '../lib/markdown'
+import EmojiPicker from './EmojiPicker.vue'
 
 const notesStore = useNotesStore()
 const board = useBoardStore()
@@ -21,11 +28,12 @@ const search = ref('')
 const kindFilter = ref<'all' | NoteKind>('all')
 const draftTitle = ref('')
 const draftBody = ref('')
+const bodyRef = ref<HTMLTextAreaElement | null>(null)
+const previewMode = ref(false)
 
 const canEditSelected = computed(() => {
   const note = notesStore.selectedNote
   if (!note || !auth.memberId) return false
-  // Qualquer membro logado pode editar; exclusão fica restrita no store
   return true
 })
 
@@ -49,8 +57,28 @@ const filteredNotes = computed(() => {
   )
 })
 
+const isMeeting = computed(
+  () => notesStore.selectedNote?.kind === 'meeting',
+)
+
+const renderedBody = computed(() => {
+  if (!draftBody.value.trim()) return ''
+  return renderMarkdown(draftBody.value)
+})
+
+const emptyHint = computed(() => {
+  if (kindFilter.value === 'meeting') {
+    return 'Nenhuma ata ainda. Crie uma ata para registrar reuniões do time.'
+  }
+  if (kindFilter.value === 'note') {
+    return 'Nenhuma anotação ainda. Use notas para ideias rápidas e lembretes.'
+  }
+  return 'Nada por aqui. Escolha se quer criar uma anotação ou uma ata.'
+})
+
 async function createNote(kind: NoteKind) {
   kindFilter.value = kind
+  previewMode.value = false
   await notesStore.createNote(kind)
 }
 
@@ -59,6 +87,7 @@ watch(
   (note) => {
     draftTitle.value = note?.title ?? ''
     draftBody.value = note?.body ?? ''
+    previewMode.value = false
   },
   { immediate: true },
 )
@@ -84,7 +113,6 @@ function setKind(kind: NoteKind) {
   if (!note || !canEditSelected.value) return
   const title = draftTitle.value.trim() || note.title
   draftTitle.value = title
-  // Um único save: evita corrida blur do textarea + clique no tipo
   void notesStore.updateNote(
     note.id,
     {
@@ -95,6 +123,57 @@ function setKind(kind: NoteKind) {
     { immediate: true },
   )
   if (kindFilter.value !== 'all') kindFilter.value = kind
+}
+
+function applyFormat(kind: 'bold' | 'italic') {
+  const el = bodyRef.value
+  if (!el || !canEditSelected.value) return
+  previewMode.value = false
+  const start = el.selectionStart ?? draftBody.value.length
+  const end = el.selectionEnd ?? start
+  const wrapper =
+    kind === 'bold'
+      ? { before: '**', after: '**' }
+      : { before: '*', after: '*' }
+  const { next, cursor } = wrapSelection(draftBody.value, start, end, wrapper)
+  draftBody.value = next
+  nextTick(() => {
+    el.focus()
+    el.setSelectionRange(cursor, cursor)
+  })
+}
+
+function insertEmoji(emoji: string) {
+  if (!canEditSelected.value) return
+  previewMode.value = false
+  nextTick(() => {
+    const el = bodyRef.value
+    if (!el) {
+      draftBody.value += emoji
+      return
+    }
+    const start = el.selectionStart ?? draftBody.value.length
+    const end = el.selectionEnd ?? start
+    const { next, cursor } = insertAtCursor(draftBody.value, start, end, emoji)
+    draftBody.value = next
+    nextTick(() => {
+      el.focus()
+      el.setSelectionRange(cursor, cursor)
+    })
+  })
+}
+
+function onFormatKeydown(event: KeyboardEvent) {
+  const mod = event.ctrlKey || event.metaKey
+  if (!mod) return
+  const key = event.key.toLowerCase()
+  if (key === 'b') {
+    event.preventDefault()
+    applyFormat('bold')
+  } else if (key === 'i') {
+    event.preventDefault()
+    applyFormat('italic')
+  }
 }
 
 function formatDate(iso: string) {
@@ -131,33 +210,37 @@ function confirmDelete() {
       class="panel-glass flex max-h-[40vh] w-full shrink-0 flex-col overflow-hidden rounded-xl md:max-h-none md:w-72 lg:w-80"
     >
       <div class="border-b border-border-subtle p-3">
-        <div class="mb-3 flex items-center justify-between gap-2">
-          <h2 class="text-sm font-semibold text-text-primary">Bloco de notas</h2>
-          <div class="flex gap-1">
-            <button
-              type="button"
-              class="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
-              title="Nova anotação"
-              @click="createNote('note')"
-            >
-              <Plus :size="16" :stroke-width="2" />
-            </button>
-            <button
-              type="button"
-              class="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
-              title="Nova ata de reunião"
-              @click="createNote('meeting')"
-            >
-              <Users :size="16" :stroke-width="2" />
-            </button>
-          </div>
+        <div class="mb-1">
+          <h2 class="text-sm font-semibold text-text-primary">Notas & Atas</h2>
+          <p class="text-[11px] text-text-muted">
+            Anotações rápidas e atas de reunião, separados por tipo
+          </p>
+        </div>
+
+        <div class="mb-3 mt-3 grid grid-cols-2 gap-1.5">
+          <button
+            type="button"
+            class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-xs font-medium text-text-primary transition-colors hover:bg-white/10"
+            @click="createNote('note')"
+          >
+            <FileText :size="14" />
+            Anotação
+          </button>
+          <button
+            type="button"
+            class="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent/15 px-2 py-2 text-xs font-semibold text-accent transition-colors hover:bg-accent/25"
+            @click="createNote('meeting')"
+          >
+            <Users :size="14" />
+            Nova ATA
+          </button>
         </div>
 
         <div class="mb-3 flex rounded-lg bg-column p-0.5">
           <button
             v-for="option in [
               { id: 'all' as const, label: 'Todas' },
-              { id: 'note' as const, label: 'Notas' },
+              { id: 'note' as const, label: 'Anotações' },
               { id: 'meeting' as const, label: 'Atas' },
             ]"
             :key="option.id"
@@ -182,7 +265,7 @@ function confirmDelete() {
           <input
             v-model="search"
             type="search"
-            placeholder="Buscar notas…"
+            placeholder="Buscar…"
             class="w-full rounded-lg border border-border-subtle bg-column py-2 pl-8 pr-3 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
           />
         </label>
@@ -201,11 +284,16 @@ function confirmDelete() {
             @click="notesStore.selectNote(note.id)"
           >
             <div class="mb-1 flex items-center gap-1.5">
-              <component
-                :is="note.kind === 'meeting' ? Users : FileText"
-                :size="13"
-                class="shrink-0 text-text-muted"
-              />
+              <span
+                :class="[
+                  'shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide',
+                  note.kind === 'meeting'
+                    ? 'bg-accent/20 text-accent'
+                    : 'bg-white/10 text-text-muted',
+                ]"
+              >
+                {{ note.kind === 'meeting' ? 'ATA' : 'Nota' }}
+              </span>
               <span class="truncate text-sm font-medium text-text-primary">
                 {{ note.title }}
               </span>
@@ -223,7 +311,7 @@ function confirmDelete() {
           v-if="!filteredNotes.length"
           class="px-3 py-8 text-center text-sm text-text-muted"
         >
-          Nenhuma nota encontrada.
+          {{ emptyHint }}
         </li>
       </ul>
     </aside>
@@ -235,18 +323,29 @@ function confirmDelete() {
         <header
           class="flex flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-3 sm:px-5"
         >
-          <NotebookPen :size="18" class="text-accent" />
-          <span class="hidden text-[11px] text-text-muted sm:inline">Tipo:</span>
-          <div class="flex rounded-lg bg-column p-0.5">
+          <component
+            :is="isMeeting ? Users : FileText"
+            :size="18"
+            :class="isMeeting ? 'text-accent' : 'text-text-muted'"
+          />
+          <div class="min-w-0">
+            <p class="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+              {{ isMeeting ? 'Ata de reunião' : 'Anotação' }}
+            </p>
+          </div>
+
+          <div
+            v-if="canEditSelected"
+            class="flex rounded-lg bg-column p-0.5"
+            title="Converter tipo"
+          >
             <button
               type="button"
-              :disabled="!canEditSelected"
               :class="[
                 'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
-                notesStore.selectedNote.kind === 'note'
+                !isMeeting
                   ? 'bg-surface text-text-primary'
                   : 'text-text-muted hover:text-text-secondary',
-                !canEditSelected && 'cursor-default opacity-60',
               ]"
               @mousedown.prevent
               @click="setKind('note')"
@@ -255,18 +354,16 @@ function confirmDelete() {
             </button>
             <button
               type="button"
-              :disabled="!canEditSelected"
               :class="[
                 'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
-                notesStore.selectedNote.kind === 'meeting'
+                isMeeting
                   ? 'bg-surface text-text-primary'
                   : 'text-text-muted hover:text-text-secondary',
-                !canEditSelected && 'cursor-default opacity-60',
               ]"
               @mousedown.prevent
               @click="setKind('meeting')"
             >
-              Ata de reunião
+              ATA
             </button>
           </div>
 
@@ -279,7 +376,7 @@ function confirmDelete() {
             v-if="canDeleteSelected"
             type="button"
             class="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-danger/15 hover:text-danger"
-            title="Excluir nota"
+            title="Excluir"
             @click="confirmDelete"
           >
             <Trash2 :size="16" :stroke-width="2" />
@@ -309,11 +406,56 @@ function confirmDelete() {
               'mb-3 w-full rounded-lg bg-transparent px-1 text-xl font-semibold text-text-primary outline-none',
               canEditSelected ? 'focus:bg-surface' : 'cursor-default',
             ]"
-            placeholder="Título"
+            :placeholder="isMeeting ? 'Título da reunião' : 'Título da anotação'"
             @blur="saveTitle"
             @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
           />
+
+          <div
+            v-if="canEditSelected"
+            class="mb-2 flex flex-wrap items-center gap-1"
+            role="toolbar"
+            aria-label="Formatação"
+          >
+            <button
+              type="button"
+              class="inline-flex size-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-text-secondary hover:bg-white/10 hover:text-text-primary"
+              title="Negrito (Ctrl+B)"
+              @mousedown.prevent="applyFormat('bold')"
+            >
+              <Bold :size="14" />
+            </button>
+            <button
+              type="button"
+              class="inline-flex size-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-text-secondary hover:bg-white/10 hover:text-text-primary"
+              title="Itálico (Ctrl+I)"
+              @mousedown.prevent="applyFormat('italic')"
+            >
+              <Italic :size="14" />
+            </button>
+            <EmojiPicker compact @pick="insertEmoji" />
+            <button
+              type="button"
+              :class="[
+                'ml-auto rounded-lg px-2.5 py-1 text-xs font-medium transition-colors',
+                previewMode
+                  ? 'bg-accent/15 text-accent'
+                  : 'text-text-muted hover:bg-white/10 hover:text-text-primary',
+              ]"
+              @click="previewMode = !previewMode"
+            >
+              {{ previewMode ? 'Editar' : 'Pré-visualizar' }}
+            </button>
+          </div>
+
+          <div
+            v-if="previewMode"
+            class="markdown-body min-h-0 flex-1 overflow-y-auto rounded-xl border border-border-subtle/60 bg-column/30 px-3 py-2 text-sm leading-relaxed text-text-secondary"
+            v-html="renderedBody || '<p class=\'text-text-muted\'>Nada para pré-visualizar.</p>'"
+          />
           <textarea
+            v-else
+            ref="bodyRef"
             v-model="draftBody"
             :readonly="!canEditSelected"
             :class="[
@@ -322,34 +464,49 @@ function confirmDelete() {
                 ? 'focus:border-border-subtle focus:bg-column/40'
                 : 'cursor-default',
             ]"
-            placeholder="Escreva atas, decisões, ideias soltas do time… Markdown é bem-vindo."
+            :placeholder="
+              isMeeting
+                ? 'Preencha pauta, participantes, decisões e próximos passos…'
+                : 'Escreva ideias, lembretes e anotações do time…'
+            "
             @blur="saveBody"
+            @keydown="onFormatKeydown"
           />
         </div>
       </template>
 
       <div
         v-else
-        class="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center"
+        class="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center"
       >
         <NotebookPen :size="36" class="text-text-muted" />
-        <p class="text-sm text-text-muted">
-          Nenhuma nota ainda. Crie uma anotação ou ata de reunião.
-        </p>
-        <div class="flex gap-2">
+        <div>
+          <p class="text-sm font-medium text-text-primary">
+            Escolha o que deseja criar
+          </p>
+          <p class="mt-1 max-w-sm text-xs text-text-muted">
+            <strong class="text-text-secondary">Anotação</strong> = ideias e
+            lembretes.
+            <strong class="text-accent">ATA</strong> = registro de reunião com
+            pauta e decisões.
+          </p>
+        </div>
+        <div class="flex flex-wrap justify-center gap-2">
           <button
             type="button"
-            class="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-board hover:bg-accent-hover"
-            @click="notesStore.createNote('note')"
+            class="inline-flex items-center gap-1.5 rounded-lg bg-surface px-3 py-2 text-sm text-text-primary hover:bg-column-hover"
+            @click="createNote('note')"
           >
+            <FileText :size="15" />
             Nova anotação
           </button>
           <button
             type="button"
-            class="rounded-lg bg-surface px-3 py-1.5 text-sm text-text-primary hover:bg-column-hover"
-            @click="notesStore.createNote('meeting')"
+            class="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-board hover:bg-accent-hover"
+            @click="createNote('meeting')"
           >
-            Nova ata
+            <Users :size="15" />
+            Nova ATA
           </button>
         </div>
       </div>

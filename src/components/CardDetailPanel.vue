@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
+  insertAtCursor,
   renderCommentMarkdown,
   renderMarkdown,
   wrapSelection,
@@ -32,6 +33,7 @@ import { useAuthStore } from '../stores/auth'
 import MemberAvatar from './MemberAvatar.vue'
 import AssigneePicker from './AssigneePicker.vue'
 import LabelPicker from './LabelPicker.vue'
+import EmojiPicker from './EmojiPicker.vue'
 import { useEphemeralDismiss } from '../composables/useEphemeralDismiss'
 
 const board = useBoardStore()
@@ -240,6 +242,35 @@ function applyFormat(
 
 function applyCommentFormat(kind: 'bold' | 'italic') {
   applyFormat(kind, 'comment')
+}
+
+function insertEmoji(target: 'description' | 'comment' | 'editComment', emoji: string) {
+  const el =
+    target === 'description'
+      ? descriptionInputRef.value
+      : target === 'comment'
+        ? commentInputRef.value
+        : editingCommentInputRef.value
+  const source =
+    target === 'description'
+      ? draftDescription
+      : target === 'comment'
+        ? commentBody
+        : editingCommentBody
+
+  if (!el) {
+    source.value += emoji
+    return
+  }
+  const start = el.selectionStart ?? source.value.length
+  const end = el.selectionEnd ?? start
+  const { next, cursor } = insertAtCursor(source.value, start, end, emoji)
+  source.value = next
+  nextTick(() => {
+    el.focus()
+    el.setSelectionRange(cursor, cursor)
+    if (target === 'comment') onCommentInput()
+  })
 }
 
 function onFormatKeydown(
@@ -824,6 +855,7 @@ function renderCommentBody(body: string) {
                 >
                   <Italic :size="14" />
                 </button>
+                <EmojiPicker compact @pick="insertEmoji('description', $event)" />
                 <span class="ml-1 text-[11px] text-text-muted">
                   Selecione o texto e formate
                 </span>
@@ -1338,6 +1370,7 @@ function renderCommentBody(body: string) {
                       >
                         <Italic :size="14" />
                       </button>
+                      <EmojiPicker compact @pick="insertEmoji('comment', $event)" />
                     </div>
                     <textarea
                       ref="commentInputRef"
@@ -1450,6 +1483,10 @@ function renderCommentBody(body: string) {
                         >
                           <Italic :size="14" />
                         </button>
+                        <EmojiPicker
+                          compact
+                          @pick="insertEmoji('editComment', $event)"
+                        />
                       </div>
                       <textarea
                         ref="editingCommentInputRef"

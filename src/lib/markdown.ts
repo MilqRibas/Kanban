@@ -61,3 +61,15 @@ export function wrapSelection(
   const cursor = start + wrapper.before.length + selected.length + wrapper.after.length
   return { next, cursor }
 }
+
+/** Insere texto na posição do cursor (ex.: emoji). */
+export function insertAtCursor(
+  value: string,
+  start: number,
+  end: number,
+  insert: string,
+) {
+  const next = `${value.slice(0, start)}${insert}${value.slice(end)}`
+  const cursor = start + insert.length
+  return { next, cursor }
+}

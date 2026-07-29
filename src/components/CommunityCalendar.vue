@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { ChevronLeft, ChevronRight, Plus, X } from '@lucide/vue'
 import { useCommunityStore } from '../stores/community'
 import CommunityContentPanel from './CommunityContentPanel.vue'
+import { contentStatusStyle } from '../types/community'
 
 const community = useCommunityStore()
 const today = new Date()
@@ -234,7 +235,8 @@ async function createOnDay(dateKey: string | null) {
               </p>
               <span
                 v-if="item.status"
-                class="mt-1 inline-block rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-medium text-emerald-300"
+                class="mt-1 inline-block rounded-full px-1.5 py-0.5 text-[9px] font-medium"
+                :class="contentStatusStyle(item.status)"
               >
                 {{ item.status }}
               </span>

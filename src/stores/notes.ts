@@ -197,7 +197,27 @@ export const useNotesStore = defineStore('notes', () => {
     const note: Note = {
       id: createId(),
       title: kind === 'meeting' ? 'Nova ata de reunião' : 'Nova anotação',
-      body: '',
+      body:
+        kind === 'meeting'
+          ? [
+              '## Pauta',
+              '',
+              '- ',
+              '',
+              '## Participantes',
+              '',
+              '- ',
+              '',
+              '## Decisões',
+              '',
+              '- ',
+              '',
+              '## Próximos passos',
+              '',
+              '- ',
+              '',
+            ].join('\n')
+          : '',
       kind,
       authorId: auth.memberId,
       createdAt: new Date().toISOString(),

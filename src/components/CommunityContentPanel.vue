@@ -15,9 +15,10 @@ import {
   X,
 } from '@lucide/vue'
 import { useCommunityStore } from '../stores/community'
-import { CONTENT_STATUS_OPTIONS } from '../types/community'
-import { renderMarkdown, wrapSelection } from '../lib/markdown'
+import { CONTENT_STATUS_OPTIONS, contentStatusStyle } from '../types/community'
+import { insertAtCursor, renderMarkdown, wrapSelection } from '../lib/markdown'
 import { useEscapeKey } from '../composables/useEscapeKey'
+import EmojiPicker from './EmojiPicker.vue'
 
 const community = useCommunityStore()
 const draftTitle = ref('')
@@ -43,11 +44,8 @@ useEscapeKey(
   },
 )
 
-const STATUS_STYLES: Record<string, string> = {
-  Rascunho: 'bg-white/10 text-text-secondary',
-  'Em produção': 'bg-amber-500/20 text-amber-200',
-  Pronto: 'bg-sky-500/20 text-sky-200',
-  Enviado: 'bg-emerald-500/20 text-emerald-300',
+function statusClass(status: string | null | undefined) {
+  return contentStatusStyle(status)
 }
 
 watch(
@@ -139,6 +137,25 @@ function applyFormat(kind: 'bold' | 'italic') {
   nextTick(() => {
     el.focus()
     el.setSelectionRange(cursor, cursor)
+  })
+}
+
+function insertEmoji(emoji: string) {
+  isEditingBody.value = true
+  nextTick(() => {
+    const el = bodyRef.value
+    if (!el) {
+      draftBody.value += emoji
+      return
+    }
+    const start = el.selectionStart ?? draftBody.value.length
+    const end = el.selectionEnd ?? start
+    const { next, cursor } = insertAtCursor(draftBody.value, start, end, emoji)
+    draftBody.value = next
+    nextTick(() => {
+      el.focus()
+      el.setSelectionRange(cursor, cursor)
+    })
   })
 }
 
@@ -239,7 +256,7 @@ function emptyLabel(value: string) {
                 <button
                   type="button"
                   class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-colors hover:brightness-110"
-                  :class="STATUS_STYLES[community.selected.status] ?? STATUS_STYLES.Rascunho"
+                  :class="statusClass(community.selected.status)"
                   @click="statusOpen = !statusOpen"
                 >
                   {{ community.selected.status || 'Rascunho' }}
@@ -258,7 +275,7 @@ function emptyLabel(value: string) {
                   >
                     <span
                       class="mr-2 inline-block size-2 rounded-full"
-                      :class="STATUS_STYLES[option]"
+                      :class="statusClass(option)"
                     />
                     {{ option }}
                   </button>
@@ -424,6 +441,7 @@ function emptyLabel(value: string) {
                 >
                   <Italic :size="14" />
                 </button>
+                <EmojiPicker compact @pick="insertEmoji" />
               </div>
             </div>
 
