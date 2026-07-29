@@ -5,7 +5,11 @@ import {
   Calendar,
   ChevronDown,
   CircleDot,
+  Copy,
+  Download,
+  ExternalLink,
   FileText,
+  ImagePlus,
   Italic,
   Link2,
   MoreHorizontal,
@@ -18,9 +22,11 @@ import { useCommunityStore } from '../stores/community'
 import { CONTENT_STATUS_OPTIONS, contentStatusStyle } from '../types/community'
 import { insertAtCursor, renderMarkdown, wrapSelection } from '../lib/markdown'
 import { useEscapeKey } from '../composables/useEscapeKey'
+import { useToastStore } from '../stores/toast'
 import EmojiPicker from './EmojiPicker.vue'
 
 const community = useCommunityStore()
+const toast = useToastStore()
 const draftTitle = ref('')
 const draftBody = ref('')
 const isEditingBody = ref(false)
@@ -28,10 +34,21 @@ const showMoreProps = ref(false)
 const statusOpen = ref(false)
 const menuOpen = ref(false)
 const bodyRef = ref<HTMLTextAreaElement | null>(null)
+const imageInputRef = ref<HTMLInputElement | null>(null)
+const uploadingImage = ref(false)
+const imageMenu = ref<{
+  url: string
+  x: number
+  y: number
+} | null>(null)
 
 useEscapeKey(
   () => Boolean(community.selected),
   () => {
+    if (imageMenu.value) {
+      imageMenu.value = null
+      return
+    }
     if (menuOpen.value) {
       menuOpen.value = false
       return
@@ -58,6 +75,8 @@ watch(
     showMoreProps.value = false
     statusOpen.value = false
     menuOpen.value = false
+    imageMenu.value = null
+    uploadingImage.value = false
   },
   { immediate: true },
 )
@@ -83,6 +102,18 @@ function onBodyClick(event: MouseEvent) {
     event.stopPropagation()
     return
   }
+  const img = target?.closest('img') as HTMLImageElement | null
+  if (img?.src) {
+    event.stopPropagation()
+    event.preventDefault()
+    imageMenu.value = {
+      url: img.src,
+      x: event.clientX,
+      y: event.clientY,
+    }
+    return
+  }
+  imageMenu.value = null
   isEditingBody.value = true
   nextTick(() => bodyRef.value?.focus())
 }
@@ -95,7 +126,7 @@ async function saveTitle() {
 }
 
 async function saveBody() {
-  if (!community.selected) return
+  if (!community.selected || uploadingImage.value) return
   await community.update(community.selected.id, { body: draftBody.value })
   isEditingBody.value = false
 }
@@ -158,6 +189,153 @@ function insertEmoji(emoji: string) {
     })
   })
 }
+
+function insertMarkdownImage(url: string, alt: string) {
+  const el = bodyRef.value
+  const markdown = `![${alt}](${url})`
+  if (!el) {
+    draftBody.value = draftBody.value
+      ? `${draftBody.value.trimEnd()}\n\n${markdown}\n`
+      : `${markdown}\n`
+    return
+  }
+  const start = el.selectionStart ?? draftBody.value.length
+  const end = el.selectionEnd ?? start
+  const needsLeadingNewline =
+    start > 0 && draftBody.value[start - 1] !== '\n'
+  const insert = `${needsLeadingNewline ? '\n\n' : ''}${markdown}\n`
+  const { next, cursor } = insertAtCursor(draftBody.value, start, end, insert)
+  draftBody.value = next
+  nextTick(() => {
+    el.focus()
+    el.setSelectionRange(cursor, cursor)
+  })
+}
+
+async function handleImageFile(file: File) {
+  if (!community.selected) return
+  uploadingImage.value = true
+  isEditingBody.value = true
+  try {
+    const uploaded = await community.uploadImage(community.selected.id, file)
+    if (!uploaded) return
+    await nextTick()
+    insertMarkdownImage(uploaded.url, uploaded.name.replace(/\.[^.]+$/, '') || 'imagem')
+    await community.update(community.selected.id, { body: draftBody.value })
+    toast.success('Imagem adicionada')
+  } finally {
+    uploadingImage.value = false
+    nextTick(() => bodyRef.value?.focus())
+  }
+}
+
+async function onPaste(event: ClipboardEvent) {
+  const items = event.clipboardData?.items
+  if (!items?.length) return
+
+  const imageItem = Array.from(items).find((item) =>
+    item.type.startsWith('image/'),
+  )
+  if (!imageItem) return
+
+  const file = imageItem.getAsFile()
+  if (!file) return
+
+  event.preventDefault()
+  await handleImageFile(file)
+}
+
+async function onPickImage(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  await handleImageFile(file)
+}
+
+async function copyImageUrl() {
+  if (!imageMenu.value) return
+  try {
+    await navigator.clipboard.writeText(imageMenu.value.url)
+    toast.success('Link da imagem copiado')
+  } catch {
+    toast.error('Não foi possível copiar o link')
+  }
+  imageMenu.value = null
+}
+
+async function copyImageBlob() {
+  if (!imageMenu.value) return
+  const url = imageMenu.value.url
+  try {
+    const response = await fetch(url)
+    if (!response.ok) throw new Error('Falha ao baixar imagem')
+    const blob = await response.blob()
+    const type = blob.type || 'image/png'
+    if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+      await navigator.clipboard.write([new ClipboardItem({ [type]: blob })])
+      toast.success('Imagem copiada')
+    } else {
+      await navigator.clipboard.writeText(url)
+      toast.success('Link copiado (navegador sem suporte a copiar imagem)')
+    }
+  } catch {
+    try {
+      await navigator.clipboard.writeText(url)
+      toast.success('Link copiado (fallback)')
+    } catch {
+      toast.error('Não foi possível copiar a imagem')
+    }
+  }
+  imageMenu.value = null
+}
+
+async function downloadImage() {
+  if (!imageMenu.value) return
+  const url = imageMenu.value.url
+  try {
+    const response = await fetch(url)
+    if (!response.ok) throw new Error('Falha ao baixar')
+    const blob = await response.blob()
+    const objectUrl = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    const nameFromUrl = url.split('/').pop()?.split('?')[0] || 'imagem.png'
+    anchor.href = objectUrl
+    anchor.download = decodeURIComponent(nameFromUrl)
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(objectUrl)
+  } catch {
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+  imageMenu.value = null
+}
+
+function openImage() {
+  if (!imageMenu.value) return
+  window.open(imageMenu.value.url, '_blank', 'noopener,noreferrer')
+  imageMenu.value = null
+}
+
+const imageMenuStyle = computed(() => {
+  if (!imageMenu.value) return {}
+  const pad = 8
+  const menuW = 200
+  const menuH = 180
+  const left = Math.min(
+    imageMenu.value.x,
+    window.innerWidth - menuW - pad,
+  )
+  const top = Math.min(
+    imageMenu.value.y,
+    window.innerHeight - menuH - pad,
+  )
+  return {
+    top: `${Math.max(pad, top)}px`,
+    left: `${Math.max(pad, left)}px`,
+  }
+})
 
 async function removeSelected() {
   if (!community.selected) return
@@ -442,17 +620,45 @@ function emptyLabel(value: string) {
                   <Italic :size="14" />
                 </button>
                 <EmojiPicker compact @pick="insertEmoji" />
+                <button
+                  type="button"
+                  class="inline-flex size-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-text-secondary hover:bg-white/10 hover:text-text-primary disabled:opacity-50"
+                  title="Inserir imagem"
+                  :disabled="uploadingImage"
+                  @mousedown.prevent="imageInputRef?.click()"
+                >
+                  <ImagePlus :size="14" />
+                </button>
+                <input
+                  ref="imageInputRef"
+                  type="file"
+                  accept="image/*"
+                  class="hidden"
+                  @change="onPickImage"
+                />
               </div>
             </div>
+
+            <p
+              v-if="isEditingBody"
+              class="mb-2 text-[11px] text-text-muted"
+            >
+              {{
+                uploadingImage
+                  ? 'Enviando imagem…'
+                  : 'Cole uma imagem (Ctrl+V) ou use o botão de imagem'
+              }}
+            </p>
 
             <textarea
               v-if="isEditingBody"
               ref="bodyRef"
               v-model="draftBody"
               rows="12"
-              placeholder="Escreva a visão geral do conteúdo… Markdown e links são suportados."
+              placeholder="Escreva a visão geral… Cole imagens para referência (Ctrl+V)."
               class="w-full resize-y rounded-xl border border-transparent bg-transparent px-1 py-1 text-[15px] leading-relaxed text-text-primary outline-none placeholder:text-text-muted focus:border-white/10"
               @blur="saveBody"
+              @paste="onPaste"
             />
             <div
               v-else-if="renderedBody"
@@ -466,7 +672,7 @@ function emptyLabel(value: string) {
               class="w-full rounded-xl border border-dashed border-white/10 px-3 py-8 text-left text-sm text-text-muted hover:border-[#39bcff]/35 hover:text-text-secondary"
               @click="isEditingBody = true"
             >
-              Adicionar texto…
+              Adicionar texto ou colar imagem…
             </button>
           </div>
 
@@ -475,6 +681,52 @@ function emptyLabel(value: string) {
             {{ emptyLabel(community.selected.fds) }}
             {{ emptyLabel(community.selected.community) }}
           </p>
+        </div>
+      </div>
+
+      <!-- Menu de imagem (copiar / baixar) -->
+      <div
+        v-if="imageMenu"
+        class="fixed inset-0 z-[60]"
+        @click="imageMenu = null"
+      >
+        <div
+          class="absolute min-w-[11rem] overflow-hidden rounded-xl border border-white/10 bg-board-elevated py-1 shadow-2xl shadow-black/50"
+          :style="imageMenuStyle"
+          @click.stop
+        >
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-white/10 hover:text-text-primary"
+            @click="copyImageBlob"
+          >
+            <Copy :size="14" />
+            Copiar imagem
+          </button>
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-white/10 hover:text-text-primary"
+            @click="copyImageUrl"
+          >
+            <Link2 :size="14" />
+            Copiar link
+          </button>
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-white/10 hover:text-text-primary"
+            @click="downloadImage"
+          >
+            <Download :size="14" />
+            Baixar
+          </button>
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-white/10 hover:text-text-primary"
+            @click="openImage"
+          >
+            <ExternalLink :size="14" />
+            Abrir
+          </button>
         </div>
       </div>
     </div>

@@ -225,6 +225,21 @@
     font-weight: 600;
   }
 
+  .markdown-body img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0.75em 0;
+    border-radius: 0.75rem;
+    border: 1px solid color-mix(in srgb, white 12%, transparent);
+    cursor: pointer;
+  }
+
+  .markdown-body img:hover {
+    outline: 2px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+    outline-offset: 2px;
+  }
+
   @keyframes daily-pin-pop {
     0% {
       transform: scale(0.2) rotate(-30deg);

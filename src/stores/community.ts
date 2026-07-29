@@ -258,6 +258,54 @@ export const useCommunityStore = defineStore('community', () => {
     if (selectedId.value === id) selectedId.value = null
   }
 
+  /** Sobe imagem para storage e devolve URL pública (inserida no markdown do body). */
+  async function uploadImage(contentId: string, file: File) {
+    const toast = useToastStore()
+    const item = items.value.find((entry) => entry.id === contentId)
+    if (!item) return null
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Cole ou envie apenas imagens.')
+      return null
+    }
+
+    const maxBytes = 5 * 1024 * 1024
+    if (file.size > maxBytes) {
+      toast.error('Imagem acima do limite de 5 MB.')
+      return null
+    }
+
+    const imageId = `img-${crypto.randomUUID().slice(0, 8)}`
+    const fallbackExt = file.type.split('/')[1] || 'png'
+    const rawName = file.name?.trim() || `imagem.${fallbackExt}`
+    const safeName = rawName.replace(/[^\w.\-]+/g, '_')
+    const storagePath = `${BOARD_ID}/community/${contentId}/${imageId}-${safeName}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('card-attachments')
+      .upload(storagePath, file, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: file.type || 'image/png',
+      })
+
+    if (uploadError) {
+      error.value = uploadError.message
+      toast.error(uploadError.message)
+      return null
+    }
+
+    const { data: publicUrl } = supabase.storage
+      .from('card-attachments')
+      .getPublicUrl(storagePath)
+
+    return {
+      url: publicUrl.publicUrl,
+      name: safeName,
+      mimeType: file.type || 'image/png',
+    }
+  }
+
   return {
     items,
     selectedId,
@@ -277,5 +325,6 @@ export const useCommunityStore = defineStore('community', () => {
     create,
     update,
     remove,
+    uploadImage,
   }
 })
