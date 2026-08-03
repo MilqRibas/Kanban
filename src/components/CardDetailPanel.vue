@@ -900,7 +900,7 @@ function renderCommentBody(body: string) {
 
             <div
               v-else
-              class="markdown-body rounded-xl bg-column/50 px-3 py-2 text-sm text-text-secondary"
+              class="markdown-body break-words rounded-xl bg-column/50 px-3.5 py-2.5 text-sm text-text-secondary"
               @click="onDescriptionClick"
               v-html="renderedDescription"
             />
@@ -1319,10 +1319,10 @@ function renderCommentBody(body: string) {
           </div>
 
           <aside
-            class="flex min-h-0 w-full shrink-0 flex-col border-t border-white/10 bg-column/30 lg:w-[340px] lg:border-l lg:border-t-0"
+            class="flex min-h-0 w-full shrink-0 flex-col border-t border-white/10 bg-column/30 lg:w-[360px] lg:border-l lg:border-t-0"
           >
             <div
-              class="flex shrink-0 items-center justify-between gap-2 border-b border-white/5 px-4 py-3"
+              class="flex shrink-0 items-center justify-between gap-2 border-b border-white/5 px-5 py-3"
             >
               <h3 class="flex items-center gap-1.5 text-sm font-semibold text-text-primary">
                 <MessageSquare :size="15" />
@@ -1340,7 +1340,7 @@ function renderCommentBody(body: string) {
 
             <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
               <form
-                class="relative shrink-0 border-b border-white/5 px-4 py-3"
+                class="relative shrink-0 border-b border-white/5 px-5 py-3"
                 @submit.prevent="submitComment"
               >
                 <div class="flex gap-2">
@@ -1407,11 +1407,11 @@ function renderCommentBody(body: string) {
                 </div>
               </form>
 
-              <ul class="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+              <ul class="flex-1 space-y-3 overflow-y-auto px-5 py-3">
                 <li
                   v-for="comment in [...card.comments].reverse()"
                   :key="comment.id"
-                  class="flex gap-2"
+                  class="flex gap-2.5"
                 >
                   <MemberAvatar
                     :member="
@@ -1514,7 +1514,7 @@ function renderCommentBody(body: string) {
                     </div>
                     <p
                       v-else
-                      class="markdown-body mt-1 rounded-xl bg-board-elevated/80 px-3 py-2 text-sm text-text-secondary"
+                      class="markdown-body mt-1 break-words rounded-xl bg-board-elevated/80 px-3.5 py-2.5 text-sm text-text-secondary"
                       v-html="renderCommentBody(comment.body)"
                     />
                   </div>

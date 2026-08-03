@@ -173,6 +173,8 @@
     pointer-events: auto;
     position: relative;
     z-index: 1;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .markdown-body a:hover {
@@ -181,6 +183,8 @@
 
   .markdown-body {
     line-height: 1.55;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .markdown-body p {
