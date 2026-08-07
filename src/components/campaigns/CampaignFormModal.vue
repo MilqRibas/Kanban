@@ -29,7 +29,15 @@ const emit = defineEmits<{
 const store = useCampaignsStore()
 const saving = ref(false)
 const nameInputRef = ref<HTMLInputElement | null>(null)
+const formBodyRef = ref<HTMLElement | null>(null)
 const formError = ref<string | null>(null)
+
+function setFormError(message: string) {
+  formError.value = message
+  void nextTick(() => {
+    formBodyRef.value?.scrollTo({ top: 0, behavior: 'smooth' })
+  })
+}
 
 const now = new Date()
 const currentMonth = now.getMonth() + 1
@@ -232,8 +240,18 @@ watch(
   },
 )
 
+function normalizeNumberInput(raw: string) {
+  let value = raw.trim()
+  if (!value) return ''
+  // Aceita formatos BR (1.234,56 / 1234,56) e ponto decimal simples.
+  if (value.includes(',')) {
+    value = value.replace(/\./g, '').replace(',', '.')
+  }
+  return value
+}
+
 function parseRequiredNumber(raw: string, label: string) {
-  const normalized = raw.trim().replace(',', '.')
+  const normalized = normalizeNumberInput(raw)
   if (!normalized) return { error: `${label} é obrigatório.` as string, value: null }
   const value = Number(normalized)
   if (!Number.isFinite(value)) {
@@ -243,7 +261,7 @@ function parseRequiredNumber(raw: string, label: string) {
 }
 
 function parseOptionalNumber(raw: string) {
-  const normalized = raw.trim().replace(',', '.')
+  const normalized = normalizeNumberInput(raw)
   if (!normalized) return null
   const value = Number(normalized)
   return Number.isFinite(value) ? value : null
@@ -270,40 +288,40 @@ function buildPayload(): CampaignCreateInput | null {
   formError.value = null
 
   if (!draft.name.trim()) {
-    formError.value = 'Nome da campanha é obrigatório.'
+    setFormError('Nome da campanha é obrigatório.')
     return null
   }
   if (!draft.startDate) {
-    formError.value = 'Data de início é obrigatória.'
+    setFormError('Data de início é obrigatória.')
     return null
   }
 
   const investment = parseRequiredNumber(draft.investment, 'Investimento')
   if (investment.error || investment.value === null) {
-    formError.value = investment.error
+    setFormError(investment.error ?? 'Investimento inválido.')
     return null
   }
   const captured = parseRequiredNumber(draft.capturedPlayers, 'Jogadores captados')
   if (captured.error || captured.value === null) {
-    formError.value = captured.error
+    setFormError(captured.error ?? 'Jogadores captados inválido.')
     return null
   }
   const active = parseRequiredNumber(draft.activePlayers, 'Jogadores ativos')
   if (active.error || active.value === null) {
-    formError.value = active.error
+    setFormError(active.error ?? 'Jogadores ativos inválido.')
     return null
   }
 
   if (investment.value < 0) {
-    formError.value = 'Investimento não pode ser negativo.'
+    setFormError('Investimento não pode ser negativo.')
     return null
   }
   if (captured.value < 0 || active.value < 0) {
-    formError.value = 'Captados e ativos não podem ser negativos.'
+    setFormError('Captados e ativos não podem ser negativos.')
     return null
   }
   if (active.value > captured.value) {
-    formError.value = 'Jogadores ativos não pode ser maior que captados.'
+    setFormError('Jogadores ativos não pode ser maior que captados.')
     return null
   }
 
@@ -318,7 +336,7 @@ function buildPayload(): CampaignCreateInput | null {
       draft.activationRuleType === 'custom_rule') &&
     (activationMinimumRake === null || activationMinimumRake < 0)
   ) {
-    formError.value = 'Informe o valor mínimo de rake para o critério escolhido.'
+    setFormError('Informe o valor mínimo de rake para o critério escolhido.')
     return null
   }
 
@@ -363,11 +381,11 @@ async function save() {
   if (monthlyRaw) {
     const parsed = parseRequiredNumber(draft.monthlyRake, 'Rake do mês')
     if (parsed.error || parsed.value === null) {
-      formError.value = parsed.error
+      setFormError(parsed.error ?? 'Rake do mês inválido.')
       return
     }
     if (parsed.value < 0) {
-      formError.value = 'Rake mensal não pode ser negativo.'
+      setFormError('Rake mensal não pode ser negativo.')
       return
     }
     monthlyRake = parsed.value
@@ -375,7 +393,7 @@ async function save() {
 
   const monthlyActives = parseOptionalNumber(draft.monthlyActivePlayers)
   if (monthlyActives != null && monthlyActives < 0) {
-    formError.value = 'Ativos no mês não pode ser negativo.'
+    setFormError('Ativos no mês não pode ser negativo.')
     return
   }
 
@@ -398,13 +416,18 @@ async function save() {
         referenceMonth: draft.referenceMonth,
         referenceYear: draft.referenceYear,
         monthlyRake,
-        monthlyActivePlayers: monthlyActives,
+        monthlyActivePlayers:
+          monthlyActives != null ? Math.round(monthlyActives) : null,
       })
       if (!result) return
     }
 
     emit('saved', campaignId)
     close()
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : 'Não foi possível salvar a campanha.'
+    setFormError(message)
   } finally {
     saving.value = false
   }
@@ -429,6 +452,7 @@ async function save() {
 
       <form
         class="panel-glass relative z-10 flex max-h-[92vh] w-full max-w-2xl flex-col rounded-t-2xl shadow-2xl sm:rounded-2xl"
+        novalidate
         @submit.prevent="save"
       >
         <div class="flex items-center justify-between gap-2 border-b border-border-subtle px-5 py-4">
@@ -445,7 +469,7 @@ async function save() {
           </button>
         </div>
 
-        <div class="space-y-5 overflow-y-auto px-5 py-4">
+        <div ref="formBodyRef" class="space-y-5 overflow-y-auto px-5 py-4">
           <p
             v-if="formError"
             class="rounded-lg border border-red-400/30 bg-red-950/40 px-3 py-2 text-xs text-red-200"
@@ -706,7 +730,8 @@ async function save() {
               Link da campanha
               <input
                 v-model="draft.campaignUrl"
-                type="url"
+                type="text"
+                inputmode="url"
                 placeholder="https://…"
                 :class="fieldClass"
               />
@@ -745,21 +770,29 @@ async function save() {
           </section>
         </div>
 
-        <div class="flex justify-end gap-2 border-t border-border-subtle px-5 py-4">
-          <button
-            type="button"
-            class="rounded-lg px-3 py-1.5 text-sm text-text-muted hover:text-text-primary"
-            @click="close"
+        <div class="border-t border-border-subtle px-5 py-4">
+          <p
+            v-if="formError"
+            class="mb-3 rounded-lg border border-red-400/30 bg-red-950/40 px-3 py-2 text-xs text-red-200"
           >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            class="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-board hover:bg-accent-hover disabled:opacity-60"
-            :disabled="saving"
-          >
-            {{ saving ? 'Salvando…' : 'Salvar' }}
-          </button>
+            {{ formError }}
+          </p>
+          <div class="flex justify-end gap-2">
+            <button
+              type="button"
+              class="rounded-lg px-3 py-1.5 text-sm text-text-muted hover:text-text-primary"
+              @click="close"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              class="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-board hover:bg-accent-hover disabled:opacity-60"
+              :disabled="saving"
+            >
+              {{ saving ? 'Salvando…' : 'Salvar' }}
+            </button>
+          </div>
         </div>
       </form>
     </div>
