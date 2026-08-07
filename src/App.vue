@@ -24,6 +24,28 @@ import { useCommunityStore } from './stores/community'
 import { useHubSectionsStore } from './stores/hubSections'
 import { useCampaignsStore } from './stores/campaigns'
 
+const TAB_STORAGE_KEY = 'b2c-active-tab'
+const NAV_TABS: readonly NavTab[] = [
+  'agenda',
+  'board',
+  'daily',
+  'notes',
+  'hub',
+  'campaigns',
+]
+
+function readStoredTab(): NavTab {
+  try {
+    const raw = localStorage.getItem(TAB_STORAGE_KEY)
+    if (raw && (NAV_TABS as readonly string[]).includes(raw)) {
+      return raw as NavTab
+    }
+  } catch {
+    // ignore storage failures
+  }
+  return 'board'
+}
+
 const asyncOpts = { delay: 320 }
 
 const AgendaView = defineAsyncComponent({
@@ -64,7 +86,7 @@ const notifications = useNotificationsStore()
 const community = useCommunityStore()
 const hubSections = useHubSectionsStore()
 const campaigns = useCampaignsStore()
-const activeTab = ref<NavTab>('board')
+const activeTab = ref<NavTab>(readStoredTab())
 const bootstrapping = ref(false)
 const notesReady = ref(false)
 const dailyReady = ref(false)
@@ -83,6 +105,28 @@ function prefetchTabChunks() {
   void import('./components/NotesView.vue')
   void import('./components/HubView.vue')
   void import('./components/CampaignsView.vue')
+}
+
+async function ensureTabData(tab: NavTab) {
+  if (!auth.isAuthenticated || auth.passwordRecovery) return
+  if (tab === 'notes' && !notesReady.value) {
+    await notes.init()
+    notesReady.value = true
+  }
+  if (tab === 'daily' && !dailyReady.value) {
+    await daily.init()
+    daily.sanitizeDetailMember()
+    dailyReady.value = true
+  }
+  if (tab === 'hub' && !dailyReady.value) {
+    await daily.init()
+    daily.sanitizeDetailMember()
+    dailyReady.value = true
+  }
+  if (tab === 'campaigns' && !campaignsReady.value) {
+    await campaigns.init()
+    campaignsReady.value = true
+  }
 }
 
 watch(
@@ -106,6 +150,7 @@ watch(
       await board.init()
       await notifications.init()
       prefetchTabChunks()
+      await ensureTabData(activeTab.value)
     } finally {
       bootstrapping.value = false
     }
@@ -114,26 +159,13 @@ watch(
 )
 
 watch(activeTab, async (tab) => {
+  try {
+    localStorage.setItem(TAB_STORAGE_KEY, tab)
+  } catch {
+    // ignore storage failures
+  }
   board.closeCard()
-  if (!auth.isAuthenticated || auth.passwordRecovery) return
-  if (tab === 'notes' && !notesReady.value) {
-    await notes.init()
-    notesReady.value = true
-  }
-  if (tab === 'daily' && !dailyReady.value) {
-    await daily.init()
-    daily.sanitizeDetailMember()
-    dailyReady.value = true
-  }
-  if (tab === 'hub' && !dailyReady.value) {
-    await daily.init()
-    daily.sanitizeDetailMember()
-    dailyReady.value = true
-  }
-  if (tab === 'campaigns' && !campaignsReady.value) {
-    await campaigns.init()
-    campaignsReady.value = true
-  }
+  await ensureTabData(tab)
 })
 </script>
 
