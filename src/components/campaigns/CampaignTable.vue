@@ -2,7 +2,6 @@
 import { computed, ref } from 'vue'
 import {
   Archive,
-  CircleDollarSign,
   Copy,
   Eye,
   MoreHorizontal,
@@ -30,7 +29,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   view: [id: string]
   edit: [id: string]
-  editRake: [id: string]
 }>()
 
 const auth = useAuthStore()
@@ -156,16 +154,8 @@ function typeLabel(campaign: Campaign) {
             <td class="whitespace-nowrap px-3 py-3 text-right tabular-nums text-text-primary">
               {{ formatPercent(row.metrics.activationRate) }}
             </td>
-            <td class="whitespace-nowrap px-3 py-3 text-right">
-              <button
-                type="button"
-                class="inline-flex items-center justify-end gap-1.5 rounded-lg px-1.5 py-0.5 tabular-nums text-text-primary hover:bg-surface hover:text-accent"
-                title="Editar rake mensal"
-                @click="emit('editRake', row.campaign.id)"
-              >
-                {{ formatCurrency(row.metrics.accumulatedRake) }}
-                <Pencil :size="12" class="opacity-50" />
-              </button>
+            <td class="whitespace-nowrap px-3 py-3 text-right tabular-nums text-text-primary">
+              {{ formatCurrency(row.metrics.accumulatedRake) }}
             </td>
             <td class="whitespace-nowrap px-3 py-3 text-right tabular-nums text-text-primary">
               {{ formatPercent(row.metrics.recoveryRate) }}
@@ -211,17 +201,6 @@ function typeLabel(campaign: Campaign) {
                 class="absolute right-3 z-20 mt-1 w-44 overflow-hidden rounded-xl border border-border-subtle bg-board-elevated py-1 shadow-xl"
                 @click.stop
               >
-                <button
-                  type="button"
-                  class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface hover:text-text-primary"
-                  @click="
-                    menuId = null;
-                    emit('editRake', row.campaign.id)
-                  "
-                >
-                  <CircleDollarSign :size="14" />
-                  Editar rake
-                </button>
                 <button
                   type="button"
                   class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface hover:text-text-primary"

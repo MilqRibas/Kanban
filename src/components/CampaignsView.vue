@@ -7,7 +7,6 @@ import CampaignFilters, {
   type CampaignFiltersState,
 } from './campaigns/CampaignFilters.vue'
 import CampaignFormModal from './campaigns/CampaignFormModal.vue'
-import CampaignMonthlyResultModal from './campaigns/CampaignMonthlyResultModal.vue'
 import CampaignKpiCards from './campaigns/CampaignKpiCards.vue'
 import CampaignTable from './campaigns/CampaignTable.vue'
 import CampaignDetails from './campaigns/CampaignDetails.vue'
@@ -21,11 +20,6 @@ const bootstrapping = ref(false)
 const screen = ref<CampaignScreen>('overview')
 const formOpen = ref(false)
 const editingId = ref<string | null>(null)
-const rakeModalOpen = ref(false)
-const rakeCampaignId = ref<string | null>(null)
-const rakeResultId = ref<string | null>(null)
-const rakeDefaultMonth = ref<number | undefined>(undefined)
-const rakeDefaultYear = ref<number | undefined>(undefined)
 
 const filters = ref<CampaignFiltersState>({
   year: 'all',
@@ -108,21 +102,6 @@ function onView(id: string) {
 function onEdit(id: string) {
   editingId.value = id
   formOpen.value = true
-}
-
-function onEditRake(id: string) {
-  const campaign = store.campaigns.find((c) => c.id === id)
-  if (!campaign) return
-
-  const results = store.monthlyResultsFor(id)
-  const latest = results[results.length - 1] ?? null
-
-  rakeCampaignId.value = id
-  rakeResultId.value = latest?.id ?? null
-  rakeDefaultMonth.value =
-    latest?.referenceMonth ?? campaign.acquisitionMonth
-  rakeDefaultYear.value = latest?.referenceYear ?? campaign.acquisitionYear
-  rakeModalOpen.value = true
 }
 
 function onSaved(id: string) {
@@ -240,7 +219,6 @@ function onBackFromDetails() {
             :campaigns="filteredCampaigns"
             @view="onView"
             @edit="onEdit"
-            @edit-rake="onEditRake"
           />
         </section>
 
@@ -257,15 +235,6 @@ function onBackFromDetails() {
       v-model:open="formOpen"
       :campaign-id="editingId"
       @saved="onSaved"
-    />
-
-    <CampaignMonthlyResultModal
-      v-if="rakeCampaignId"
-      v-model:open="rakeModalOpen"
-      :campaign-id="rakeCampaignId"
-      :result-id="rakeResultId"
-      :default-month="rakeDefaultMonth"
-      :default-year="rakeDefaultYear"
     />
   </div>
 </template>
