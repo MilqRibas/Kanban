@@ -16,23 +16,12 @@ const props = defineProps<{
 }>()
 
 const rows = computed(() => {
-  const maxMoney = Math.max(
-    1,
-    ...props.campaigns.map((c) => c.investment),
-    ...props.campaigns.map((c) => {
-      const m = buildCampaignMetrics(c, props.monthlyResults)
-      return m.accumulatedRake
-    }),
-  )
-
   return [...props.campaigns]
     .map((campaign) => {
       const metrics = buildCampaignMetrics(campaign, props.monthlyResults)
       return {
         campaign,
         metrics,
-        invWidth: (campaign.investment / maxMoney) * 100,
-        rakeWidth: (metrics.accumulatedRake / maxMoney) * 100,
         recoveryWidth: Math.min(Math.max(metrics.recoveryRate ?? 0, 0), 100),
       }
     })
@@ -93,142 +82,110 @@ const activationRank = computed(() =>
 </script>
 
 <template>
-  <div class="space-y-3">
-    <!-- Ranking principal: recuperação + investimento vs rake -->
-    <section class="panel-glass rounded-2xl p-3 sm:p-4">
-      <div class="mb-3">
-        <h3 class="text-sm font-semibold text-text-primary">
-          Desempenho por campanha
-        </h3>
-        <p class="mt-0.5 text-xs text-text-muted">
-          Ordenado por recuperação do investimento
-        </p>
+  <div class="space-y-2.5">
+    <!-- Ranking denso: uma linha por campanha no desktop -->
+    <section class="panel-glass rounded-2xl p-2.5 sm:p-3">
+      <div class="mb-2 flex flex-wrap items-end justify-between gap-1">
+        <div>
+          <h3 class="text-sm font-semibold text-text-primary">
+            Desempenho por campanha
+          </h3>
+          <p class="text-[11px] text-text-muted">
+            Ordenado por recuperação · invest. × rake na barra
+          </p>
+        </div>
       </div>
 
-      <div v-if="rows.length" class="space-y-2.5">
-        <article
-          v-for="row in rows"
-          :key="row.campaign.id"
-          class="rounded-xl bg-surface/40 px-3 py-2.5 sm:px-3.5 sm:py-3"
-        >
-          <div class="flex items-start justify-between gap-2">
-            <div class="min-w-0">
-              <p class="truncate text-sm font-medium text-text-primary">
-                {{ row.campaign.name }}
-              </p>
-              <div class="mt-1">
-                <CampaignStatusBadge :status="row.metrics.status" />
-              </div>
-            </div>
-            <p class="shrink-0 text-sm font-semibold tabular-nums text-accent">
-              {{ formatPercent(row.metrics.recoveryRate) }}
-            </p>
-          </div>
-
-          <div class="mt-2.5 space-y-1">
-            <div class="flex justify-between gap-2 text-[11px] text-text-muted">
-              <span>Recuperação</span>
-              <span class="tabular-nums">
-                {{ formatCurrency(row.metrics.accumulatedRake) }}
-                /
-                {{ formatCurrency(row.campaign.investment) }}
-              </span>
-            </div>
-            <div class="h-2 overflow-hidden rounded-full bg-board/70">
-              <div
-                class="h-full rounded-full bg-accent transition-all"
-                :style="{ width: `${row.recoveryWidth}%` }"
-              />
-            </div>
-          </div>
-
-          <div class="mt-2.5 space-y-1">
-            <div class="flex justify-between gap-2 text-[11px] text-text-muted">
-              <span class="inline-flex items-center gap-1.5">
-                <span class="h-1.5 w-1.5 rounded-sm bg-text-muted/70" />
-                Investimento
-              </span>
-              <span class="tabular-nums text-text-secondary">
-                {{ formatCurrency(row.campaign.investment) }}
-              </span>
-            </div>
-            <div class="h-1.5 overflow-hidden rounded-full bg-board/70">
-              <div
-                class="h-full rounded-full bg-text-muted/55"
-                :style="{ width: `${row.invWidth}%` }"
-              />
-            </div>
-            <div class="flex justify-between gap-2 text-[11px] text-text-muted">
-              <span class="inline-flex items-center gap-1.5">
-                <span class="h-1.5 w-1.5 rounded-sm bg-accent/80" />
-                Rake acumulado
-              </span>
-              <span class="tabular-nums text-text-secondary">
-                {{ formatCurrency(row.metrics.accumulatedRake) }}
-              </span>
-            </div>
-            <div class="h-1.5 overflow-hidden rounded-full bg-board/70">
-              <div
-                class="h-full rounded-full bg-accent/75"
-                :style="{ width: `${row.rakeWidth}%` }"
-              />
-            </div>
-          </div>
-
-          <div
-            class="mt-2.5 grid grid-cols-3 gap-2 border-t border-border-subtle/50 pt-2 text-center"
-          >
-            <div>
-              <p class="text-[10px] uppercase tracking-wide text-text-muted">
+      <div v-if="rows.length" class="overflow-x-auto">
+        <table class="min-w-full text-left text-sm">
+          <thead class="text-[10px] uppercase tracking-wide text-text-muted">
+            <tr class="border-b border-border-subtle/60">
+              <th class="py-1.5 pr-3 font-medium">Campanha</th>
+              <th class="hidden py-1.5 pr-3 font-medium sm:table-cell">Status</th>
+              <th class="min-w-[10rem] py-1.5 pr-3 font-medium lg:min-w-[14rem]">
+                Recuperação
+              </th>
+              <th class="py-1.5 pr-3 text-right font-medium">Invest.</th>
+              <th class="py-1.5 pr-3 text-right font-medium">Rake</th>
+              <th class="hidden py-1.5 pr-3 text-right font-medium md:table-cell">
                 Ativação
-              </p>
-              <p class="mt-0.5 text-xs font-medium tabular-nums text-text-primary">
-                {{ formatPercent(row.metrics.activationRate) }}
-              </p>
-            </div>
-            <div>
-              <p class="text-[10px] uppercase tracking-wide text-text-muted">
-                Captados
-              </p>
-              <p class="mt-0.5 text-xs font-medium tabular-nums text-text-primary">
-                {{ row.campaign.capturedPlayers }}
-              </p>
-            </div>
-            <div>
-              <p class="text-[10px] uppercase tracking-wide text-text-muted">
+              </th>
+              <th class="hidden py-1.5 pr-3 text-right font-medium lg:table-cell">
+                Cap.
+              </th>
+              <th class="hidden py-1.5 text-right font-medium lg:table-cell">
                 Ativos
-              </p>
-              <p class="mt-0.5 text-xs font-medium tabular-nums text-text-primary">
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="row in rows"
+              :key="row.campaign.id"
+              class="border-b border-border-subtle/40 last:border-0"
+            >
+              <td class="max-w-[8rem] truncate py-2 pr-3 font-medium text-text-primary sm:max-w-[12rem]">
+                {{ row.campaign.name }}
+                <div class="mt-0.5 sm:hidden">
+                  <CampaignStatusBadge :status="row.metrics.status" />
+                </div>
+              </td>
+              <td class="hidden py-2 pr-3 sm:table-cell">
+                <CampaignStatusBadge :status="row.metrics.status" />
+              </td>
+              <td class="py-2 pr-3">
+                <div class="flex items-center gap-2">
+                  <div class="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-board/70">
+                    <div
+                      class="h-full rounded-full bg-accent"
+                      :style="{ width: `${row.recoveryWidth}%` }"
+                    />
+                  </div>
+                  <span class="w-14 shrink-0 text-right text-xs font-semibold tabular-nums text-accent">
+                    {{ formatPercent(row.metrics.recoveryRate) }}
+                  </span>
+                </div>
+              </td>
+              <td class="whitespace-nowrap py-2 pr-3 text-right tabular-nums text-text-secondary">
+                {{ formatCurrency(row.campaign.investment) }}
+              </td>
+              <td class="whitespace-nowrap py-2 pr-3 text-right tabular-nums text-text-primary">
+                {{ formatCurrency(row.metrics.accumulatedRake) }}
+              </td>
+              <td class="hidden whitespace-nowrap py-2 pr-3 text-right tabular-nums text-text-secondary md:table-cell">
+                {{ formatPercent(row.metrics.activationRate) }}
+              </td>
+              <td class="hidden py-2 pr-3 text-right tabular-nums text-text-secondary lg:table-cell">
+                {{ row.campaign.capturedPlayers }}
+              </td>
+              <td class="hidden py-2 text-right tabular-nums text-text-secondary lg:table-cell">
                 {{ row.campaign.activePlayers }}
-              </p>
-            </div>
-          </div>
-        </article>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-      <p v-else class="text-sm text-text-muted">
+      <p v-else class="py-3 text-sm text-text-muted">
         Nenhuma campanha nos filtros atuais.
       </p>
     </section>
 
-    <div class="grid gap-3 md:grid-cols-2">
-      <!-- Ativação -->
-      <section class="panel-glass rounded-2xl p-3 sm:p-4">
-        <h3 class="mb-2.5 text-sm font-semibold text-text-primary">
+    <!-- Secundário: ativação + rake mensal (abaixo da dobra principal) -->
+    <div class="grid gap-2.5 lg:grid-cols-2">
+      <section class="panel-glass rounded-2xl p-2.5 sm:p-3">
+        <h3 class="mb-2 text-sm font-semibold text-text-primary">
           Taxa de ativação
         </h3>
-        <div v-if="activationRank.length" class="space-y-2">
+        <div v-if="activationRank.length" class="space-y-1.5">
           <div
             v-for="row in activationRank"
             :key="row.campaign.id"
-            class="space-y-1"
+            class="flex items-center gap-2"
           >
-            <div class="flex items-center justify-between gap-2 text-xs">
-              <span class="truncate text-text-secondary">{{ row.campaign.name }}</span>
-              <span class="shrink-0 tabular-nums text-text-primary">
-                {{ formatPercent(row.metrics.activationRate) }}
-              </span>
-            </div>
-            <div class="h-2 overflow-hidden rounded-full bg-board/70">
+            <span class="w-24 shrink-0 truncate text-xs text-text-secondary sm:w-32">
+              {{ row.campaign.name }}
+            </span>
+            <div class="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-board/70">
               <div
                 class="h-full rounded-full bg-accent/80"
                 :style="{
@@ -236,14 +193,16 @@ const activationRank = computed(() =>
                 }"
               />
             </div>
+            <span class="w-14 shrink-0 text-right text-xs tabular-nums text-text-primary">
+              {{ formatPercent(row.metrics.activationRate) }}
+            </span>
           </div>
         </div>
         <p v-else class="text-sm text-text-muted">Sem dados.</p>
       </section>
 
-      <!-- Rake mensal em tabela compacta -->
-      <section class="panel-glass rounded-2xl p-3 sm:p-4">
-        <h3 class="mb-2.5 text-sm font-semibold text-text-primary">
+      <section class="panel-glass rounded-2xl p-2.5 sm:p-3">
+        <h3 class="mb-2 text-sm font-semibold text-text-primary">
           Rake mensal
         </h3>
         <div
@@ -253,13 +212,13 @@ const activationRank = computed(() =>
           <table class="min-w-full text-left text-xs">
             <thead>
               <tr class="text-text-muted">
-                <th class="sticky left-0 bg-board-elevated/95 py-1.5 pr-3 font-medium">
+                <th class="py-1 pr-3 font-medium">
                   Campanha
                 </th>
                 <th
                   v-for="col in monthColumns"
                   :key="col.key"
-                  class="whitespace-nowrap px-2 py-1.5 text-right font-medium"
+                  class="whitespace-nowrap px-2 py-1 text-right font-medium"
                   :title="col.full"
                 >
                   {{ col.short }}
@@ -273,14 +232,14 @@ const activationRank = computed(() =>
                 class="border-t border-border-subtle/40"
               >
                 <td
-                  class="sticky left-0 max-w-[7rem] truncate bg-board-elevated/95 py-2 pr-3 font-medium text-text-primary sm:max-w-[9rem]"
+                  class="max-w-[7rem] truncate py-1.5 pr-3 font-medium text-text-primary sm:max-w-[9rem]"
                 >
                   {{ row.name }}
                 </td>
                 <td
                   v-for="cell in row.cells"
                   :key="cell.key"
-                  class="whitespace-nowrap px-2 py-2 text-right tabular-nums text-text-secondary"
+                  class="whitespace-nowrap px-2 py-1.5 text-right tabular-nums text-text-secondary"
                 >
                   {{
                     cell.value === null

@@ -29,9 +29,9 @@ watch(
       props.campaigns.some((c) => c.id === id),
     )
     if (selectedIds.value.length < 2 && props.campaigns.length >= 2) {
-      selectedIds.value = props.campaigns.slice(0, Math.min(4, props.campaigns.length)).map(
-        (c) => c.id,
-      )
+      selectedIds.value = props.campaigns
+        .slice(0, Math.min(4, props.campaigns.length))
+        .map((c) => c.id)
     }
   },
   { immediate: true },
@@ -135,40 +135,31 @@ function cellValue(row: (typeof comparisonRows.value)[number], key: MetricKey) {
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="panel-glass rounded-2xl p-4 sm:p-5">
-      <div class="mb-3 flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h3 class="text-sm font-semibold text-text-primary">
-            Selecionar campanhas
-          </h3>
-          <p class="mt-1 text-xs text-text-muted">
-            Escolha entre 2 e 5 campanhas para comparar.
-          </p>
+  <div class="space-y-2.5">
+    <div class="panel-glass rounded-2xl px-3 py-2.5 sm:px-3.5">
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="mr-1 min-w-0">
+          <h3 class="text-sm font-semibold text-text-primary">Comparar</h3>
+          <p class="text-[11px] text-text-muted">2 a 5 campanhas</p>
         </div>
-        <span class="text-xs text-text-muted">
-          {{ selectedIds.length }} selecionada{{ selectedIds.length === 1 ? '' : 's' }}
-        </span>
-      </div>
-
-      <div class="flex flex-wrap gap-2">
         <button
           v-for="campaign in campaigns"
           :key="campaign.id"
           type="button"
-          class="rounded-xl px-3 py-1.5 text-sm transition-all"
+          class="rounded-lg px-2.5 py-1 text-xs transition-all sm:text-sm"
           :class="
             selectedIds.includes(campaign.id)
               ? 'bg-accent/20 text-text-primary ring-1 ring-accent/45'
               : 'bg-surface text-text-secondary hover:text-text-primary'
           "
-          :disabled="
-            !selectedIds.includes(campaign.id) && !canSelectMore
-          "
+          :disabled="!selectedIds.includes(campaign.id) && !canSelectMore"
           @click="toggle(campaign.id)"
         >
           {{ campaign.name }}
         </button>
+        <span class="ml-auto text-[11px] text-text-muted">
+          {{ selectedIds.length }} sel.
+        </span>
       </div>
     </div>
 
@@ -178,17 +169,17 @@ function cellValue(row: (typeof comparisonRows.value)[number], key: MetricKey) {
     >
       <div class="overflow-x-auto">
         <table class="min-w-full text-left text-sm">
-          <thead class="border-b border-border-subtle bg-surface/60 text-xs uppercase tracking-wide text-text-muted">
+          <thead class="border-b border-border-subtle bg-surface/60 text-[10px] uppercase tracking-wide text-text-muted">
             <tr>
-              <th class="sticky left-0 z-10 bg-surface/95 px-3 py-3 font-medium backdrop-blur">
+              <th class="sticky left-0 z-10 bg-surface/95 px-3 py-2 font-medium backdrop-blur">
                 Indicador
               </th>
               <th
                 v-for="row in comparisonRows"
                 :key="row.campaign.id"
-                class="min-w-[9.5rem] px-3 py-3 font-medium normal-case tracking-normal"
+                class="min-w-[8.5rem] px-3 py-2 font-medium normal-case tracking-normal"
               >
-                <div class="space-y-1.5">
+                <div class="space-y-1">
                   <p class="text-sm font-semibold text-text-primary">
                     {{ row.campaign.name }}
                   </p>
@@ -201,17 +192,17 @@ function cellValue(row: (typeof comparisonRows.value)[number], key: MetricKey) {
             <tr
               v-for="metric in metricDefs"
               :key="metric.key"
-              class="border-b border-border-subtle/60"
+              class="border-b border-border-subtle/50"
             >
               <th
-                class="sticky left-0 z-10 bg-board-elevated/95 px-3 py-3 text-left text-xs font-medium text-text-muted backdrop-blur"
+                class="sticky left-0 z-10 bg-board-elevated/95 px-3 py-1.5 text-left text-xs font-medium text-text-muted backdrop-blur"
               >
                 {{ metric.label }}
               </th>
               <td
                 v-for="row in comparisonRows"
                 :key="`${row.campaign.id}-${metric.key}`"
-                class="px-3 py-3 tabular-nums text-text-primary"
+                class="px-3 py-1.5 tabular-nums text-text-primary"
               >
                 {{ cellValue(row, metric.key) }}
               </td>
@@ -223,7 +214,7 @@ function cellValue(row: (typeof comparisonRows.value)[number], key: MetricKey) {
 
     <p
       v-else
-      class="panel-glass rounded-2xl p-5 text-sm text-text-muted"
+      class="panel-glass rounded-2xl p-4 text-sm text-text-muted"
     >
       Selecione ao menos 2 campanhas para ver o comparativo.
     </p>

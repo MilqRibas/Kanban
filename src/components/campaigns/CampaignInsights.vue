@@ -9,18 +9,18 @@ defineProps<{
 </script>
 
 <template>
-  <div class="panel-glass rounded-2xl p-4 sm:p-5">
-    <div class="mb-3 flex items-center gap-2">
-      <Lightbulb :size="16" class="text-accent" />
+  <div class="panel-glass rounded-2xl p-3 sm:p-3.5">
+    <div class="mb-2 flex items-center gap-2">
+      <Lightbulb :size="15" class="text-accent" />
       <h3 class="text-sm font-semibold text-text-primary">
         {{ title || 'Insights automáticos' }}
       </h3>
     </div>
-    <ul v-if="insights.length" class="space-y-2">
+    <ul v-if="insights.length" class="space-y-1.5">
       <li
         v-for="insight in insights"
         :key="insight.id"
-        class="rounded-xl bg-surface/50 px-3 py-2 text-sm text-text-secondary"
+        class="rounded-lg bg-surface/50 px-2.5 py-1.5 text-xs text-text-secondary sm:text-sm"
       >
         {{ insight.text }}
       </li>

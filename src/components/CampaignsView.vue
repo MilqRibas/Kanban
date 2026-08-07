@@ -7,6 +7,7 @@ import CampaignFilters, {
   type CampaignFiltersState,
 } from './campaigns/CampaignFilters.vue'
 import CampaignFormModal from './campaigns/CampaignFormModal.vue'
+import CampaignMonthlyResultModal from './campaigns/CampaignMonthlyResultModal.vue'
 import CampaignKpiCards from './campaigns/CampaignKpiCards.vue'
 import CampaignTable from './campaigns/CampaignTable.vue'
 import CampaignDetails from './campaigns/CampaignDetails.vue'
@@ -20,6 +21,11 @@ const bootstrapping = ref(false)
 const screen = ref<CampaignScreen>('overview')
 const formOpen = ref(false)
 const editingId = ref<string | null>(null)
+const rakeModalOpen = ref(false)
+const rakeCampaignId = ref<string | null>(null)
+const rakeResultId = ref<string | null>(null)
+const rakeDefaultMonth = ref<number | undefined>(undefined)
+const rakeDefaultYear = ref<number | undefined>(undefined)
 
 const filters = ref<CampaignFiltersState>({
   year: 'all',
@@ -104,6 +110,21 @@ function onEdit(id: string) {
   formOpen.value = true
 }
 
+function onEditRake(id: string) {
+  const campaign = store.campaigns.find((c) => c.id === id)
+  if (!campaign) return
+
+  const results = store.monthlyResultsFor(id)
+  const latest = results[results.length - 1] ?? null
+
+  rakeCampaignId.value = id
+  rakeResultId.value = latest?.id ?? null
+  rakeDefaultMonth.value =
+    latest?.referenceMonth ?? campaign.acquisitionMonth
+  rakeDefaultYear.value = latest?.referenceYear ?? campaign.acquisitionYear
+  rakeModalOpen.value = true
+}
+
 function onSaved(id: string) {
   if (screen.value === 'overview') screen.value = 'list'
   if (!store.selectedCampaignId) store.open(id)
@@ -137,26 +158,21 @@ function onBackFromDetails() {
 
     <div
       v-else
-      class="flex min-h-0 flex-1 flex-col overflow-y-auto pb-[4.75rem] pt-2 sm:pb-16 sm:pt-3"
+      class="flex min-h-0 flex-1 flex-col overflow-y-auto pb-[4.75rem] pt-1.5 sm:pb-16 sm:pt-2"
     >
-      <div
-        class="page-shell flex flex-col gap-3 sm:gap-5"
-      >
-        <header class="flex shrink-0 flex-wrap items-end justify-between gap-2 sm:gap-3">
+      <div class="page-shell flex flex-col gap-2 sm:gap-3">
+        <header class="flex shrink-0 flex-wrap items-center justify-between gap-2">
           <div class="min-w-0">
-            <p class="text-[11px] font-semibold uppercase tracking-wide text-accent/90">
+            <p class="text-[10px] font-semibold uppercase tracking-wide text-accent/90">
               Aquisição
             </p>
-            <h2 class="mt-0.5 text-xl font-semibold tracking-tight text-text-primary sm:text-3xl">
+            <h2 class="text-xl font-semibold tracking-tight text-text-primary sm:text-2xl">
               Campanhas
             </h2>
-            <p class="mt-1 hidden max-w-2xl text-sm text-text-muted sm:block">
-              Acompanhe aquisição, ativação, rake e retorno das campanhas do B2C.
-            </p>
           </div>
           <button
             type="button"
-            class="inline-flex items-center gap-1.5 rounded-xl bg-accent px-3 py-2 text-sm font-semibold text-board hover:bg-accent-hover sm:px-3.5"
+            class="inline-flex items-center gap-1.5 rounded-xl bg-accent px-3 py-1.5 text-sm font-semibold text-board hover:bg-accent-hover sm:px-3.5 sm:py-2"
             @click="openCreate"
           >
             <Plus :size="16" />
@@ -166,7 +182,7 @@ function onBackFromDetails() {
         </header>
 
         <div
-          class="-mx-1 flex max-w-full gap-1 overflow-x-auto px-1 sm:mx-0 sm:inline-flex sm:flex-wrap sm:gap-1.5 sm:overflow-visible sm:rounded-2xl sm:border sm:border-border-subtle sm:bg-board-elevated/80 sm:p-1.5"
+          class="-mx-1 flex max-w-full gap-1 overflow-x-auto px-1 sm:mx-0 sm:inline-flex sm:flex-wrap sm:gap-1 sm:overflow-visible sm:rounded-xl sm:border sm:border-border-subtle sm:bg-board-elevated/80 sm:p-1"
           role="tablist"
           aria-label="Visões de campanhas"
         >
@@ -177,7 +193,7 @@ function onBackFromDetails() {
             role="tab"
             :aria-selected="screen === tab.id"
             :class="[
-              'shrink-0 rounded-xl px-3 py-1.5 text-xs transition-all sm:px-3.5 sm:py-2 sm:text-sm',
+              'shrink-0 rounded-lg px-3 py-1.5 text-xs transition-all sm:text-sm',
               screen === tab.id
                 ? 'bg-accent/20 text-text-primary ring-1 ring-accent/45'
                 : 'bg-board-elevated/80 text-text-secondary hover:bg-surface hover:text-text-primary sm:bg-transparent',
@@ -202,7 +218,7 @@ function onBackFromDetails() {
           {{ store.error }}
         </p>
 
-        <section v-if="screen === 'overview'" class="space-y-3 sm:space-y-4">
+        <section v-if="screen === 'overview'" class="space-y-2.5">
           <CampaignKpiCards :kpis="overviewKpis" />
           <CampaignCharts
             :campaigns="filteredCampaigns"
@@ -224,6 +240,7 @@ function onBackFromDetails() {
             :campaigns="filteredCampaigns"
             @view="onView"
             @edit="onEdit"
+            @edit-rake="onEditRake"
           />
         </section>
 
@@ -240,6 +257,15 @@ function onBackFromDetails() {
       v-model:open="formOpen"
       :campaign-id="editingId"
       @saved="onSaved"
+    />
+
+    <CampaignMonthlyResultModal
+      v-if="rakeCampaignId"
+      v-model:open="rakeModalOpen"
+      :campaign-id="rakeCampaignId"
+      :result-id="rakeResultId"
+      :default-month="rakeDefaultMonth"
+      :default-year="rakeDefaultYear"
     />
   </div>
 </template>

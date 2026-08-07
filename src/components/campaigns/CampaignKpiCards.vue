@@ -91,22 +91,20 @@ function display(value: number | null, format: (typeof cards)[number]['format'])
 </script>
 
 <template>
-  <div class="grid grid-cols-2 gap-2 sm:gap-2.5 md:grid-cols-4">
+  <div class="grid grid-cols-2 gap-1.5 sm:gap-2 md:grid-cols-4 xl:grid-cols-8">
     <div
       v-for="card in cards"
       :key="card.key"
-      class="panel-glass rounded-xl px-2.5 py-2.5 sm:rounded-2xl sm:px-3.5 sm:py-3"
+      class="panel-glass rounded-xl px-2.5 py-2 sm:px-3 sm:py-2.5"
     >
       <div class="flex items-center gap-1.5 text-text-muted">
-        <component :is="card.icon" :size="13" class="text-accent" />
-        <span class="truncate text-[10px] font-medium uppercase tracking-wide sm:text-[11px]">
-          <span class="sm:hidden">{{ card.shortLabel }}</span>
-          <span class="hidden sm:inline">{{ card.label }}</span>
+        <component :is="card.icon" :size="12" class="shrink-0 text-accent" />
+        <span class="truncate text-[10px] font-medium uppercase tracking-wide">
+          <span class="xl:hidden">{{ card.shortLabel }}</span>
+          <span class="hidden xl:inline">{{ card.shortLabel }}</span>
         </span>
       </div>
-      <p
-        class="mt-1.5 text-base font-semibold tabular-nums leading-tight text-text-primary sm:mt-2 sm:text-xl md:text-2xl"
-      >
+      <p class="mt-1 text-sm font-semibold tabular-nums leading-tight text-text-primary sm:text-base lg:text-lg">
         {{ display(kpis[card.key], card.format) }}
       </p>
     </div>
