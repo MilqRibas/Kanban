@@ -240,8 +240,8 @@ watch(
   },
 )
 
-function normalizeNumberInput(raw: string) {
-  let value = raw.trim()
+function normalizeNumberInput(raw: string | number | null | undefined) {
+  let value = String(raw ?? '').trim()
   if (!value) return ''
   // Aceita formatos BR (1.234,56 / 1234,56) e ponto decimal simples.
   if (value.includes(',')) {
@@ -250,7 +250,10 @@ function normalizeNumberInput(raw: string) {
   return value
 }
 
-function parseRequiredNumber(raw: string, label: string) {
+function parseRequiredNumber(
+  raw: string | number | null | undefined,
+  label: string,
+) {
   const normalized = normalizeNumberInput(raw)
   if (!normalized) return { error: `${label} é obrigatório.` as string, value: null }
   const value = Number(normalized)
@@ -260,7 +263,7 @@ function parseRequiredNumber(raw: string, label: string) {
   return { error: null as string | null, value }
 }
 
-function parseOptionalNumber(raw: string) {
+function parseOptionalNumber(raw: string | number | null | undefined) {
   const normalized = normalizeNumberInput(raw)
   if (!normalized) return null
   const value = Number(normalized)
@@ -268,7 +271,7 @@ function parseOptionalNumber(raw: string) {
 }
 
 const accumulatedRakePreview = computed(() => {
-  const monthlyRaw = draft.monthlyRake.trim().replace(',', '.')
+  const monthlyRaw = normalizeNumberInput(draft.monthlyRake)
   const current =
     monthlyRaw && Number.isFinite(Number(monthlyRaw)) ? Number(monthlyRaw) : 0
 
@@ -376,7 +379,7 @@ async function save() {
   const payload = buildPayload()
   if (!payload) return
 
-  const monthlyRaw = draft.monthlyRake.trim()
+  const monthlyRaw = normalizeNumberInput(draft.monthlyRake)
   let monthlyRake: number | null = null
   if (monthlyRaw) {
     const parsed = parseRequiredNumber(draft.monthlyRake, 'Rake do mês')
