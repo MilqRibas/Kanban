@@ -127,8 +127,15 @@ watch(
   },
 )
 
-function parseNumber(raw: string, label: string, required: boolean) {
-  const normalized = raw.trim().replace(',', '.')
+function parseNumber(
+  raw: string | number | null | undefined,
+  label: string,
+  required: boolean,
+) {
+  let normalized = String(raw ?? '').trim()
+  if (normalized.includes(',')) {
+    normalized = normalized.replace(/\./g, '').replace(',', '.')
+  }
   if (!normalized) {
     return required
       ? { error: `${label} é obrigatório.`, value: null as number | null }
