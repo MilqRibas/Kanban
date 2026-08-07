@@ -566,7 +566,7 @@ function goToday() {
     <div class="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
       <div class="panel-glass rounded-2xl px-3.5 py-3 sm:px-4 sm:py-3.5">
         <div class="flex items-center gap-2 text-text-muted">
-          <CheckCircle2 :size="14" class="text-success" />
+          <CheckCircle2 :size="14" class="text-accent" />
           <span class="text-[11px] font-medium uppercase tracking-wide">
             {{ periodHint === 'Hoje' ? 'Hoje' : 'Concluídas' }}
           </span>
@@ -600,7 +600,7 @@ function goToday() {
 
       <div class="panel-glass rounded-2xl px-3.5 py-3 sm:px-4 sm:py-3.5">
         <div class="flex items-center gap-2 text-text-muted">
-          <ListChecks :size="14" class="text-amber-300" />
+          <ListChecks :size="14" class="text-accent" />
           <span class="text-[11px] font-medium uppercase tracking-wide">
             Pendentes
           </span>
@@ -617,7 +617,7 @@ function goToday() {
 
       <div class="panel-glass rounded-2xl px-3.5 py-3 sm:px-4 sm:py-3.5">
         <div class="flex items-center gap-2 text-text-muted">
-          <TrendingUp :size="14" class="text-sky-300" />
+          <TrendingUp :size="14" class="text-accent" />
           <span class="text-[11px] font-medium uppercase tracking-wide">
             Pico
           </span>

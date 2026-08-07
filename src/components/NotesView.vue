@@ -203,9 +203,10 @@ function confirmDelete() {
 </script>
 
 <template>
-  <div
-    class="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden px-2 pb-[4.75rem] pt-2 md:flex-row md:gap-2 md:px-3 md:pb-16"
-  >
+  <div class="flex min-h-0 flex-1 flex-col overflow-hidden pb-[4.75rem] pt-2 md:pb-16">
+    <div
+      class="page-shell flex min-h-0 flex-1 flex-col gap-2 overflow-hidden md:flex-row md:gap-2"
+    >
     <aside
       class="panel-glass flex max-h-[40vh] w-full shrink-0 flex-col overflow-hidden rounded-xl md:max-h-none md:w-72 lg:w-80"
     >
@@ -511,5 +512,6 @@ function confirmDelete() {
         </div>
       </div>
     </section>
+    </div>
   </div>
 </template>

@@ -4,10 +4,11 @@ import {
   Columns3,
   LayoutGrid,
   ListChecks,
+  Megaphone,
   NotebookPen,
 } from '@lucide/vue'
 
-export type NavTab = 'agenda' | 'board' | 'daily' | 'notes' | 'hub'
+export type NavTab = 'agenda' | 'board' | 'daily' | 'notes' | 'hub' | 'campaigns'
 
 defineProps<{
   activeTab: NavTab
@@ -23,6 +24,7 @@ const tabs: { id: NavTab; label: string; icon: typeof CalendarDays }[] = [
   { id: 'daily', label: 'Tarefas', icon: ListChecks },
   { id: 'notes', label: 'Notas', icon: NotebookPen },
   { id: 'hub', label: 'HUB', icon: LayoutGrid },
+  { id: 'campaigns', label: 'Campanhas', icon: Megaphone },
 ]
 </script>
 
@@ -39,8 +41,10 @@ const tabs: { id: NavTab; label: string; icon: typeof CalendarDays }[] = [
         :key="tab.id"
         type="button"
         :aria-current="activeTab === tab.id ? 'page' : undefined"
+        :aria-label="tab.label"
+        :title="tab.label"
         :class="[
-          'inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs transition-all duration-300 ease-out sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm',
+          'inline-flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-2 text-xs transition-all duration-300 ease-out sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm',
           activeTab === tab.id
             ? 'bg-accent/20 text-text-primary ring-1 ring-accent/45'
             : 'text-text-secondary hover:bg-surface hover:text-text-primary',
@@ -48,7 +52,7 @@ const tabs: { id: NavTab; label: string; icon: typeof CalendarDays }[] = [
         @click="emit('update:activeTab', tab.id)"
       >
         <component :is="tab.icon" :size="17" :stroke-width="2" />
-        <span>{{ tab.label }}</span>
+        <span class="hidden min-[420px]:inline">{{ tab.label }}</span>
       </button>
     </div>
   </nav>

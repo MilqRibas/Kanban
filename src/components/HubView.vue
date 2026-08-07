@@ -344,7 +344,7 @@ async function addSection() {
             <div class="pointer-events-none absolute right-3 top-3 flex items-center gap-1">
               <span
                 v-if="card.starred"
-                class="rounded-full bg-amber-400/20 p-1 text-amber-300"
+                class="rounded-full bg-accent/20 p-1 text-accent"
                 title="Favorito"
               >
                 <Star :size="12" fill="currentColor" />
@@ -397,7 +397,7 @@ async function addSection() {
                   :class="[
                     'pointer-events-auto rounded-lg p-1.5 transition-colors',
                     card.starred
-                      ? 'text-amber-300 hover:bg-amber-400/15'
+                      ? 'text-accent hover:bg-accent/15'
                       : 'text-text-muted opacity-70 hover:bg-white/10 hover:text-text-primary group-hover:opacity-100',
                   ]"
                   :title="card.starred ? 'Remover dos favoritos' : 'Favoritar'"

@@ -54,17 +54,11 @@
     height: 0;
   }
 
-  /* Área de conteúdo padronizada (Agenda / Tarefas) */
+  /* Área de conteúdo padronizada — 90% da largura, responsivo */
   .page-shell {
-    width: min(100% - 1.5rem, 85%);
-    max-width: 85%;
+    width: 90%;
+    max-width: 90%;
     margin-inline: auto;
-  }
-
-  @media (min-width: 640px) {
-    .page-shell {
-      width: 85%;
-    }
   }
 
   /* Quadro: só o scroll horizontal inferior, bem discreto */

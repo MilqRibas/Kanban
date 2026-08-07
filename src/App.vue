@@ -22,6 +22,7 @@ import { useDailyStore } from './stores/dailyTodos'
 import { useNotificationsStore } from './stores/notifications'
 import { useCommunityStore } from './stores/community'
 import { useHubSectionsStore } from './stores/hubSections'
+import { useCampaignsStore } from './stores/campaigns'
 
 const asyncOpts = { delay: 320 }
 
@@ -41,6 +42,10 @@ const HubView = defineAsyncComponent({
   loader: () => import('./components/HubView.vue'),
   ...asyncOpts,
 })
+const CampaignsView = defineAsyncComponent({
+  loader: () => import('./components/CampaignsView.vue'),
+  ...asyncOpts,
+})
 
 const tabViews: Record<NavTab, Component> = {
   board: markRaw(BoardView),
@@ -48,6 +53,7 @@ const tabViews: Record<NavTab, Component> = {
   daily: markRaw(DailyView),
   notes: markRaw(NotesView),
   hub: markRaw(HubView),
+  campaigns: markRaw(CampaignsView),
 }
 
 const auth = useAuthStore()
@@ -57,10 +63,12 @@ const daily = useDailyStore()
 const notifications = useNotificationsStore()
 const community = useCommunityStore()
 const hubSections = useHubSectionsStore()
+const campaigns = useCampaignsStore()
 const activeTab = ref<NavTab>('board')
 const bootstrapping = ref(false)
 const notesReady = ref(false)
 const dailyReady = ref(false)
+const campaignsReady = ref(false)
 const chunksPrefetched = ref(false)
 
 onMounted(async () => {
@@ -74,6 +82,7 @@ function prefetchTabChunks() {
   void import('./components/DailyView.vue')
   void import('./components/NotesView.vue')
   void import('./components/HubView.vue')
+  void import('./components/CampaignsView.vue')
 }
 
 watch(
@@ -86,8 +95,10 @@ watch(
       notifications.reset()
       community.reset()
       hubSections.reset()
+      campaigns.reset()
       notesReady.value = false
       dailyReady.value = false
+      campaignsReady.value = false
       return
     }
     bootstrapping.value = true
@@ -119,6 +130,10 @@ watch(activeTab, async (tab) => {
     daily.sanitizeDetailMember()
     dailyReady.value = true
   }
+  if (tab === 'campaigns' && !campaignsReady.value) {
+    await campaigns.init()
+    campaignsReady.value = true
+  }
 })
 </script>
 
@@ -147,7 +162,7 @@ watch(activeTab, async (tab) => {
       <AppHeader />
       <main class="tab-stage relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <Transition name="tab-fade">
-          <KeepAlive :max="5">
+          <KeepAlive :max="6">
             <component
               :is="tabViews[activeTab]"
               :key="activeTab"
