@@ -54,11 +54,43 @@
     height: 0;
   }
 
+  /* Fallback até o AppFooter medir a barra flutuante */
+  :root {
+    --footer-clearance: calc(5.75rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  @media (min-width: 640px) {
+    :root {
+      --footer-clearance: calc(6.5rem + env(safe-area-inset-bottom, 0px));
+    }
+  }
+
   /* Área de conteúdo padronizada — 90% da largura, responsivo */
   .page-shell {
     width: 90%;
     max-width: 90%;
     margin-inline: auto;
+  }
+
+  /* Reserva espaço sob o conteúdo (preferir no main do App) */
+  .has-footer-pad {
+    padding-bottom: var(--footer-clearance);
+  }
+
+  /* Sheets mobile que devem ficar acima da barra */
+  .footer-sheet-offset {
+    margin-bottom: var(--footer-clearance);
+  }
+
+  @media (min-width: 640px) {
+    .footer-sheet-offset {
+      margin-bottom: 0;
+    }
+  }
+
+  /* Listas com scroll: último item não fica atrás da barra */
+  .scroll-footer-pad {
+    scroll-padding-bottom: var(--footer-clearance);
   }
 
   /* Quadro: só o scroll horizontal inferior, bem discreto */

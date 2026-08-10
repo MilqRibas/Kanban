@@ -305,7 +305,7 @@ async function addSection() {
       <div
         v-if="screen === 'home'"
         key="home"
-        class="flex min-h-0 flex-1 flex-col overflow-y-auto pb-[4.75rem] pt-2 sm:pb-16 sm:pt-3"
+        class="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-footer-pad pt-2 sm:pt-3"
       >
       <div class="page-shell flex flex-col gap-6 sm:gap-8">
       <header class="flex shrink-0 flex-wrap items-end justify-between gap-3">
@@ -488,7 +488,7 @@ async function addSection() {
       <div
         v-else-if="screen === 'conteudo'"
         key="conteudo"
-        class="flex min-h-0 flex-1 flex-col overflow-y-auto pb-[4.75rem] pt-2 sm:pb-16 sm:pt-3"
+        class="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-footer-pad pt-2 sm:pt-3"
       >
       <div class="page-shell">
       <header class="mb-4 shrink-0">
@@ -606,7 +606,7 @@ async function addSection() {
       <CommunityCalendar
         v-else-if="activeSection"
         :key="`section-${activeSection.id}`"
-        class="min-h-0 flex-1 overflow-y-auto px-2 pb-[4.75rem] pt-2 sm:px-4 sm:pb-16 sm:pt-3"
+        class="min-h-0 flex-1 overflow-y-auto scroll-footer-pad px-2 pt-2 sm:px-4 sm:pt-3"
         :title="activeSection.title"
         :section-id="activeSection.id"
         @back="screen = 'conteudo'"

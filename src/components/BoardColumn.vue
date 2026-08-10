@@ -272,7 +272,7 @@ onBeforeUnmount(() => {
       :animation="180"
       ghost-class="card-ghost"
       drag-class="card-drag"
-      class="flex min-h-12 flex-1 flex-col gap-3 overflow-y-auto px-3 pb-2"
+      class="flex min-h-12 flex-1 flex-col gap-3 overflow-y-auto scroll-footer-pad px-3 pb-2"
       :class="{ 'pb-3': columnCards.length === 0 }"
     >
       <template #item="{ element }">

@@ -616,7 +616,7 @@ function renderCommentBody(body: string) {
       />
 
       <article
-        class="relative z-10 flex h-[min(88dvh,820px)] w-full max-w-5xl flex-col overflow-hidden rounded-t-2xl border border-white/10 bg-board-elevated/95 shadow-2xl shadow-black/50 backdrop-blur-md sm:rounded-2xl"
+        class="footer-sheet-offset relative z-10 flex h-[min(88dvh,820px)] w-full max-w-5xl flex-col overflow-hidden rounded-t-2xl border border-white/10 bg-board-elevated/95 shadow-2xl shadow-black/50 backdrop-blur-md sm:rounded-2xl"
         tabindex="-1"
         ref="modalRef"
       >

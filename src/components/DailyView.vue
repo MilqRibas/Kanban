@@ -289,6 +289,16 @@ function isTabActive(mode: 'day' | 'week' | 'month') {
   return !daily.dayDetailOpen && daily.calendarViewMode === 'month'
 }
 
+const MONTH_VISIBLE_ENTRIES = 2
+
+function visibleMonthEntries(entries: DailyEntry[]) {
+  return entries.slice(0, MONTH_VISIBLE_ENTRIES)
+}
+
+function monthOverflowCount(entries: DailyEntry[]) {
+  return Math.max(0, entries.length - MONTH_VISIBLE_ENTRIES)
+}
+
 function closeDayDetail() {
   memberPickerOpen.value = false
   addBlockMenuOpen.value = false
@@ -313,7 +323,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col pb-[4.75rem] pt-2 sm:pb-16 sm:pt-3">
+  <div class="flex min-h-0 flex-1 flex-col pt-2 sm:pt-3">
     <div class="page-shell flex min-h-0 flex-1 flex-col gap-2 sm:gap-3">
     <p v-if="daily.error" class="rounded-lg border border-red-400/30 bg-red-950/50 px-3 py-2 text-xs text-red-200">
       {{ daily.error }}
@@ -551,38 +561,36 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
             {{ cell.dayNumber }}
           </span>
 
-          <div class="min-h-0 flex-1 space-y-1 overflow-y-auto">
+          <div class="min-h-0 flex-1 space-y-0.5 overflow-hidden">
             <button
-              v-for="entry in cell.entries"
+              v-for="entry in visibleMonthEntries(cell.entries)"
               :key="entry.id"
               type="button"
-              class="relative w-full rounded-lg border border-border-subtle/60 bg-card px-1.5 py-1.5 pr-6 text-left hover:bg-card-hover"
+              class="relative flex w-full items-center gap-1 rounded-md border border-border-subtle/50 bg-card px-1 py-0.5 text-left hover:bg-card-hover"
               @click.stop="daily.openEntry(entry.memberId, cell.dateKey)"
             >
-              <div
-                v-if="entryProgress(entry).complete"
-                class="absolute right-1 top-1"
-              >
-                <div
-                  class="flex size-4 items-center justify-center rounded-full bg-success text-board"
-                >
-                  <Check :size="9" :stroke-width="3" />
-                </div>
-              </div>
-              <p class="truncate text-[10px] font-semibold text-text-primary">
-                {{ memberOf(entry)?.name }}
-              </p>
-              <p class="truncate text-[10px] text-text-muted">
-                {{ entry.campaign || 'Tarefas' }}
-              </p>
               <span
                 :class="[
-                  'mt-1 inline-flex rounded px-1 py-0.5 text-[9px] font-semibold',
-                  statusOf(entry).className,
+                  'size-1.5 shrink-0 rounded-full',
+                  entryProgress(entry).complete
+                    ? 'bg-success'
+                    : entry.status === 'in_progress'
+                      ? 'bg-amber-400'
+                      : 'bg-danger',
                 ]"
-              >
-                {{ statusOf(entry).label }}
-              </span>
+                aria-hidden="true"
+              />
+              <p class="min-w-0 flex-1 truncate text-[10px] font-medium text-text-primary">
+                {{ memberOf(entry)?.name }}
+              </p>
+            </button>
+            <button
+              v-if="monthOverflowCount(cell.entries) > 0"
+              type="button"
+              class="w-full rounded px-1 py-0.5 text-left text-[10px] font-semibold text-accent hover:bg-white/5"
+              @click.stop="openDay(cell.dateKey)"
+            >
+              +{{ monthOverflowCount(cell.entries) }}
             </button>
           </div>
         </div>
@@ -609,7 +617,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
           />
 
           <section
-            class="panel-glass relative z-10 mb-[4.75rem] flex h-[min(88dvh,820px)] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-white/10 shadow-2xl shadow-black/50 sm:mb-0 sm:rounded-2xl"
+            class="panel-glass footer-sheet-offset relative z-10 flex h-[min(88dvh,820px)] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-white/10 shadow-2xl shadow-black/50 sm:rounded-2xl"
           >
             <div
               class="flex shrink-0 justify-center pt-2 sm:hidden"

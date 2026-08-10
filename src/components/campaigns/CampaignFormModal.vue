@@ -454,7 +454,7 @@ async function save() {
       />
 
       <form
-        class="panel-glass relative z-10 flex max-h-[92vh] w-full max-w-2xl flex-col rounded-t-2xl shadow-2xl sm:rounded-2xl"
+        class="panel-glass footer-sheet-offset relative z-10 flex max-h-[92vh] w-full max-w-2xl flex-col rounded-t-2xl shadow-2xl sm:rounded-2xl"
         novalidate
         @submit.prevent="save"
       >

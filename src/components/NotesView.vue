@@ -203,7 +203,7 @@ function confirmDelete() {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col overflow-hidden pb-[4.75rem] pt-2 md:pb-16">
+  <div class="flex min-h-0 flex-1 flex-col overflow-hidden pt-2">
     <div
       class="page-shell flex min-h-0 flex-1 flex-col gap-2 overflow-hidden md:flex-row md:gap-2"
     >
@@ -272,7 +272,7 @@ function confirmDelete() {
         </label>
       </div>
 
-      <ul class="flex-1 space-y-1 overflow-y-auto p-2">
+      <ul class="flex-1 space-y-1 overflow-y-auto scroll-footer-pad p-2">
         <li v-for="note in filteredNotes" :key="note.id">
           <button
             type="button"

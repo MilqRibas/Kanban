@@ -137,7 +137,7 @@ function onBackFromDetails() {
 
     <div
       v-else
-      class="flex min-h-0 flex-1 flex-col overflow-y-auto pb-[4.75rem] pt-1.5 sm:pb-16 sm:pt-2"
+      class="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-footer-pad pt-1.5 sm:pt-2"
     >
       <div class="page-shell flex flex-col gap-2 sm:gap-3">
         <header class="flex shrink-0 flex-wrap items-center justify-between gap-2">

@@ -99,10 +99,20 @@ function cardsForDay(dateKey: string | null) {
   if (!dateKey) return []
   return dueCardsByDay.value[dateKey] ?? []
 }
+
+const MONTH_VISIBLE_CARDS = 3
+
+function visibleDayCards(dateKey: string | null) {
+  return cardsForDay(dateKey).slice(0, MONTH_VISIBLE_CARDS)
+}
+
+function dayCardOverflow(dateKey: string | null) {
+  return Math.max(0, cardsForDay(dateKey).length - MONTH_VISIBLE_CARDS)
+}
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col pb-[4.75rem] pt-2 sm:pb-16 sm:pt-3">
+  <div class="flex min-h-0 flex-1 flex-col pt-2 sm:pt-3">
     <div
       class="page-shell panel-glass flex min-h-0 flex-1 flex-col rounded-2xl p-2 shadow-xl shadow-black/20 sm:p-3"
     >
@@ -171,13 +181,13 @@ function cardsForDay(dateKey: string | null) {
               {{ cell.day }}
             </span>
 
-            <div class="min-h-0 flex-1 space-y-1 overflow-y-auto pr-0.5">
+            <div class="min-h-0 flex-1 space-y-0.5 overflow-hidden">
               <button
-                v-for="card in cardsForDay(cell.dateKey)"
+                v-for="card in visibleDayCards(cell.dateKey)"
                 :key="card.id"
                 type="button"
                 :class="[
-                  'block w-full rounded-md px-1.5 py-1 text-left text-[11px] font-semibold leading-snug shadow-sm transition-all hover:brightness-110',
+                  'block w-full truncate rounded-md px-1.5 py-0.5 text-left text-[10px] font-semibold leading-snug shadow-sm transition-all hover:brightness-110',
                   isDone(card)
                     ? 'bg-success/30 text-success ring-1 ring-success/25'
                     : isOverdue(card.dueDate!)
@@ -194,8 +204,14 @@ function cardsForDay(dateKey: string | null) {
                 :title="card.title"
                 @click="board.openCard(card.id)"
               >
-                <span class="line-clamp-2 break-words">{{ card.title }}</span>
+                {{ card.title }}
               </button>
+              <p
+                v-if="dayCardOverflow(cell.dateKey) > 0"
+                class="px-1 text-[10px] font-semibold text-accent"
+              >
+                +{{ dayCardOverflow(cell.dateKey) }}
+              </p>
             </div>
           </template>
         </div>

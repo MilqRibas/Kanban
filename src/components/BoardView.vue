@@ -43,7 +43,7 @@ function confirmAddList() {
 
 <template>
   <div
-    class="board-scroll min-h-0 flex-1 overflow-x-auto overflow-y-hidden pb-[5rem] pt-3 sm:pb-24 sm:pt-4"
+    class="board-scroll min-h-0 flex-1 overflow-x-auto overflow-y-hidden pt-3 sm:pt-4"
   >
     <div
       class="board-track mx-auto flex h-full w-max min-w-full items-start justify-center gap-4 px-5 sm:gap-5 sm:px-8"
