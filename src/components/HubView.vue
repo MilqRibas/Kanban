@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, inject, nextTick, onMounted, ref, watch } from 'vue'
 import {
   ChevronRight,
   ExternalLink,
@@ -23,18 +23,51 @@ import type { HubSection } from '../types/community'
 import { useEscapeKey } from '../composables/useEscapeKey'
 import CommunityCalendar from './CommunityCalendar.vue'
 import HubMetrics from './HubMetrics.vue'
+import type { NavTab } from './AppFooter.vue'
 
 const ACCESS_SHEET_URL =
   'https://netorgft12516109.sharepoint.com/:x:/r/sites/B2C328/_layouts/15/Doc.aspx?action=edit&sourcedoc=%7B97cf99de-0dba-4de4-8179-53beac4a5b97%7D&wdExp=TEAMS-TREATMENT&web=1&TeamsCID=bc017502-bdfb-4487-a26e-40d7f92b691c'
 
 type HubScreen = 'home' | 'conteudo' | 'section'
 
-const screen = ref<HubScreen>('home')
+const props = withDefaults(
+  defineProps<{
+    /** home = HUB completo; conteudo = atalho Comunidade no menu */
+    entry?: 'home' | 'conteudo'
+  }>(),
+  { entry: 'home' },
+)
+
+const setActiveTab = inject<(tab: NavTab) => void>('setActiveTab', () => {})
+
+const screen = ref<HubScreen>(props.entry === 'conteudo' ? 'conteudo' : 'home')
 const activeSectionId = ref<string | null>(null)
 const community = useCommunityStore()
 const hubSections = useHubSectionsStore()
 const ready = ref(false)
 const suppressClick = ref(false)
+
+watch(
+  () => props.entry,
+  (entry) => {
+    if (entry === 'conteudo') {
+      screen.value = 'conteudo'
+      activeSectionId.value = null
+    } else if (screen.value === 'conteudo' || screen.value === 'section') {
+      // Mantém subdivisão aberta se o usuário já estava nela via HUB
+    } else {
+      screen.value = 'home'
+    }
+  },
+)
+
+function backFromConteudo() {
+  if (props.entry === 'conteudo') {
+    setActiveTab('hub')
+    return
+  }
+  screen.value = 'home'
+}
 
 const menuId = ref<string | null>(null)
 const formOpen = ref(false)
@@ -462,7 +495,7 @@ async function addSection() {
         <button
           type="button"
           class="mb-2 rounded-lg px-2 py-1 text-xs text-text-secondary hover:bg-white/10 hover:text-text-primary"
-          @click="screen = 'home'"
+          @click="backFromConteudo"
         >
           ← HUB
         </button>

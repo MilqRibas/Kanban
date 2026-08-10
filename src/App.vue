@@ -3,6 +3,7 @@ import {
   defineAsyncComponent,
   markRaw,
   onMounted,
+  provide,
   type Component,
   ref,
   watch,
@@ -31,6 +32,7 @@ const NAV_TABS: readonly NavTab[] = [
   'daily',
   'notes',
   'hub',
+  'community',
   'campaigns',
 ]
 
@@ -75,6 +77,7 @@ const tabViews: Record<NavTab, Component> = {
   daily: markRaw(DailyView),
   notes: markRaw(NotesView),
   hub: markRaw(HubView),
+  community: markRaw(HubView),
   campaigns: markRaw(CampaignsView),
 }
 
@@ -92,6 +95,12 @@ const notesReady = ref(false)
 const dailyReady = ref(false)
 const campaignsReady = ref(false)
 const chunksPrefetched = ref(false)
+
+function goToTab(tab: NavTab) {
+  activeTab.value = tab
+}
+
+provide('setActiveTab', goToTab)
 
 onMounted(async () => {
   await auth.init()
@@ -194,10 +203,17 @@ watch(activeTab, async (tab) => {
       <AppHeader />
       <main class="tab-stage relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <Transition name="tab-fade">
-          <KeepAlive :max="6">
+          <KeepAlive :max="8">
             <component
               :is="tabViews[activeTab]"
               :key="activeTab"
+              v-bind="
+                activeTab === 'community'
+                  ? { entry: 'conteudo' }
+                  : activeTab === 'hub'
+                    ? { entry: 'home' }
+                    : {}
+              "
               class="tab-panel flex min-h-0 w-full flex-1 flex-col"
             />
           </KeepAlive>
