@@ -28,12 +28,12 @@ const emit = defineEmits<{
 
 const tabs: { id: NavTab; label: string; icon: typeof CalendarDays }[] = [
   { id: 'agenda', label: 'Agenda', icon: CalendarDays },
+  { id: 'campaigns', label: 'Campanhas', icon: Megaphone },
+  { id: 'community', label: 'Comunidade', icon: Users },
+  { id: 'hub', label: 'HUB', icon: LayoutGrid },
+  { id: 'notes', label: 'Notas', icon: NotebookPen },
   { id: 'board', label: 'Quadro', icon: Columns3 },
   { id: 'daily', label: 'Tarefas', icon: ListChecks },
-  { id: 'notes', label: 'Notas', icon: NotebookPen },
-  { id: 'hub', label: 'HUB', icon: LayoutGrid },
-  { id: 'community', label: 'Comunidade', icon: Users },
-  { id: 'campaigns', label: 'Campanhas', icon: Megaphone },
 ]
 </script>
 
