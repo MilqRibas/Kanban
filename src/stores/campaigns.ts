@@ -405,12 +405,9 @@ export const useCampaignsStore = defineStore('campaigns', () => {
 
   function canDeleteCampaign(campaign: Campaign) {
     const auth = useAuthStore()
-    if (auth.isAdmin) return true
-    return Boolean(
-      auth.memberId &&
-        campaign.createdBy &&
-        campaign.createdBy === auth.memberId,
-    )
+    if (!auth.memberId) return false
+    if (auth.isAdmin || !campaign.createdBy) return true
+    return campaign.createdBy === auth.memberId
   }
 
   function metricsFor(campaign: Campaign): CampaignWeeklyMetrics {

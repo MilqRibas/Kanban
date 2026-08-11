@@ -177,7 +177,7 @@ function typeLabel(campaign: Campaign) {
               <template v-else>—</template>
             </td>
             <td class="relative px-3 py-3 text-right">
-              <div class="inline-flex items-center gap-1">
+              <div class="inline-flex items-center gap-1" data-ephemeral-menu>
                 <button
                   type="button"
                   class="rounded-lg p-1.5 text-text-muted hover:bg-white/10 hover:text-text-primary"
@@ -195,17 +195,29 @@ function typeLabel(campaign: Campaign) {
                   <Pencil :size="15" />
                 </button>
                 <button
+                  v-if="canDelete(row.campaign)"
                   type="button"
+                  class="rounded-lg p-1.5 text-danger hover:bg-danger/10"
+                  title="Excluir"
+                  @click="onDelete(row.campaign.id)"
+                >
+                  <Trash2 :size="15" />
+                </button>
+                <button
+                  type="button"
+                  data-ephemeral-menu
                   class="rounded-lg p-1.5 text-text-muted hover:bg-white/10 hover:text-text-primary"
                   title="Mais"
-                  @click="toggleMenu(row.campaign.id)"
+                  @click.stop="toggleMenu(row.campaign.id)"
                 >
                   <MoreHorizontal :size="15" />
                 </button>
               </div>
               <div
                 v-if="menuId === row.campaign.id"
+                data-ephemeral-menu
                 class="absolute right-3 z-20 mt-1 min-w-[10rem] overflow-hidden rounded-xl border border-border-subtle bg-board-elevated py-1 shadow-xl"
+                @click.stop
               >
                 <button
                   type="button"
