@@ -12,8 +12,9 @@ import CampaignTable from './campaigns/CampaignTable.vue'
 import CampaignDetails from './campaigns/CampaignDetails.vue'
 import CampaignCharts from './campaigns/CampaignCharts.vue'
 import CampaignComparison from './campaigns/CampaignComparison.vue'
+import CampaignImportsAdmin from './campaigns/CampaignImportsAdmin.vue'
 
-type CampaignScreen = 'overview' | 'list' | 'comparison'
+type CampaignScreen = 'overview' | 'list' | 'comparison' | 'imports'
 
 const store = useCampaignsStore()
 const bootstrapping = ref(false)
@@ -34,6 +35,7 @@ const tabs: { id: CampaignScreen; label: string }[] = [
   { id: 'overview', label: 'Visão Geral' },
   { id: 'list', label: 'Campanhas' },
   { id: 'comparison', label: 'Comparativo' },
+  { id: 'imports', label: 'Imports' },
 ]
 
 onMounted(async () => {
@@ -194,6 +196,7 @@ function onBackFromDetails() {
         </div>
 
         <CampaignFilters
+          v-if="screen !== 'imports'"
           v-model="filters"
           :years="years"
           :show-archived="store.showArchived"
@@ -229,8 +232,12 @@ function onBackFromDetails() {
           />
         </section>
 
-        <section v-else>
+        <section v-else-if="screen === 'comparison'">
           <CampaignComparison :campaigns="filteredCampaigns" />
+        </section>
+
+        <section v-else>
+          <CampaignImportsAdmin />
         </section>
       </div>
     </div>

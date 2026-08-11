@@ -21,6 +21,8 @@ import { BOARD_ID, supabase } from '../lib/supabase'
 import { useAuthStore } from './auth'
 import { useToastStore } from './toast'
 import {
+  aggregateAgentsById,
+  aggregatePlayersById,
   buildAgentReconciliations,
   parseAgentReportFile,
   type ParsedReport,
@@ -74,6 +76,18 @@ function toNullableNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null
   const n = Number(value)
   return Number.isFinite(n) ? n : null
+}
+
+function collapseParsedReport(parsed: ParsedReport): ParsedReport {
+  const agents = aggregateAgentsById(parsed.agents)
+  const players = aggregatePlayersById(parsed.players)
+  return {
+    ...parsed,
+    agents,
+    players,
+    uniqueAgentIds: [...new Set(agents.map((a) => a.agentId))].sort(),
+    uniquePlayerIds: [...new Set(players.map((p) => p.playerId))].sort(),
+  }
 }
 
 function mapCampaign(row: Record<string, unknown>): Campaign {
@@ -1038,7 +1052,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   async function previewReport(file: File): Promise<ReportPreview | null> {
     const toast = useToastStore()
     try {
-      const parsed = await parseAgentReportFile(file)
+      const parsed = collapseParsedReport(await parseAgentReportFile(file))
       const reconciliations = buildAgentReconciliations(parsed.agents, parsed.players)
       const existing = agentPeriods.value.filter((p) =>
         parsed.agents.some(
@@ -1267,7 +1281,14 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         p_agents: agentUpserts,
         p_players: playerUpserts,
       })
-      if (rpcError) throw new Error(rpcError.message)
+      if (rpcError) {
+        if (/duplicate key|unique constraint/i.test(rpcError.message)) {
+          throw new Error(
+            'Este período já tem jogadores importados para a mesma agência. Marque substituir, ou o arquivo tem linhas repetidas da mesma semana.',
+          )
+        }
+        throw new Error(rpcError.message)
+      }
 
       // Refresh local state
       await load()
@@ -1341,6 +1362,68 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     } finally {
       importing.value = false
     }
+  }
+
+  async function rebuildMasterTotals() {
+    const now = new Date().toISOString()
+    for (const agent of agents.value) {
+      const periods = agentPeriods.value.filter((p) => p.agentId === agent.agentId)
+      const starts = periods.map((p) => p.periodStart)
+      await supabase
+        .from('campaign_agents')
+        .update({
+          accumulated_rake: sumWeeklyRake(periods),
+          periods_count: new Set(periods.map((p) => `${p.periodStart}_${p.periodEnd}`)).size,
+          first_seen_start: starts.length
+            ? starts.reduce((min, s) => (s < min ? s : min))
+            : agent.firstSeenStart,
+          last_seen_start: starts.length
+            ? starts.reduce((max, s) => (s > max ? s : max))
+            : agent.lastSeenStart,
+          updated_at: now,
+        })
+        .eq('board_id', BOARD_ID)
+        .eq('agent_id', agent.agentId)
+    }
+
+    const playerIds = [...new Set(playerPeriods.value.map((p) => p.playerId))]
+    for (const playerId of playerIds) {
+      const periods = playerPeriods.value.filter((p) => p.playerId === playerId)
+      const starts = periods.map((p) => p.periodStart)
+      await supabase
+        .from('campaign_players')
+        .update({
+          accumulated_rake: sumWeeklyRake(periods),
+          periods_count: new Set(periods.map((p) => `${p.periodStart}_${p.periodEnd}`)).size,
+          first_seen_start: starts.reduce((min, s) => (s < min ? s : min)),
+          last_seen_start: starts.reduce((max, s) => (s > max ? s : max)),
+          updated_at: now,
+        })
+        .eq('board_id', BOARD_ID)
+        .eq('player_id', playerId)
+    }
+  }
+
+  async function removeImport(id: string) {
+    const toast = useToastStore()
+    const item = imports.value.find((i) => i.id === id)
+    if (!item) return false
+
+    quietRealtime(4000)
+    const { error: delError } = await supabase
+      .from('campaign_report_imports')
+      .delete()
+      .eq('id', id)
+    if (delError) {
+      toast.error(delError.message)
+      return false
+    }
+
+    await load()
+    await rebuildMasterTotals()
+    await load()
+    toast.success('Importação excluída. Totais recalculados.')
+    return true
   }
 
   async function loadTableDetails(agentId: string, periodStart?: string) {
@@ -1559,6 +1642,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     overviewKpis,
     previewReport,
     commitReport,
+    removeImport,
     loadTableDetails,
     loadPlayerTableDetails,
     findAgent,

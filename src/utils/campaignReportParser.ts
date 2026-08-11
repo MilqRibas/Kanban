@@ -122,15 +122,28 @@ function toId(value: unknown): string {
   return raw
 }
 
-/** Parse "03/08/2026 a 09/08/2026" (any separator between dates). */
+function rowText(row: unknown[]): string {
+  return row
+    .map((cell) => (cell === null || cell === undefined || cell === '' ? '' : String(cell)))
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** Parse "13/07/2026 à 19/07/2026" (a / à / - entre as datas). */
 export function parsePeriodLabel(raw: unknown): ParsedPeriod | null {
   if (raw === null || raw === undefined) return null
   const text = String(raw).trim()
   if (!text) return null
 
-  const match = text.match(
-    /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4}).*?(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/,
-  )
+  const match =
+    text.match(
+      /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})\s*(?:à|á|a|ate|até|-|–|—)\s*(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/i,
+    ) ??
+    text.match(
+      /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4}).*?(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/,
+    )
   if (!match) return null
 
   const toIso = (d: string, m: string, y: string) => {
@@ -146,12 +159,47 @@ export function parsePeriodLabel(raw: unknown): ParsedPeriod | null {
   return { start, end, label }
 }
 
-/** Extract Agent ID from block header like "… Agente: 1642314 - CPP02" */
+/** Extract Agent ID from "Liga: … Slot: … Agente: 1642314 - CPP02" */
 export function extractAgentIdFromBlockHeader(raw: unknown): string | null {
   if (raw === null || raw === undefined) return null
   const text = String(raw)
   const match = text.match(/Agente:\s*(\d+)/i)
   return match ? match[1] : null
+}
+
+export function aggregateAgentsById(agents: ParsedAgentRow[]): ParsedAgentRow[] {
+  const map = new Map<string, ParsedAgentRow>()
+  for (const agent of agents) {
+    const key = `${agent.agentId}|${agent.period.start}|${agent.period.end}`
+    const prev = map.get(key)
+    if (!prev) {
+      map.set(key, { ...agent })
+      continue
+    }
+    prev.weeklyRake += agent.weeklyRake
+    prev.gains += agent.gains
+    prev.hands += agent.hands
+    if (agent.agentName) prev.agentName = agent.agentName
+  }
+  return [...map.values()]
+}
+
+export function aggregatePlayersById(players: ParsedPlayerRow[]): ParsedPlayerRow[] {
+  const map = new Map<string, ParsedPlayerRow>()
+  for (const player of players) {
+    const key = `${player.agentId}|${player.playerId}|${player.period.start}|${player.period.end}`
+    const prev = map.get(key)
+    if (!prev) {
+      map.set(key, { ...player })
+      continue
+    }
+    prev.weeklyRake += player.weeklyRake
+    prev.gains += player.gains
+    prev.hands += player.hands
+    if (player.playerName) prev.playerName = player.playerName
+    if (player.nickname) prev.nickname = player.nickname
+  }
+  return [...map.values()]
 }
 
 function findSheet(wb: XLSX.WorkBook, candidates: string[]): XLSX.WorkSheet | null {
@@ -303,7 +351,7 @@ function parseAgentsSheet(ws: XLSX.WorkSheet): {
     return { agents: [], period: null, error: 'Nenhum Agent ID encontrado na aba Agentes.' }
   }
 
-  return { agents, period, error: null }
+  return { agents: aggregateAgentsById(agents), period, error: null }
 }
 
 function parseBlockedSheet(
@@ -327,27 +375,27 @@ function parseBlockedSheet(
 
   for (let r = 0; r < matrix.length; r += 1) {
     const row = matrix[r] ?? []
-    const first = row[0]
-    if (first === null || first === undefined || first === '') {
-      // skip empty
-      continue
-    }
+    const joined = rowText(row)
+    if (!joined) continue
 
-    const firstStr = String(first)
-    if (/^Semana:/i.test(firstStr.trim())) {
-      const parsed = parsePeriodLabel(firstStr.replace(/^Semana:\s*/i, ''))
+    if (/semana\s*:/i.test(joined)) {
+      const parsed = parsePeriodLabel(joined)
       if (parsed) currentPeriod = parsed
       headerMap = null
-      continue
     }
 
-    const agentFromHeader = extractAgentIdFromBlockHeader(firstStr)
+    const agentFromHeader = extractAgentIdFromBlockHeader(joined)
     if (agentFromHeader) {
       currentAgent = agentFromHeader
       headerMap = null
       continue
     }
 
+    if (/semana\s*:/i.test(joined) && !agentFromHeader) {
+      continue
+    }
+
+    const first = row.find((cell) => cell !== null && cell !== undefined && cell !== '')
     const normalizedFirst = normalizeHeader(first)
     if (normalizedFirst === 'player id' || normalizedFirst === 'playerid') {
       headerMap = headerIndexMap(row)
@@ -434,7 +482,12 @@ function parseBlockedSheet(
     })
   }
 
-  return { players, tables, warnings, error: null }
+  return {
+    players: aggregatePlayersById(players),
+    tables,
+    warnings,
+    error: null,
+  }
 }
 
 export function parseAgentReportWorkbook(wb: XLSX.WorkBook): ParsedReport {
