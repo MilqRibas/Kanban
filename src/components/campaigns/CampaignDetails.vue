@@ -1,36 +1,26 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   Archive,
   ArrowLeft,
   Copy,
   MoreHorizontal,
   Pencil,
-  Plus,
   RotateCcw,
   Trash2,
+  Search,
+  ChevronDown,
 } from '@lucide/vue'
 import type { Campaign } from '../../types/campaigns'
-import { ACTIVATION_RULE_LABELS } from '../../types/campaigns'
 import { useAuthStore } from '../../stores/auth'
 import { useCampaignsStore } from '../../stores/campaigns'
 import { useEphemeralDismiss } from '../../composables/useEphemeralDismiss'
 import {
   formatCurrency,
-  formatMonthYear,
-  formatNumber,
-  formatPaybackLabel,
   formatPercent,
+  formatNumber,
 } from '../../utils/campaignFormat'
-import {
-  buildCampaignMetrics,
-  generateCampaignInsights,
-} from '../../utils/campaignMetrics'
 import CampaignStatusBadge from './CampaignStatusBadge.vue'
-import CampaignMonthlyTable from './CampaignMonthlyTable.vue'
-import CampaignMonthlyResultModal from './CampaignMonthlyResultModal.vue'
-import CampaignHistory from './CampaignHistory.vue'
-import CampaignInsights from './CampaignInsights.vue'
 
 const props = defineProps<{
   campaign: Campaign
@@ -44,8 +34,20 @@ const emit = defineEmits<{
 const auth = useAuthStore()
 const store = useCampaignsStore()
 const menuOpen = ref(false)
-const monthlyOpen = ref(false)
-const editingResultId = ref<string | null>(null)
+const activeTab = ref<'overview' | 'evolution' | 'rake-health' | 'game-profile' | 'players' | 'table-details' | 'history'>('overview')
+
+const rakeHealthMode = ref<'accumulated' | 'period'>('accumulated')
+const selectedRakeHealthPeriod = ref<string | null>(null)
+const gameProfilePeriod = ref<string | null>(null)
+const tableDetailsPeriod = ref<string | null>(null)
+
+const playerSearch = ref('')
+const playerSortKey = ref<'rake' | 'weeks' | 'first' | 'last'>('rake')
+const playerSortAsc = ref(false)
+
+const selectedPlayerId = ref<string | null>(null)
+
+const tableDetailsLoaded = ref(false)
 
 useEphemeralDismiss({
   isOpen: () => menuOpen.value,
@@ -54,10 +56,10 @@ useEphemeralDismiss({
   },
 })
 
-const results = computed(() => store.monthlyResultsFor(props.campaign.id))
-const metrics = computed(() =>
-  buildCampaignMetrics(props.campaign, store.monthlyResults),
-)
+const agent = computed(() => store.findAgent(props.campaign.agentId))
+const agentPeriods = computed(() => store.agentPeriodsFor(props.campaign.agentId))
+const playerPeriods = computed(() => store.playerPeriodsForAgent(props.campaign.agentId))
+const metrics = computed(() => store.metricsFor(props.campaign))
 const history = computed(() =>
   store.history
     .filter((h) => h.campaignId === props.campaign.id)
@@ -66,156 +68,176 @@ const history = computed(() =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     ),
 )
-
-const sortedResults = computed(() => results.value)
-
-const previousAndCurrentRake = computed(() => {
-  const list = sortedResults.value
-  if (list.length === 0) {
-    return { previous: null as number | null, current: null as number | null }
-  }
-  const current = list[list.length - 1]?.monthlyRake ?? null
-  const previous =
-    list.length > 1 ? (list[list.length - 2]?.monthlyRake ?? null) : null
-  return { previous, current }
-})
-
-const insights = computed(() =>
-  generateCampaignInsights({
-    campaign: props.campaign,
-    metrics: metrics.value,
-    peerCampaigns: store.visibleCampaigns,
-    peerMonthlyResults: store.monthlyResults,
-    previousMonthRake: previousAndCurrentRake.value.previous,
-    currentMonthRake: previousAndCurrentRake.value.current,
-  }),
+const importsForAgent = computed(() =>
+  store.imports.filter(
+    (i) =>
+      i.status === 'completed' &&
+      agentPeriods.value.some((p) => p.importId === i.id),
+  ),
 )
 
-const recoveryWidth = computed(() => {
-  const rate = metrics.value.recoveryRate
-  if (rate === null || !Number.isFinite(rate)) return 0
-  return Math.max(0, rate)
+const periodOptions = computed(() => {
+  const options = agentPeriods.value.map((p) => ({
+    value: p.periodStart,
+    label: store.formatPeriodLabel(p.periodStart, p.periodEnd),
+  }))
+  return options.reverse()
 })
 
-const periodLabel = computed(() =>
-  formatMonthYear(props.campaign.acquisitionMonth, props.campaign.acquisitionYear),
-)
+const rakeHealth = computed(() => {
+  const periodStart = rakeHealthMode.value === 'period' ? selectedRakeHealthPeriod.value : null
+  return store.rakeHealthFor(props.campaign, periodStart)
+})
 
-const typeLabel = computed(() => {
-  if (props.campaign.campaignType === 'Outro' && props.campaign.campaignTypeOther) {
-    return props.campaign.campaignTypeOther
+const gameProfile = computed(() => {
+  const tables = tableDetailsLoaded.value
+    ? store.tableDetailsCache.filter(
+        (t) =>
+          t.agentId === props.campaign.agentId &&
+          (!gameProfilePeriod.value || t.periodStart === gameProfilePeriod.value),
+      )
+    : []
+  return store.gameProfileFor(props.campaign, tables, gameProfilePeriod.value)
+})
+
+const tableDetails = computed(() => {
+  if (!tableDetailsLoaded.value) return []
+  return store.tableDetailsCache
+    .filter(
+      (t) =>
+        t.agentId === props.campaign.agentId &&
+        (!tableDetailsPeriod.value || t.periodStart === tableDetailsPeriod.value),
+    )
+    .sort((a, b) => b.rake - a.rake)
+})
+
+const uniquePlayers = computed(() => {
+  const map = new Map<
+    string,
+    {
+      playerId: string
+      name: string
+      nickname: string
+      rake: number
+      weeks: number
+      firstStart: string
+      lastStart: string
+    }
+  >()
+  for (const p of playerPeriods.value) {
+    const prev = map.get(p.playerId)
+    if (prev) {
+      prev.rake += p.weeklyRake
+      prev.weeks += 1
+      if (p.periodStart < prev.firstStart) prev.firstStart = p.periodStart
+      if (p.periodStart > prev.lastStart) prev.lastStart = p.periodStart
+    } else {
+      map.set(p.playerId, {
+        playerId: p.playerId,
+        name: p.playerName,
+        nickname: p.nickname,
+        rake: p.weeklyRake,
+        weeks: 1,
+        firstStart: p.periodStart,
+        lastStart: p.periodStart,
+      })
+    }
   }
-  return props.campaign.campaignType || '—'
+  return [...map.values()]
 })
 
-const activationLabel = computed(() => {
-  const rule = props.campaign.activationRuleType
-  const base = ACTIVATION_RULE_LABELS[rule] ?? rule
-  if (
-    (rule === 'custom_minimum' || rule === 'custom_rule') &&
-    props.campaign.activationMinimumRake != null
-  ) {
-    return `${base} (${formatCurrency(props.campaign.activationMinimumRake)})`
+const filteredPlayers = computed(() => {
+  let list = uniquePlayers.value
+  const q = playerSearch.value.trim().toLowerCase()
+  if (q) {
+    list = list.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.nickname.toLowerCase().includes(q) ||
+        p.playerId.toLowerCase().includes(q),
+    )
   }
-  return base
+  list.sort((a, b) => {
+    const asc = playerSortAsc.value ? 1 : -1
+    if (playerSortKey.value === 'rake') return (b.rake - a.rake) * asc
+    if (playerSortKey.value === 'weeks') return (b.weeks - a.weeks) * asc
+    if (playerSortKey.value === 'first')
+      return a.firstStart.localeCompare(b.firstStart) * asc
+    if (playerSortKey.value === 'last')
+      return b.lastStart.localeCompare(a.lastStart) * asc
+    return 0
+  })
+  return list
 })
 
-const indicatorCards = computed(() => [
-  {
-    label: 'Investimento',
-    value: formatCurrency(props.campaign.investment),
-  },
-  {
-    label: 'Captados',
-    value: formatNumber(props.campaign.capturedPlayers),
-  },
-  {
-    label: 'Ativos',
-    value: formatNumber(props.campaign.activePlayers),
-  },
-  {
-    label: 'Inativos',
-    value: formatNumber(metrics.value.inactivePlayers),
-  },
-  {
-    label: 'Taxa de ativação',
-    value: formatPercent(metrics.value.activationRate),
-  },
-  {
-    label: 'Custo / captado',
-    value: formatCurrency(metrics.value.costPerCaptured),
-  },
-  {
-    label: 'Custo / ativo',
-    value: formatCurrency(metrics.value.costPerActive),
-  },
-  {
-    label: 'Rake acumulado',
-    value: formatCurrency(metrics.value.accumulatedRake),
-  },
-  {
-    label: 'Rake médio / ativo',
-    value: formatCurrency(metrics.value.averageRakePerActive),
-  },
-  {
-    label: 'Recuperação',
-    value: formatPercent(metrics.value.recoveryRate),
-  },
-  {
-    label: 'Diferença rake − inv.',
-    value: formatCurrency(metrics.value.investmentDifference),
-  },
-  {
-    label: 'Payback',
-    value: formatPaybackLabel(metrics.value.payback),
-  },
-])
+const selectedPlayerDetail = computed(() => {
+  if (!selectedPlayerId.value) return null
+  const player = uniquePlayers.value.find((p) => p.playerId === selectedPlayerId.value)
+  if (!player) return null
+  const periods = playerPeriods.value
+    .filter((p) => p.playerId === selectedPlayerId.value)
+    .sort((a, b) => a.periodStart.localeCompare(b.periodStart))
+  let acc = 0
+  const series = periods.map((p) => {
+    acc += p.weeklyRake
+    return {
+      label: store.formatPeriodLabel(p.periodStart, p.periodEnd),
+      weeklyRake: p.weeklyRake,
+      accumulated: acc,
+    }
+  })
+  return { player, series }
+})
+
+const overviewCards = computed(() => {
+  const m = metrics.value
+  const paybackLabel =
+    m.payback.reached && m.payback.periodStart && m.payback.periodEnd
+      ? `Semana ${store.formatPeriodLabel(m.payback.periodStart, m.payback.periodEnd)} (${m.payback.periodsToPayback} ${m.payback.periodsToPayback === 1 ? 'semana' : 'semanas'})`
+      : m.payback.reached
+        ? 'Atingido'
+        : 'Ainda não'
+  return [
+    { label: 'Investimento', value: formatCurrency(props.campaign.investment) },
+    { label: 'Jogadores na agência', value: formatNumber(m.agencyPlayers) },
+    { label: 'Ativos únicos', value: formatNumber(m.uniqueActivePlayers) },
+    { label: 'Inativos', value: formatNumber(m.inactivePlayers) },
+    { label: 'Taxa de ativação', value: formatPercent(m.activationRate) },
+    { label: 'Rake acumulado', value: formatCurrency(m.accumulatedRake) },
+    { label: 'Custo / jogador', value: formatCurrency(m.costPerAgencyPlayer) },
+    { label: 'Custo / ativo', value: formatCurrency(m.costPerActive) },
+    { label: 'Rake médio / ativo', value: formatCurrency(m.averageRakePerActive) },
+    { label: 'Recuperação', value: formatPercent(m.recoveryRate) },
+    { label: 'Diferença', value: formatCurrency(m.investmentDifference) },
+    { label: 'Payback', value: paybackLabel },
+    { label: 'Semanas', value: formatNumber(m.weeksTracked) },
+    { label: 'Último relatório', value: m.lastPeriodStart ? store.formatPeriodLabel(m.lastPeriodStart, m.lastPeriodEnd ?? m.lastPeriodStart) : '—' },
+  ]
+})
 
 const evolutionRows = computed(() => {
-  let accumulated = 0
-  const maxRake = Math.max(
-    1,
-    ...sortedResults.value.map((r) => r.monthlyRake),
-    props.campaign.investment,
-  )
-  const activeValues = sortedResults.value
-    .map((r) => r.monthlyActivePlayers)
-    .filter((v): v is number => v != null)
-  const maxActive = Math.max(1, ...activeValues)
-
-  return sortedResults.value.map((result) => {
-    accumulated += result.monthlyRake
+  let acc = 0
+  const sorted = agentPeriods.value.slice().sort((a, b) => a.periodStart.localeCompare(b.periodStart))
+  const maxRake = Math.max(1, ...sorted.map((p) => p.weeklyRake))
+  return sorted.map((p) => {
+    acc += p.weeklyRake
+    const recoveryRate = props.campaign.investment > 0 ? (acc / props.campaign.investment) * 100 : null
     return {
-      id: result.id,
-      label: formatMonthYear(result.referenceMonth, result.referenceYear),
-      monthly: result.monthlyRake,
-      accumulated,
-      active: result.monthlyActivePlayers,
-      monthlyWidth: (result.monthlyRake / maxRake) * 100,
-      accumulatedWidth: (accumulated / maxRake) * 100,
-      activeWidth:
-        result.monthlyActivePlayers != null
-          ? (result.monthlyActivePlayers / maxActive) * 100
-          : null,
+      label: store.formatPeriodLabel(p.periodStart, p.periodEnd),
+      weeklyRake: p.weeklyRake,
+      accumulated: acc,
+      recovery: recoveryRate,
+      uniquePlayers: p.uniquePlayers,
+      weekWidth: (p.weeklyRake / maxRake) * 100,
     }
   })
 })
 
+const hasAgent = computed(() => !!props.campaign.agentId)
+const hasWeeks = computed(() => metrics.value.weeksTracked > 0)
+
 function canDelete() {
-  if (!props.campaign.createdBy || props.campaign.createdBy === auth.memberId) {
-    return true
-  }
-  return auth.isAdmin
-}
-
-function openMonthlyCreate() {
-  editingResultId.value = null
-  monthlyOpen.value = true
-}
-
-function openMonthlyEdit(id: string) {
-  editingResultId.value = id
-  monthlyOpen.value = true
+  return store.canDeleteCampaign(props.campaign)
 }
 
 async function onDuplicate() {
@@ -244,6 +266,46 @@ async function onDelete() {
   const ok = await store.remove(props.campaign.id)
   if (ok) emit('back')
 }
+
+function sortPlayers(key: typeof playerSortKey.value) {
+  if (playerSortKey.value === key) {
+    playerSortAsc.value = !playerSortAsc.value
+  } else {
+    playerSortKey.value = key
+    playerSortAsc.value = false
+  }
+}
+
+function openPlayerDetail(playerId: string) {
+  selectedPlayerId.value = playerId
+}
+
+function closePlayerDetail() {
+  selectedPlayerId.value = null
+}
+
+watch(activeTab, async (tab) => {
+  if (tab === 'game-profile' && !tableDetailsLoaded.value) {
+    tableDetailsLoaded.value = true
+    await store.loadTableDetails(props.campaign.agentId!, gameProfilePeriod.value ?? undefined)
+  }
+  if (tab === 'table-details' && !tableDetailsLoaded.value) {
+    tableDetailsLoaded.value = true
+    await store.loadTableDetails(props.campaign.agentId!, tableDetailsPeriod.value ?? undefined)
+  }
+})
+
+watch(gameProfilePeriod, async (period) => {
+  if (activeTab.value === 'game-profile') {
+    await store.loadTableDetails(props.campaign.agentId!, period ?? undefined)
+  }
+})
+
+watch(tableDetailsPeriod, async (period) => {
+  if (activeTab.value === 'table-details') {
+    await store.loadTableDetails(props.campaign.agentId!, period ?? undefined)
+  }
+})
 </script>
 
 <template>
@@ -266,16 +328,15 @@ async function onDelete() {
             <CampaignStatusBadge :status="metrics.status" />
           </div>
           <p class="text-sm text-text-muted">
-            {{ periodLabel }}
-            <span class="text-border-subtle">·</span>
-            {{ typeLabel }}
-            <span v-if="campaign.agency">
-              <span class="text-border-subtle">·</span>
-              {{ campaign.agency }}
-            </span>
-          </p>
-          <p class="text-xs text-text-muted">
-            Critério: {{ activationLabel }}
+            <template v-if="agent">
+              Agência {{ agent.name }} ({{ campaign.agentId }})
+            </template>
+            <template v-else-if="campaign.agentId">
+              Agente {{ campaign.agentId }}
+            </template>
+            <template v-else>
+              Sem agente vinculado
+            </template>
           </p>
         </div>
 
@@ -287,14 +348,6 @@ async function onDelete() {
           >
             <Pencil :size="15" />
             Editar
-          </button>
-          <button
-            type="button"
-            class="inline-flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-sm font-semibold text-board hover:bg-accent-hover"
-            @click="openMonthlyCreate"
-          >
-            <Plus :size="16" />
-            Atualização mensal
           </button>
           <div class="relative">
             <button
@@ -351,149 +404,594 @@ async function onDelete() {
         </div>
       </div>
 
-      <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
-        <div
-          v-for="card in indicatorCards"
-          :key="card.label"
-          class="panel-glass rounded-2xl px-3.5 py-3"
-        >
-          <p class="text-[11px] font-medium uppercase tracking-wide text-text-muted">
-            {{ card.label }}
-          </p>
-          <p class="mt-1.5 text-base font-semibold tabular-nums text-text-primary sm:text-lg">
-            {{ card.value }}
-          </p>
-        </div>
-      </div>
-
       <div class="panel-glass rounded-2xl p-3 sm:p-4">
-        <div class="mb-3 flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h3 class="text-sm font-semibold text-text-primary">
-              Recuperação do investimento
-            </h3>
-            <p class="mt-1 text-sm text-text-secondary">
-              {{ formatCurrency(metrics.accumulatedRake) }}
-              de
-              {{ formatCurrency(campaign.investment) }}
-            </p>
-          </div>
-          <p class="text-lg font-semibold tabular-nums text-accent">
-            {{ formatPercent(metrics.recoveryRate) }}
-          </p>
-        </div>
-        <div class="h-2.5 overflow-hidden rounded-full bg-surface sm:h-3">
-          <div
-            class="h-full rounded-full bg-accent transition-all duration-500"
-            :style="{ width: `${Math.min(recoveryWidth, 100)}%` }"
-          />
-        </div>
-        <p
-          v-if="recoveryWidth > 100"
-          class="mt-2 text-xs text-success"
-        >
-          Recuperação acima de 100% — valor real: {{ formatPercent(metrics.recoveryRate) }}
-        </p>
-      </div>
-
-      <section class="panel-glass rounded-2xl p-3 sm:p-4">
-        <h3 class="mb-2.5 text-sm font-semibold text-text-primary">
-          Evolução mensal
-        </h3>
-        <div v-if="evolutionRows.length" class="space-y-3">
-          <article
-            v-for="row in evolutionRows"
-            :key="row.id"
-            class="rounded-xl bg-surface/40 px-3 py-2.5"
+        <div class="flex flex-wrap gap-2 border-b border-border-subtle pb-2">
+          <button
+            type="button"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+            :class="activeTab === 'overview' ? 'bg-accent text-board' : 'text-text-secondary hover:bg-surface hover:text-text-primary'"
+            @click="activeTab = 'overview'"
           >
-            <div class="mb-2 flex items-center justify-between gap-2">
-              <p class="text-xs font-medium text-text-primary sm:text-sm">
-                {{ row.label }}
+            Visão Geral
+          </button>
+          <button
+            type="button"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+            :class="activeTab === 'evolution' ? 'bg-accent text-board' : 'text-text-secondary hover:bg-surface hover:text-text-primary'"
+            @click="activeTab = 'evolution'"
+          >
+            Evolução
+          </button>
+          <button
+            type="button"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+            :class="activeTab === 'rake-health' ? 'bg-accent text-board' : 'text-text-secondary hover:bg-surface hover:text-text-primary'"
+            @click="activeTab = 'rake-health'"
+          >
+            Saúde do Rake
+          </button>
+          <button
+            type="button"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+            :class="activeTab === 'game-profile' ? 'bg-accent text-board' : 'text-text-secondary hover:bg-surface hover:text-text-primary'"
+            @click="activeTab = 'game-profile'"
+          >
+            Perfil de Jogo
+          </button>
+          <button
+            type="button"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+            :class="activeTab === 'players' ? 'bg-accent text-board' : 'text-text-secondary hover:bg-surface hover:text-text-primary'"
+            @click="activeTab = 'players'"
+          >
+            Jogadores
+          </button>
+          <button
+            type="button"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+            :class="activeTab === 'table-details' ? 'bg-accent text-board' : 'text-text-secondary hover:bg-surface hover:text-text-primary'"
+            @click="activeTab = 'table-details'"
+          >
+            Detalhes de Mesa
+          </button>
+          <button
+            type="button"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+            :class="activeTab === 'history' ? 'bg-accent text-board' : 'text-text-secondary hover:bg-surface hover:text-text-primary'"
+            @click="activeTab = 'history'"
+          >
+            Histórico
+          </button>
+        </div>
+
+        <div class="mt-4">
+          <div v-if="activeTab === 'overview'">
+            <template v-if="!hasAgent || !hasWeeks">
+              <p class="text-sm text-text-muted">
+                {{ !hasAgent ? 'Nenhum agente vinculado.' : 'Nenhuma semana importada ainda.' }}
               </p>
-              <p class="text-xs tabular-nums text-text-secondary">
-                Acum. {{ formatCurrency(row.accumulated) }}
-              </p>
-            </div>
-            <div class="space-y-1.5">
-              <div class="flex justify-between gap-2 text-[11px] text-text-muted">
-                <span>Rake do mês</span>
-                <span class="tabular-nums">{{ formatCurrency(row.monthly) }}</span>
-              </div>
-              <div class="h-1.5 overflow-hidden rounded-full bg-board/70">
+            </template>
+            <template v-else>
+              <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
                 <div
-                  class="h-full rounded-full bg-accent/80"
-                  :style="{ width: `${row.monthlyWidth}%` }"
-                />
-              </div>
-              <div class="flex justify-between gap-2 text-[11px] text-text-muted">
-                <span>Rake acumulado</span>
-                <span class="tabular-nums">{{ formatCurrency(row.accumulated) }}</span>
-              </div>
-              <div class="h-1.5 overflow-hidden rounded-full bg-board/70">
-                <div
-                  class="h-full rounded-full bg-accent/55"
-                  :style="{ width: `${row.accumulatedWidth}%` }"
-                />
-              </div>
-              <template v-if="row.activeWidth != null">
-                <div class="flex justify-between gap-2 text-[11px] text-text-muted">
-                  <span>Ativos no mês</span>
-                  <span class="tabular-nums">{{ row.active }}</span>
+                  v-for="card in overviewCards"
+                  :key="card.label"
+                  class="rounded-xl bg-surface/40 px-3 py-2.5"
+                >
+                  <p class="text-[11px] font-medium uppercase tracking-wide text-text-muted">
+                    {{ card.label }}
+                  </p>
+                  <p class="mt-1 text-base font-semibold tabular-nums text-text-primary">
+                    {{ card.value }}
+                  </p>
                 </div>
-                <div class="h-1.5 overflow-hidden rounded-full bg-board/70">
+              </div>
+            </template>
+          </div>
+
+          <div v-else-if="activeTab === 'evolution'">
+            <template v-if="!hasAgent || !hasWeeks">
+              <p class="text-sm text-text-muted">
+                {{ !hasAgent ? 'Nenhum agente vinculado.' : 'Nenhuma semana importada ainda.' }}
+              </p>
+            </template>
+            <template v-else>
+              <div class="space-y-3">
+                <table class="w-full text-left text-sm">
+                  <thead class="border-b border-border-subtle text-xs uppercase text-text-muted">
+                    <tr>
+                      <th class="pb-2">Semana</th>
+                      <th class="pb-2 text-right">Ativos</th>
+                      <th class="pb-2 text-right">Rake semana</th>
+                      <th class="pb-2 text-right">Rake acumulado</th>
+                      <th class="pb-2 text-right">Recuperação</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-border-subtle/50">
+                    <tr
+                      v-for="row in evolutionRows"
+                      :key="row.label"
+                      class="text-text-secondary"
+                    >
+                      <td class="py-2 font-medium text-text-primary">{{ row.label }}</td>
+                      <td class="py-2 text-right tabular-nums">{{ row.uniquePlayers }}</td>
+                      <td class="py-2 text-right tabular-nums">{{ formatCurrency(row.weeklyRake) }}</td>
+                      <td class="py-2 text-right tabular-nums">{{ formatCurrency(row.accumulated) }}</td>
+                      <td class="py-2 text-right tabular-nums">{{ formatPercent(row.recovery) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <div v-if="importsForAgent.length" class="mt-5 space-y-2">
+                  <h4 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                    Importações
+                  </h4>
+                  <ul class="space-y-1.5">
+                    <li
+                      v-for="imp in importsForAgent"
+                      :key="imp.id"
+                      class="rounded-lg bg-surface/40 px-3 py-2 text-xs text-text-secondary"
+                    >
+                      <span class="font-medium text-text-primary">{{ imp.originalFilename }}</span>
+                      — {{ store.formatPeriodLabel(imp.periodStart, imp.periodEnd) }}
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <div v-else-if="activeTab === 'rake-health'">
+            <template v-if="!hasAgent || !hasWeeks">
+              <p class="text-sm text-text-muted">
+                {{ !hasAgent ? 'Nenhum agente vinculado.' : 'Nenhuma semana importada ainda.' }}
+              </p>
+            </template>
+            <template v-else>
+              <div class="mb-4 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+                  :class="rakeHealthMode === 'accumulated' ? 'bg-accent/20 text-accent' : 'text-text-secondary hover:bg-surface'"
+                  @click="rakeHealthMode = 'accumulated'; selectedRakeHealthPeriod = null"
+                >
+                  Acumulado
+                </button>
+                <button
+                  v-if="periodOptions.length"
+                  type="button"
+                  class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+                  :class="rakeHealthMode === 'period' ? 'bg-accent/20 text-accent' : 'text-text-secondary hover:bg-surface'"
+                  @click="rakeHealthMode = 'period'; selectedRakeHealthPeriod = periodOptions[0]?.value ?? null"
+                >
+                  Por período
+                </button>
+                <select
+                  v-if="rakeHealthMode === 'period' && periodOptions.length"
+                  v-model="selectedRakeHealthPeriod"
+                  class="rounded-lg border border-border-subtle bg-surface px-3 py-1.5 text-sm text-text-primary"
+                >
+                  <option
+                    v-for="opt in periodOptions"
+                    :key="opt.value"
+                    :value="opt.value"
+                  >
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </div>
+
+              <div class="space-y-4">
+                <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                  <div class="rounded-xl bg-surface/40 px-3 py-2.5">
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-text-muted">
+                      Rake total
+                    </p>
+                    <p class="mt-1 text-base font-semibold tabular-nums text-text-primary">
+                      {{ formatCurrency(rakeHealth.totalRake) }}
+                    </p>
+                  </div>
+                  <div class="rounded-xl bg-surface/40 px-3 py-2.5">
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-text-muted">
+                      Jogadores
+                    </p>
+                    <p class="mt-1 text-base font-semibold tabular-nums text-text-primary">
+                      {{ formatNumber(rakeHealth.uniquePlayers) }}
+                    </p>
+                  </div>
+                  <div class="rounded-xl bg-surface/40 px-3 py-2.5">
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-text-muted">
+                      Rake médio
+                    </p>
+                    <p class="mt-1 text-base font-semibold tabular-nums text-text-primary">
+                      {{ formatCurrency(rakeHealth.averageRake) }}
+                    </p>
+                  </div>
+                  <div class="rounded-xl bg-surface/40 px-3 py-2.5">
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-text-muted">
+                      Rake mediano
+                    </p>
+                    <p class="mt-1 text-base font-semibold tabular-nums text-text-primary">
+                      {{ formatCurrency(rakeHealth.medianRake) }}
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  class="rounded-xl p-4"
+                  :class="{
+                    'bg-emerald-500/10': rakeHealth.classification === 'distributed',
+                    'bg-amber-500/10': rakeHealth.classification === 'attention',
+                    'bg-danger/10': rakeHealth.classification === 'concentrated',
+                  }"
+                >
+                  <p
+                    class="text-sm font-semibold"
+                    :class="{
+                      'text-emerald-300': rakeHealth.classification === 'distributed',
+                      'text-amber-200': rakeHealth.classification === 'attention',
+                      'text-danger': rakeHealth.classification === 'concentrated',
+                    }"
+                  >
+                    {{ rakeHealth.classificationLabel }}
+                  </p>
+                  <p class="mt-1 text-sm text-text-secondary">
+                    {{ rakeHealth.classificationReason }}
+                  </p>
+                </div>
+
+                <div v-if="rakeHealth.ranking.length" class="space-y-2">
+                  <h4 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                    Ranking Pareto (Top {{ Math.min(10, rakeHealth.ranking.length) }})
+                  </h4>
+                  <ul class="space-y-1.5">
+                    <li
+                      v-for="player in rakeHealth.ranking.slice(0, 10)"
+                      :key="player.playerId"
+                      class="flex items-center justify-between rounded-lg bg-surface/40 px-3 py-2 text-sm"
+                    >
+                      <span class="flex-1 truncate text-text-primary">
+                        {{ player.rank }}. {{ player.name || player.nickname || player.playerId }}
+                      </span>
+                      <span class="ml-2 tabular-nums text-text-secondary">
+                        {{ formatCurrency(player.rake) }}
+                        <span class="text-xs text-text-muted">({{ formatPercent(player.share * 100) }})</span>
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div class="space-y-2">
+                  <h4 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                    Bandas de rake
+                  </h4>
+                  <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <div
+                      v-for="band in rakeHealth.bands"
+                      :key="band.min"
+                      class="rounded-lg bg-surface/40 px-3 py-2 text-xs"
+                    >
+                      <p class="text-text-muted">Acima de {{ formatCurrency(band.min) }}</p>
+                      <p class="mt-0.5 text-base font-semibold text-text-primary">
+                        {{ band.count }}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <div v-else-if="activeTab === 'game-profile'">
+            <template v-if="!hasAgent || !hasWeeks">
+              <p class="text-sm text-text-muted">
+                {{ !hasAgent ? 'Nenhum agente vinculado.' : 'Nenhuma semana importada ainda.' }}
+              </p>
+            </template>
+            <template v-else>
+              <div class="mb-4 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+                  :class="!gameProfilePeriod ? 'bg-accent/20 text-accent' : 'text-text-secondary hover:bg-surface'"
+                  @click="gameProfilePeriod = null"
+                >
+                  Acumulado
+                </button>
+                <select
+                  v-if="periodOptions.length"
+                  v-model="gameProfilePeriod"
+                  class="rounded-lg border border-border-subtle bg-surface px-3 py-1.5 text-sm text-text-primary"
+                >
+                  <option :value="null">Acumulado</option>
+                  <option
+                    v-for="opt in periodOptions"
+                    :key="opt.value"
+                    :value="opt.value"
+                  >
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </div>
+
+              <div class="space-y-4">
+                <p class="text-sm text-text-secondary">
+                  <span class="font-semibold text-text-primary">Perfil predominante:</span>
+                  {{ gameProfile.predominantLabel }}
+                </p>
+
+                <div v-if="gameProfile.slices.length" class="space-y-2">
                   <div
-                    class="h-full rounded-full bg-accent/40"
-                    :style="{ width: `${row.activeWidth}%` }"
+                    v-for="slice in gameProfile.slices"
+                    :key="slice.code"
+                    class="rounded-lg bg-surface/40 px-3 py-3"
+                  >
+                    <div class="flex items-center justify-between">
+                      <span class="text-sm font-semibold text-text-primary">{{ slice.label }}</span>
+                      <span class="text-sm tabular-nums text-text-secondary">
+                        {{ formatCurrency(slice.rake) }}
+                        <span class="text-xs text-text-muted">({{ formatPercent((slice.rakeShare ?? 0) * 100) }})</span>
+                      </span>
+                    </div>
+                    <p class="mt-1 text-xs text-text-muted">
+                      {{ slice.uniquePlayers }} {{ slice.uniquePlayers === 1 ? 'jogador' : 'jogadores' }}
+                    </p>
+                  </div>
+                </div>
+                <p v-else class="text-sm text-text-muted">
+                  Nenhum dado de mesa carregado.
+                </p>
+              </div>
+            </template>
+          </div>
+
+          <div v-else-if="activeTab === 'players'">
+            <template v-if="!hasAgent || !hasWeeks">
+              <p class="text-sm text-text-muted">
+                {{ !hasAgent ? 'Nenhum agente vinculado.' : 'Nenhuma semana importada ainda.' }}
+              </p>
+            </template>
+            <template v-else>
+              <div class="mb-4 flex items-center gap-2">
+                <div class="relative flex-1">
+                  <Search :size="16" class="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                  <input
+                    v-model="playerSearch"
+                    type="text"
+                    placeholder="Buscar por nome, nickname ou ID..."
+                    class="w-full rounded-lg border border-border-subtle bg-surface py-2 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
                   />
                 </div>
-              </template>
+              </div>
+
+              <div v-if="filteredPlayers.length" class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                  <thead class="border-b border-border-subtle text-xs uppercase text-text-muted">
+                    <tr>
+                      <th class="pb-2">Jogador</th>
+                      <th
+                        class="cursor-pointer pb-2 text-right hover:text-text-primary"
+                        @click="sortPlayers('rake')"
+                      >
+                        <div class="inline-flex items-center gap-1">
+                          Rake
+                          <ChevronDown
+                            v-if="playerSortKey === 'rake'"
+                            :size="14"
+                            :class="{ 'rotate-180': playerSortAsc }"
+                          />
+                        </div>
+                      </th>
+                      <th
+                        class="cursor-pointer pb-2 text-right hover:text-text-primary"
+                        @click="sortPlayers('weeks')"
+                      >
+                        <div class="inline-flex items-center gap-1">
+                          Semanas
+                          <ChevronDown
+                            v-if="playerSortKey === 'weeks'"
+                            :size="14"
+                            :class="{ 'rotate-180': playerSortAsc }"
+                          />
+                        </div>
+                      </th>
+                      <th
+                        class="cursor-pointer pb-2 text-right hover:text-text-primary"
+                        @click="sortPlayers('first')"
+                      >
+                        <div class="inline-flex items-center gap-1">
+                          Primeira
+                          <ChevronDown
+                            v-if="playerSortKey === 'first'"
+                            :size="14"
+                            :class="{ 'rotate-180': playerSortAsc }"
+                          />
+                        </div>
+                      </th>
+                      <th
+                        class="cursor-pointer pb-2 text-right hover:text-text-primary"
+                        @click="sortPlayers('last')"
+                      >
+                        <div class="inline-flex items-center gap-1">
+                          Última
+                          <ChevronDown
+                            v-if="playerSortKey === 'last'"
+                            :size="14"
+                            :class="{ 'rotate-180': playerSortAsc }"
+                          />
+                        </div>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-border-subtle/50">
+                    <tr
+                      v-for="player in filteredPlayers"
+                      :key="player.playerId"
+                      class="cursor-pointer text-text-secondary hover:bg-surface/50"
+                      @click="openPlayerDetail(player.playerId)"
+                    >
+                      <td class="py-2 font-medium text-text-primary">
+                        {{ player.name || player.nickname || player.playerId }}
+                      </td>
+                      <td class="py-2 text-right tabular-nums">{{ formatCurrency(player.rake) }}</td>
+                      <td class="py-2 text-right tabular-nums">{{ player.weeks }}</td>
+                      <td class="py-2 text-right text-xs">{{ store.formatPeriodLabel(player.firstStart, player.firstStart).split(' ')[0] }}</td>
+                      <td class="py-2 text-right text-xs">{{ store.formatPeriodLabel(player.lastStart, player.lastStart).split(' ')[0] }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p v-else class="text-sm text-text-muted">
+                Nenhum jogador encontrado.
+              </p>
+            </template>
+          </div>
+
+          <div v-else-if="activeTab === 'table-details'">
+            <template v-if="!hasAgent || !hasWeeks">
+              <p class="text-sm text-text-muted">
+                {{ !hasAgent ? 'Nenhum agente vinculado.' : 'Nenhuma semana importada ainda.' }}
+              </p>
+            </template>
+            <template v-else>
+              <div class="mb-4">
+                <select
+                  v-model="tableDetailsPeriod"
+                  class="rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-text-primary"
+                >
+                  <option :value="null">Todos os períodos</option>
+                  <option
+                    v-for="opt in periodOptions"
+                    :key="opt.value"
+                    :value="opt.value"
+                  >
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </div>
+
+              <div v-if="tableDetails.length" class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                  <thead class="border-b border-border-subtle text-xs uppercase text-text-muted">
+                    <tr>
+                      <th class="pb-2">Mesa</th>
+                      <th class="pb-2">Tipo</th>
+                      <th class="pb-2 text-right">Mãos</th>
+                      <th class="pb-2 text-right">Rake</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-border-subtle/50">
+                    <tr
+                      v-for="t in tableDetails.slice(0, 100)"
+                      :key="t.id"
+                      class="text-text-secondary"
+                    >
+                      <td class="py-2 font-medium text-text-primary">{{ t.tableName || t.tableId }}</td>
+                      <td class="py-2">{{ t.gameType }}</td>
+                      <td class="py-2 text-right tabular-nums">{{ t.hands }}</td>
+                      <td class="py-2 text-right tabular-nums">{{ formatCurrency(t.rake) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p v-if="tableDetails.length > 100" class="mt-2 text-xs text-text-muted">
+                  Mostrando 100 de {{ tableDetails.length }} resultados.
+                </p>
+              </div>
+              <p v-else class="text-sm text-text-muted">
+                Nenhum detalhe de mesa encontrado.
+              </p>
+            </template>
+          </div>
+
+          <div v-else-if="activeTab === 'history'">
+            <div v-if="history.length" class="space-y-3">
+              <div
+                v-for="entry in history.slice(0, 50)"
+                :key="entry.id"
+                class="border-b border-border-subtle/50 pb-3 last:border-0 last:pb-0"
+              >
+                <p class="text-xs text-text-muted">
+                  {{ new Date(entry.createdAt).toLocaleString('pt-BR') }}
+                </p>
+                <p class="mt-0.5 text-sm text-text-secondary">
+                  {{ entry.description }}
+                </p>
+              </div>
             </div>
-          </article>
+            <p v-else class="text-sm text-text-muted">
+              Nenhuma alteração registrada.
+            </p>
+          </div>
         </div>
-        <p v-else class="text-sm text-text-muted">
-          Adicione lançamentos mensais para ver a evolução.
-        </p>
-      </section>
-
-      <section class="space-y-3">
-        <div class="flex items-baseline justify-between gap-2">
-          <h3 class="text-base font-semibold text-text-primary sm:text-lg">
-            Resultados mensais
-          </h3>
-          <span class="text-xs text-text-muted">
-            {{ sortedResults.length }}
-            {{ sortedResults.length === 1 ? 'mês' : 'meses' }}
-          </span>
-        </div>
-        <CampaignMonthlyTable
-          :campaign="campaign"
-          :results="sortedResults"
-          @edit="openMonthlyEdit"
-        />
-      </section>
-
-      <CampaignInsights :insights="insights" />
-      <CampaignHistory :entries="history" />
+      </div>
 
       <div
-        v-if="campaign.notes || campaign.activationRuleNotes"
+        v-if="campaign.notes"
         class="panel-glass space-y-2 rounded-2xl p-4 text-sm text-text-secondary"
       >
         <h3 class="font-semibold text-text-primary">Observações</h3>
-        <p v-if="campaign.activationRuleNotes">
-          <span class="text-text-muted">Critério:</span>
-          {{ campaign.activationRuleNotes }}
-        </p>
-        <p v-if="campaign.notes">{{ campaign.notes }}</p>
+        <p>{{ campaign.notes }}</p>
       </div>
     </div>
 
-    <CampaignMonthlyResultModal
-      v-model:open="monthlyOpen"
-      :campaign-id="campaign.id"
-      :result-id="editingResultId"
-      :default-month="campaign.acquisitionMonth"
-      :default-year="campaign.acquisitionYear"
-    />
+    <div
+      v-if="selectedPlayerDetail"
+      class="fixed inset-y-0 right-0 z-50 w-full max-w-md overflow-y-auto bg-board-elevated shadow-2xl"
+    >
+      <div class="sticky top-0 z-10 flex items-center justify-between border-b border-border-subtle bg-board-elevated p-4">
+        <h3 class="text-lg font-semibold text-text-primary">
+          {{ selectedPlayerDetail.player.name || selectedPlayerDetail.player.nickname || selectedPlayerDetail.player.playerId }}
+        </h3>
+        <button
+          type="button"
+          class="rounded-lg p-1.5 text-text-muted hover:bg-surface hover:text-text-primary"
+          @click="closePlayerDetail"
+        >
+          <ArrowLeft :size="18" />
+        </button>
+      </div>
+
+      <div class="p-4 space-y-4">
+        <div class="grid grid-cols-2 gap-2.5">
+          <div class="rounded-xl bg-surface/40 px-3 py-2.5">
+            <p class="text-[11px] font-medium uppercase tracking-wide text-text-muted">
+              Rake total
+            </p>
+            <p class="mt-1 text-base font-semibold tabular-nums text-text-primary">
+              {{ formatCurrency(selectedPlayerDetail.player.rake) }}
+            </p>
+          </div>
+          <div class="rounded-xl bg-surface/40 px-3 py-2.5">
+            <p class="text-[11px] font-medium uppercase tracking-wide text-text-muted">
+              Semanas ativas
+            </p>
+            <p class="mt-1 text-base font-semibold tabular-nums text-text-primary">
+              {{ selectedPlayerDetail.player.weeks }}
+            </p>
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          <h4 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+            Histórico semanal
+          </h4>
+          <ul class="space-y-1.5">
+            <li
+              v-for="week in selectedPlayerDetail.series"
+              :key="week.label"
+              class="rounded-lg bg-surface/40 px-3 py-2 text-xs"
+            >
+              <div class="flex items-center justify-between">
+                <span class="font-medium text-text-primary">{{ week.label }}</span>
+                <span class="tabular-nums text-text-secondary">{{ formatCurrency(week.weeklyRake) }}</span>
+              </div>
+              <p class="mt-0.5 text-text-muted">
+                Acumulado: {{ formatCurrency(week.accumulated) }}
+              </p>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

@@ -48,6 +48,7 @@ const statusOptions: { value: CampaignComputedStatus | 'all'; label: string }[] 
   { value: 'payback', label: CAMPAIGN_STATUS_LABELS.payback },
   { value: 'recovering', label: CAMPAIGN_STATUS_LABELS.recovering },
   { value: 'no_return', label: CAMPAIGN_STATUS_LABELS.no_return },
+  { value: 'no_data', label: CAMPAIGN_STATUS_LABELS.no_data },
   { value: 'archived', label: CAMPAIGN_STATUS_LABELS.archived },
 ]
 

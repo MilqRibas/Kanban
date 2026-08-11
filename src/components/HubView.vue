@@ -96,10 +96,8 @@ const homeCardsModel = computed({
 })
 
 onMounted(async () => {
-  if (!ready.value) {
-    await Promise.all([community.init(), hubSections.init()])
-    ready.value = true
-  }
+  await Promise.all([community.init(), hubSections.init()])
+  ready.value = true
 })
 
 function cardIcon(card: HubSection) {

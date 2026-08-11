@@ -40,14 +40,14 @@ const cards: {
   },
   {
     key: 'totalCaptured',
-    label: 'Jogadores captados',
-    shortLabel: 'Captados',
+    label: 'Jogadores nas agências',
+    shortLabel: 'Na agência',
     icon: Users,
     format: 'number',
   },
   {
     key: 'totalActive',
-    label: 'Jogadores ativos',
+    label: 'Ativos únicos',
     shortLabel: 'Ativos',
     icon: UserCheck,
     format: 'number',

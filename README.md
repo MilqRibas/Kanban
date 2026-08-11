@@ -21,7 +21,8 @@ Ferramenta interna do time B2C da SX Poker para sincronizar **demandas (Quadro)*
 | **Tarefas** | Rotina diária | Afazeres por membro e data (Diário / Semanal / Mensal), com campanha e listas aninhadas |
 | **Notas** | Conhecimento | Anotações rápidas e Atas de reunião (ATA), com markdown e busca |
 | **HUB** | Central do time | Produtividade, atalhos do time e calendário de conteúdo da comunidade |
-| **Campanhas** | Aquisição | Cadastro e acompanhamento de campanhas (investimento, ativação, rake, payback) |
+| **Comunidade** | Conteúdo | Atalho direto para o calendário/conteúdos do HUB |
+| **Campanhas** | Aquisição | Cadastro, import semanal (XLSX) e acompanhamento (investimento, ativação, rake, payback) |
 
 ---
 
@@ -83,10 +84,12 @@ Ferramenta interna do time B2C da SX Poker para sincronizar **demandas (Quadro)*
 ### Campanhas — aquisição B2C
 
 - Visão geral com KPIs, gráficos e filtros
-- Cadastro/edição manual de campanhas e lançamentos mensais de rake
-- Detalhes com payback, recuperação, histórico e insights determinísticos
-- Comparativo lado a lado (2 a 5 campanhas)
-- Realtime + RLS no Supabase (`campaigns`, `campaign_monthly_results`, `campaign_history`)
+- Cadastro/edição manual de campanhas e vínculo a um Agent ID
+- Importação semanal de relatório XLSX (agentes, jogadores, mesas) com substituição atômica do período
+- Ativos calculados pelo critério de ativação da campanha (rake > 0, > R$ 0,50, mínimo custom)
+- Detalhes com payback, recuperação, saúde do rake e evolução semanal
+- Comparativo lado a lado
+- Realtime + RLS no Supabase (`campaigns`, `campaign_agents`, `campaign_report_imports`, períodos e detalhes)
 
 ---
 
@@ -122,11 +125,11 @@ Auth: e-mail/senha via Supabase. Perfis em `profiles` (`is_admin`); membros do q
 | Estilo | Tailwind CSS 4 · tipografia **Inter** |
 | Backend | Supabase (Auth, Postgres, Storage, Realtime, RLS) |
 | Deploy | Vercel |
-| Extras | `vuedraggable`, `marked`, `@lucide/vue` |
+| Extras | `vuedraggable`, `marked`, `@lucide/vue`, `xlsx` |
 
 **Storage:** buckets `avatars` e `card-attachments`.
 
-**Tabelas principais:** boards, columns, cards, labels, members, comments, attachments, profiles, notes, daily_entries, notifications, hub sections / community contents, campaigns / campaign_monthly_results / campaign_history.
+**Tabelas principais:** boards, columns, cards, labels, members, comments, attachments, profiles, notes, daily_entries, notifications, hub sections / community contents, campaigns, campaign_agents, campaign_report_imports, campaign_agent_periods, campaign_player_periods, campaign_table_details, campaign_players.
 
 ---
 

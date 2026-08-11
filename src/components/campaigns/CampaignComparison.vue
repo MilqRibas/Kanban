@@ -1,25 +1,20 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { Campaign, CampaignMonthlyResult } from '../../types/campaigns'
+import type { Campaign } from '../../types/campaigns'
+import { useCampaignsStore } from '../../stores/campaigns'
 import {
   formatCurrency,
-  formatMonthYear,
   formatNumber,
-  formatPaybackLabel,
   formatPercent,
 } from '../../utils/campaignFormat'
-import {
-  buildCampaignMetrics,
-  generateComparisonInsights,
-} from '../../utils/campaignMetrics'
-import CampaignInsights from './CampaignInsights.vue'
+import { formatPeriodLabel } from '../../utils/campaignWeeklyMetrics'
 import CampaignStatusBadge from './CampaignStatusBadge.vue'
 
 const props = defineProps<{
   campaigns: Campaign[]
-  monthlyResults: CampaignMonthlyResult[]
 }>()
 
+const store = useCampaignsStore()
 const selectedIds = ref<string[]>([])
 
 watch(
@@ -41,188 +36,146 @@ const selectedCampaigns = computed(() =>
   props.campaigns.filter((c) => selectedIds.value.includes(c.id)),
 )
 
-const canSelectMore = computed(() => selectedIds.value.length < 5)
-
-function toggle(id: string) {
-  if (selectedIds.value.includes(id)) {
-    if (selectedIds.value.length <= 2) return
-    selectedIds.value = selectedIds.value.filter((item) => item !== id)
-    return
-  }
-  if (!canSelectMore.value) return
-  selectedIds.value = [...selectedIds.value, id]
-}
-
-const comparisonRows = computed(() =>
+const rows = computed(() =>
   selectedCampaigns.value.map((campaign) => {
-    const metrics = buildCampaignMetrics(campaign, props.monthlyResults)
-    return { campaign, metrics }
+    const metrics = store.metricsFor(campaign)
+    const health = store.rakeHealthFor(campaign)
+    return { campaign, metrics, health }
   }),
 )
 
-const insights = computed(() =>
-  generateComparisonInsights(selectedCampaigns.value, props.monthlyResults),
-)
-
-type MetricKey =
-  | 'investment'
-  | 'captured'
-  | 'active'
-  | 'inactive'
-  | 'activation'
-  | 'costCaptured'
-  | 'costActive'
-  | 'rake'
-  | 'avgRake'
-  | 'recovery'
-  | 'difference'
-  | 'payback'
-  | 'months'
-
-const metricDefs: { key: MetricKey; label: string }[] = [
-  { key: 'investment', label: 'Investimento' },
-  { key: 'captured', label: 'Captados' },
-  { key: 'active', label: 'Ativos' },
-  { key: 'inactive', label: 'Inativos' },
-  { key: 'activation', label: 'Taxa de ativação' },
-  { key: 'costCaptured', label: 'Custo / captado' },
-  { key: 'costActive', label: 'Custo / ativo' },
-  { key: 'rake', label: 'Rake acumulado' },
-  { key: 'avgRake', label: 'Rake médio / ativo' },
-  { key: 'recovery', label: 'Recuperação' },
-  { key: 'difference', label: 'Diferença rake − inv.' },
-  { key: 'payback', label: 'Mês de payback' },
-  { key: 'months', label: 'Meses acompanhados' },
-]
-
-function cellValue(row: (typeof comparisonRows.value)[number], key: MetricKey) {
-  const { campaign, metrics } = row
-  switch (key) {
-    case 'investment':
-      return formatCurrency(campaign.investment)
-    case 'captured':
-      return formatNumber(campaign.capturedPlayers)
-    case 'active':
-      return formatNumber(campaign.activePlayers)
-    case 'inactive':
-      return formatNumber(metrics.inactivePlayers)
-    case 'activation':
-      return formatPercent(metrics.activationRate)
-    case 'costCaptured':
-      return formatCurrency(metrics.costPerCaptured)
-    case 'costActive':
-      return formatCurrency(metrics.costPerActive)
-    case 'rake':
-      return formatCurrency(metrics.accumulatedRake)
-    case 'avgRake':
-      return formatCurrency(metrics.averageRakePerActive)
-    case 'recovery':
-      return formatPercent(metrics.recoveryRate)
-    case 'difference':
-      return formatCurrency(metrics.investmentDifference)
-    case 'payback':
-      if (!metrics.payback.reached) return 'Ainda não atingiu'
-      if (metrics.payback.month && metrics.payback.year) {
-        return formatMonthYear(metrics.payback.month, metrics.payback.year)
-      }
-      return formatPaybackLabel(metrics.payback)
-    case 'months':
-      return formatNumber(metrics.monthsTracked)
-    default:
-      return '—'
+function toggle(id: string) {
+  if (selectedIds.value.includes(id)) {
+    selectedIds.value = selectedIds.value.filter((x) => x !== id)
+  } else {
+    selectedIds.value = [...selectedIds.value, id]
   }
 }
+
+const metricDefs: Array<{
+  label: string
+  value: (row: (typeof rows.value)[number]) => string
+}> = [
+  { label: 'Investimento', value: (r) => formatCurrency(r.campaign.investment) },
+  { label: 'Jogadores', value: (r) => formatNumber(r.metrics.agencyPlayers) },
+  { label: 'Ativos únicos', value: (r) => formatNumber(r.metrics.uniqueActivePlayers) },
+  { label: 'Ativação', value: (r) => formatPercent(r.metrics.activationRate) },
+  { label: 'Rake acumulado', value: (r) => formatCurrency(r.metrics.accumulatedRake) },
+  { label: 'Rake/ativo', value: (r) => formatCurrency(r.metrics.averageRakePerActive) },
+  { label: 'Recuperação', value: (r) => formatPercent(r.metrics.recoveryRate) },
+  { label: 'Custo/ativo', value: (r) => formatCurrency(r.metrics.costPerActive) },
+  {
+    label: 'Top 1',
+    value: (r) =>
+      r.health.top1Share != null
+        ? formatPercent(r.health.top1Share * 100)
+        : '—',
+  },
+  {
+    label: 'Top 3',
+    value: (r) =>
+      r.health.top3Share != null
+        ? formatPercent(r.health.top3Share * 100)
+        : '—',
+  },
+  {
+    label: 'Top 10',
+    value: (r) =>
+      r.health.top10Share != null
+        ? formatPercent(r.health.top10Share * 100)
+        : '—',
+  },
+  {
+    label: 'Jogadores p/ 80%',
+    value: (r) =>
+      r.health.playersFor80 != null
+        ? `${r.health.playersFor80} / ${r.health.uniquePlayers}`
+        : '—',
+  },
+  { label: 'Saúde', value: (r) => r.health.classificationLabel },
+  {
+    label: 'Payback',
+    value: (r) =>
+      r.metrics.payback.reached && r.metrics.payback.periodStart
+        ? formatPeriodLabel(
+            r.metrics.payback.periodStart,
+            r.metrics.payback.periodEnd ?? r.metrics.payback.periodStart,
+          )
+        : 'Não atingido',
+  },
+  { label: 'Semanas', value: (r) => String(r.metrics.weeksTracked) },
+  {
+    label: 'Status',
+    value: () => '',
+  },
+]
 </script>
 
 <template>
-  <div class="space-y-2.5">
-    <div class="panel-glass rounded-2xl px-3 py-2.5 sm:px-3.5">
-      <div class="flex flex-wrap items-center gap-2">
-        <div class="mr-1 min-w-0">
-          <h3 class="text-sm font-semibold text-text-primary">Comparar</h3>
-          <p class="text-[11px] text-text-muted">2 a 5 campanhas</p>
-        </div>
+  <div class="space-y-4">
+    <div class="panel-glass rounded-2xl p-4">
+      <h3 class="mb-3 text-sm font-semibold text-text-primary">
+        Selecione campanhas para comparar
+      </h3>
+      <div class="flex flex-wrap gap-2">
         <button
           v-for="campaign in campaigns"
           :key="campaign.id"
           type="button"
-          class="rounded-lg px-2.5 py-1 text-xs transition-all sm:text-sm"
-          :class="
+          :class="[
+            'rounded-xl px-3 py-1.5 text-sm transition-colors',
             selectedIds.includes(campaign.id)
               ? 'bg-accent/20 text-text-primary ring-1 ring-accent/45'
-              : 'bg-surface text-text-secondary hover:text-text-primary'
-          "
-          :disabled="!selectedIds.includes(campaign.id) && !canSelectMore"
+              : 'bg-surface text-text-secondary hover:text-text-primary',
+          ]"
           @click="toggle(campaign.id)"
         >
           {{ campaign.name }}
         </button>
-        <span class="ml-auto text-[11px] text-text-muted">
-          {{ selectedIds.length }} sel.
-        </span>
       </div>
     </div>
 
-    <div
-      v-if="comparisonRows.length >= 2"
-      class="panel-glass overflow-hidden rounded-2xl"
-    >
+    <div v-if="rows.length < 2" class="panel-glass rounded-2xl p-6 text-sm text-text-muted">
+      Selecione pelo menos 2 campanhas para comparar.
+    </div>
+
+    <div v-else class="panel-glass overflow-hidden rounded-2xl">
       <div class="overflow-x-auto">
         <table class="min-w-full text-left text-sm">
-          <thead class="border-b border-border-subtle bg-surface/60 text-[10px] uppercase tracking-wide text-text-muted">
+          <thead class="border-b border-border-subtle bg-surface/60 text-xs text-text-muted">
             <tr>
-              <th class="sticky left-0 z-10 bg-surface/95 px-3 py-2 font-medium backdrop-blur">
-                Indicador
-              </th>
+              <th class="px-3 py-3 font-medium">Métrica</th>
               <th
-                v-for="row in comparisonRows"
+                v-for="row in rows"
                 :key="row.campaign.id"
-                class="min-w-[8.5rem] px-3 py-2 font-medium normal-case tracking-normal"
+                class="px-3 py-3 font-medium"
               >
-                <div class="space-y-1">
-                  <p class="text-sm font-semibold text-text-primary">
-                    {{ row.campaign.name }}
-                  </p>
-                  <CampaignStatusBadge :status="row.metrics.status" />
-                </div>
+                {{ row.campaign.name }}
               </th>
             </tr>
           </thead>
           <tbody>
             <tr
               v-for="metric in metricDefs"
-              :key="metric.key"
+              :key="metric.label"
               class="border-b border-border-subtle/50"
             >
-              <th
-                class="sticky left-0 z-10 bg-board-elevated/95 px-3 py-1.5 text-left text-xs font-medium text-text-muted backdrop-blur"
-              >
-                {{ metric.label }}
-              </th>
+              <td class="px-3 py-2 text-text-muted">{{ metric.label }}</td>
               <td
-                v-for="row in comparisonRows"
-                :key="`${row.campaign.id}-${metric.key}`"
-                class="px-3 py-1.5 tabular-nums text-text-primary"
+                v-for="row in rows"
+                :key="row.campaign.id"
+                class="px-3 py-2 tabular-nums text-text-primary"
               >
-                {{ cellValue(row, metric.key) }}
+                <CampaignStatusBadge
+                  v-if="metric.label === 'Status'"
+                  :status="row.metrics.status"
+                />
+                <template v-else>{{ metric.value(row) }}</template>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
     </div>
-
-    <p
-      v-else
-      class="panel-glass rounded-2xl p-4 text-sm text-text-muted"
-    >
-      Selecione ao menos 2 campanhas para ver o comparativo.
-    </p>
-
-    <CampaignInsights
-      v-if="comparisonRows.length >= 2"
-      title="Análise comparativa"
-      :insights="insights"
-    />
   </div>
 </template>

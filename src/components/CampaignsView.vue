@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { Loader2, Plus } from '@lucide/vue'
+import { FileUp, Loader2, Plus } from '@lucide/vue'
 import { useCampaignsStore } from '../stores/campaigns'
-import { buildCampaignMetrics, buildOverviewKpis } from '../utils/campaignMetrics'
 import CampaignFilters, {
   type CampaignFiltersState,
 } from './campaigns/CampaignFilters.vue'
 import CampaignFormModal from './campaigns/CampaignFormModal.vue'
+import CampaignImportModal from './campaigns/CampaignImportModal.vue'
 import CampaignKpiCards from './campaigns/CampaignKpiCards.vue'
 import CampaignTable from './campaigns/CampaignTable.vue'
 import CampaignDetails from './campaigns/CampaignDetails.vue'
@@ -19,6 +19,7 @@ const store = useCampaignsStore()
 const bootstrapping = ref(false)
 const screen = ref<CampaignScreen>('overview')
 const formOpen = ref(false)
+const importOpen = ref(false)
 const editingId = ref<string | null>(null)
 
 const filters = ref<CampaignFiltersState>({
@@ -77,16 +78,14 @@ const filteredCampaigns = computed(() => {
       return false
     }
     if (filters.value.status !== 'all') {
-      const metrics = buildCampaignMetrics(campaign, store.monthlyResults)
+      const metrics = store.metricsFor(campaign)
       if (metrics.status !== filters.value.status) return false
     }
     return true
   })
 })
 
-const overviewKpis = computed(() =>
-  buildOverviewKpis(filteredCampaigns.value, store.monthlyResults),
-)
+const overviewKpis = computed(() => store.overviewKpis())
 
 const selectedCampaign = computed(() => store.selectedCampaign)
 
@@ -149,15 +148,26 @@ function onBackFromDetails() {
               Campanhas
             </h2>
           </div>
-          <button
-            type="button"
-            class="inline-flex items-center gap-1.5 rounded-xl bg-accent px-3 py-1.5 text-sm font-semibold text-board hover:bg-accent-hover sm:px-3.5 sm:py-2"
-            @click="openCreate"
-          >
-            <Plus :size="16" />
-            <span class="sm:hidden">Nova</span>
-            <span class="hidden sm:inline">Nova campanha</span>
-          </button>
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 rounded-xl border border-border-subtle bg-board-elevated px-3 py-1.5 text-sm font-medium text-text-primary hover:bg-surface sm:px-3.5 sm:py-2"
+              @click="importOpen = true"
+            >
+              <FileUp :size="16" />
+              <span class="sm:hidden">Importar</span>
+              <span class="hidden sm:inline">Importar relatório</span>
+            </button>
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 rounded-xl bg-accent px-3 py-1.5 text-sm font-semibold text-board hover:bg-accent-hover sm:px-3.5 sm:py-2"
+              @click="openCreate"
+            >
+              <Plus :size="16" />
+              <span class="sm:hidden">Nova</span>
+              <span class="hidden sm:inline">Nova campanha</span>
+            </button>
+          </div>
         </header>
 
         <div
@@ -199,10 +209,7 @@ function onBackFromDetails() {
 
         <section v-if="screen === 'overview'" class="space-y-2.5">
           <CampaignKpiCards :kpis="overviewKpis" />
-          <CampaignCharts
-            :campaigns="filteredCampaigns"
-            :monthly-results="store.monthlyResults"
-          />
+          <CampaignCharts :campaigns="filteredCampaigns" />
         </section>
 
         <section v-else-if="screen === 'list'" class="space-y-3">
@@ -223,10 +230,7 @@ function onBackFromDetails() {
         </section>
 
         <section v-else>
-          <CampaignComparison
-            :campaigns="filteredCampaigns"
-            :monthly-results="store.monthlyResults"
-          />
+          <CampaignComparison :campaigns="filteredCampaigns" />
         </section>
       </div>
     </div>
@@ -236,5 +240,6 @@ function onBackFromDetails() {
       :campaign-id="editingId"
       @saved="onSaved"
     />
+    <CampaignImportModal v-model:open="importOpen" />
   </div>
 </template>

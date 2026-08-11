@@ -14,7 +14,6 @@ import {
   CAMPAIGN_TYPE_OPTIONS,
 } from '../../types/campaigns'
 import { formatCurrency } from '../../utils/campaignFormat'
-import { calculateAccumulatedRake } from '../../utils/campaignMetrics'
 
 const props = defineProps<{
   open: boolean
@@ -60,16 +59,12 @@ type Draft = {
   notes: string
   investment: string
   capturedPlayers: string
-  activePlayers: string
+  agentId: string
   activationRuleType: ActivationRuleType
   activationMinimumRake: string
   activationRuleNotes: string
   rakeGoal: string
   activePlayersGoal: string
-  referenceMonth: number
-  referenceYear: number
-  monthlyRake: string
-  monthlyActivePlayers: string
 }
 
 function emptyDraft(): Draft {
@@ -90,16 +85,12 @@ function emptyDraft(): Draft {
     notes: '',
     investment: '',
     capturedPlayers: '',
-    activePlayers: '',
+    agentId: '',
     activationRuleType: 'rake_gt_zero',
     activationMinimumRake: '',
     activationRuleNotes: '',
     rakeGoal: '',
     activePlayersGoal: '',
-    referenceMonth: currentMonth,
-    referenceYear: currentYear,
-    monthlyRake: '',
-    monthlyActivePlayers: '',
   }
 }
 
@@ -114,9 +105,25 @@ const editingCampaign = computed(
 
 const isEditing = computed(() => Boolean(editingCampaign.value))
 
-const monthlyResultsForEdit = computed(() => {
-  if (!editingCampaign.value) return []
-  return store.monthlyResultsFor(editingCampaign.value.id)
+const agentQuery = ref('')
+
+const agentOptions = computed(() => {
+  const q = agentQuery.value.trim().toLowerCase()
+  const list = [...store.agents].sort((a, b) =>
+    a.name.localeCompare(b.name, 'pt-BR'),
+  )
+  if (!q) return list
+  return list.filter(
+    (a) =>
+      a.agentId.includes(q) ||
+      a.name.toLowerCase().includes(q),
+  )
+})
+
+const selectedAgentLabel = computed(() => {
+  if (!draft.agentId) return ''
+  const agent = store.agents.find((a) => a.agentId === draft.agentId)
+  return agent ? `${agent.agentId} — ${agent.name}` : draft.agentId
 })
 
 const years = computed(() => {
@@ -169,7 +176,7 @@ function fillFromCampaign(campaign: Campaign) {
   draft.notes = campaign.notes ?? ''
   draft.investment = String(campaign.investment)
   draft.capturedPlayers = String(campaign.capturedPlayers)
-  draft.activePlayers = String(campaign.activePlayers)
+  draft.agentId = campaign.agentId ?? ''
   draft.activationRuleType = campaign.activationRuleType
   draft.activationMinimumRake =
     campaign.activationMinimumRake != null
@@ -181,17 +188,6 @@ function fillFromCampaign(campaign: Campaign) {
   draft.rakeGoal = campaign.rakeGoal != null ? String(campaign.rakeGoal) : ''
   draft.activePlayersGoal =
     campaign.activePlayersGoal != null ? String(campaign.activePlayersGoal) : ''
-
-  const results = store.monthlyResultsFor(campaign.id)
-  const latest = results[results.length - 1] ?? null
-  draft.referenceMonth = latest?.referenceMonth ?? campaign.acquisitionMonth
-  draft.referenceYear = latest?.referenceYear ?? campaign.acquisitionYear
-  draft.monthlyRake =
-    latest != null ? String(latest.monthlyRake) : ''
-  draft.monthlyActivePlayers =
-    latest?.monthlyActivePlayers != null
-      ? String(latest.monthlyActivePlayers)
-      : ''
 }
 
 function close() {
@@ -207,6 +203,7 @@ watch(
   () => props.open,
   async (open) => {
     formError.value = null
+    agentQuery.value = ''
     if (!open) return
     if (editingCampaign.value) {
       fillFromCampaign(editingCampaign.value)
@@ -215,28 +212,6 @@ watch(
     }
     await nextTick()
     nameInputRef.value?.focus()
-  },
-)
-
-watch(
-  () => [draft.referenceMonth, draft.referenceYear, props.open] as const,
-  () => {
-    if (!props.open || !editingCampaign.value) return
-    const existing = monthlyResultsForEdit.value.find(
-      (r) =>
-        r.referenceMonth === draft.referenceMonth &&
-        r.referenceYear === draft.referenceYear,
-    )
-    if (existing) {
-      draft.monthlyRake = String(existing.monthlyRake)
-      draft.monthlyActivePlayers =
-        existing.monthlyActivePlayers != null
-          ? String(existing.monthlyActivePlayers)
-          : ''
-      return
-    }
-    draft.monthlyRake = ''
-    draft.monthlyActivePlayers = ''
   },
 )
 
@@ -271,20 +246,9 @@ function parseOptionalNumber(raw: string | number | null | undefined) {
 }
 
 const accumulatedRakePreview = computed(() => {
-  const monthlyRaw = normalizeNumberInput(draft.monthlyRake)
-  const current =
-    monthlyRaw && Number.isFinite(Number(monthlyRaw)) ? Number(monthlyRaw) : 0
-
-  if (!editingCampaign.value) return current
-
-  const others = monthlyResultsForEdit.value.filter(
-    (r) =>
-      !(
-        r.referenceMonth === draft.referenceMonth &&
-        r.referenceYear === draft.referenceYear
-      ),
-  )
-  return calculateAccumulatedRake(others) + current
+  if (!draft.agentId) return 0
+  const agent = store.findAgent(draft.agentId)
+  return agent?.accumulatedRake ?? 0
 })
 
 function buildPayload(): CampaignCreateInput | null {
@@ -304,14 +268,12 @@ function buildPayload(): CampaignCreateInput | null {
     setFormError(investment.error ?? 'Investimento inválido.')
     return null
   }
-  const captured = parseRequiredNumber(draft.capturedPlayers, 'Jogadores captados')
+  const captured = parseRequiredNumber(
+    draft.capturedPlayers,
+    'Jogadores na agência',
+  )
   if (captured.error || captured.value === null) {
-    setFormError(captured.error ?? 'Jogadores captados inválido.')
-    return null
-  }
-  const active = parseRequiredNumber(draft.activePlayers, 'Jogadores ativos')
-  if (active.error || active.value === null) {
-    setFormError(active.error ?? 'Jogadores ativos inválido.')
+    setFormError(captured.error ?? 'Jogadores na agência inválido.')
     return null
   }
 
@@ -319,12 +281,8 @@ function buildPayload(): CampaignCreateInput | null {
     setFormError('Investimento não pode ser negativo.')
     return null
   }
-  if (captured.value < 0 || active.value < 0) {
-    setFormError('Captados e ativos não podem ser negativos.')
-    return null
-  }
-  if (active.value > captured.value) {
-    setFormError('Jogadores ativos não pode ser maior que captados.')
+  if (captured.value < 0) {
+    setFormError('Jogadores na agência não pode ser negativo.')
     return null
   }
 
@@ -343,18 +301,21 @@ function buildPayload(): CampaignCreateInput | null {
     return null
   }
 
+  const agent = draft.agentId
+    ? store.agents.find((a) => a.agentId === draft.agentId)
+    : null
+
   return {
     name: draft.name.trim(),
     acquisitionMonth: draft.acquisitionMonth,
     acquisitionYear: draft.acquisitionYear,
     startDate: draft.startDate,
     endDate: draft.endDate || null,
-    agency: draft.agency.trim() || null,
+    agency: agent?.name || draft.agency.trim() || null,
+    agentId: draft.agentId.trim() || null,
     campaignType: draft.campaignType || null,
     campaignTypeOther:
-      draft.campaignType === 'Outro'
-        ? draft.campaignTypeOther.trim() || null
-        : null,
+      draft.campaignType === 'Outro' ? draft.campaignTypeOther.trim() || null : null,
     objective: draft.objective.trim() || null,
     audience: draft.audience.trim() || null,
     channel: draft.channel.trim() || null,
@@ -362,43 +323,18 @@ function buildPayload(): CampaignCreateInput | null {
     campaignUrl: draft.campaignUrl.trim() || null,
     notes: draft.notes.trim() || null,
     investment: investment.value,
-    capturedPlayers: Math.round(captured.value),
-    activePlayers: Math.round(active.value),
+    capturedPlayers: captured.value,
     activationRuleType: draft.activationRuleType,
     activationMinimumRake,
     activationRuleNotes: draft.activationRuleNotes.trim() || null,
     rakeGoal: parseOptionalNumber(draft.rakeGoal),
-    activePlayersGoal: (() => {
-      const n = parseOptionalNumber(draft.activePlayersGoal)
-      return n === null ? null : Math.round(n)
-    })(),
+    activePlayersGoal: parseOptionalNumber(draft.activePlayersGoal),
   }
 }
 
 async function save() {
   const payload = buildPayload()
   if (!payload) return
-
-  const monthlyRaw = normalizeNumberInput(draft.monthlyRake)
-  let monthlyRake: number | null = null
-  if (monthlyRaw) {
-    const parsed = parseRequiredNumber(draft.monthlyRake, 'Rake do mês')
-    if (parsed.error || parsed.value === null) {
-      setFormError(parsed.error ?? 'Rake do mês inválido.')
-      return
-    }
-    if (parsed.value < 0) {
-      setFormError('Rake mensal não pode ser negativo.')
-      return
-    }
-    monthlyRake = parsed.value
-  }
-
-  const monthlyActives = parseOptionalNumber(draft.monthlyActivePlayers)
-  if (monthlyActives != null && monthlyActives < 0) {
-    setFormError('Ativos no mês não pode ser negativo.')
-    return
-  }
 
   saving.value = true
   try {
@@ -412,17 +348,6 @@ async function save() {
       const created = await store.create(payload)
       if (!created) return
       campaignId = created.id
-    }
-
-    if (campaignId && monthlyRake != null) {
-      const result = await store.upsertMonthlyResult(campaignId, {
-        referenceMonth: draft.referenceMonth,
-        referenceYear: draft.referenceYear,
-        monthlyRake,
-        monthlyActivePlayers:
-          monthlyActives != null ? Math.round(monthlyActives) : null,
-      })
-      if (!result) return
     }
 
     emit('saved', campaignId)
@@ -527,7 +452,7 @@ async function save() {
               </label>
             </div>
 
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label class="block text-xs text-text-muted">
                 Investimento (R$)
                 <input
@@ -541,7 +466,7 @@ async function save() {
               </label>
 
               <label class="block text-xs text-text-muted">
-                Jogadores captados
+                Jogadores na agência
                 <input
                   v-model="draft.capturedPlayers"
                   type="number"
@@ -551,18 +476,37 @@ async function save() {
                   :class="fieldClass"
                 />
               </label>
+            </div>
 
-              <label class="block text-xs text-text-muted">
-                Jogadores ativos
+            <div class="space-y-2 rounded-xl border border-border-subtle/70 bg-column/30 p-3">
+              <p class="text-xs font-medium text-text-secondary">
+                Agência (Agent ID)
+              </p>
+              <p v-if="store.agents.length === 0" class="text-xs text-text-muted">
+                Importe um relatório semanal para cadastrar automaticamente as agências.
+              </p>
+              <template v-else>
                 <input
-                  v-model="draft.activePlayers"
-                  type="number"
-                  min="0"
-                  step="1"
-                  required
+                  v-model="agentQuery"
+                  type="search"
+                  placeholder="Pesquisar por Agent ID ou nome…"
                   :class="fieldClass"
                 />
-              </label>
+                <select v-model="draft.agentId" :class="fieldClass">
+                  <option value="">Sem vínculo</option>
+                  <option
+                    v-for="agent in agentOptions"
+                    :key="agent.agentId"
+                    :value="agent.agentId"
+                  >
+                    {{ agent.agentId }} — {{ agent.name }}
+                  </option>
+                </select>
+                <p v-if="selectedAgentLabel" class="text-xs text-accent">
+                  Selecionado: {{ selectedAgentLabel }}
+                  · Rake acum. {{ formatCurrency(accumulatedRakePreview) }}
+                </p>
+              </template>
             </div>
 
             <label class="block text-xs text-text-muted">
@@ -606,64 +550,6 @@ async function save() {
 
           <section class="space-y-3">
             <h4 class="text-xs font-semibold uppercase tracking-wide text-accent/90">
-              Rake
-            </h4>
-            <p class="text-[11px] text-text-muted">
-              Informe o rake do mês de referência. O rake acumulado é a soma de
-              todos os lançamentos mensais.
-            </p>
-
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <label class="block text-xs text-text-muted">
-                Mês de referência
-                <select v-model.number="draft.referenceMonth" :class="fieldClass">
-                  <option v-for="month in months" :key="month.value" :value="month.value">
-                    {{ month.label }}
-                  </option>
-                </select>
-              </label>
-              <label class="block text-xs text-text-muted">
-                Ano de referência
-                <select v-model.number="draft.referenceYear" :class="fieldClass">
-                  <option v-for="year in years" :key="year" :value="year">
-                    {{ year }}
-                  </option>
-                </select>
-              </label>
-              <label class="block text-xs text-text-muted">
-                Rake do mês (R$)
-                <input
-                  v-model="draft.monthlyRake"
-                  type="text"
-                  inputmode="decimal"
-                  placeholder="2344,03"
-                  :class="fieldClass"
-                />
-              </label>
-            </div>
-
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label class="block text-xs text-text-muted">
-                Ativos no mês
-                <input
-                  v-model="draft.monthlyActivePlayers"
-                  type="number"
-                  min="0"
-                  step="1"
-                  :class="fieldClass"
-                />
-              </label>
-              <div class="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                <p class="text-[11px] text-text-muted">Rake acumulado (previsto)</p>
-                <p class="mt-1 text-sm font-semibold tabular-nums text-text-primary">
-                  {{ formatCurrency(accumulatedRakePreview) }}
-                </p>
-              </div>
-            </div>
-          </section>
-
-          <section class="space-y-3">
-            <h4 class="text-xs font-semibold uppercase tracking-wide text-accent/90">
               Opcionais
             </h4>
 
@@ -671,16 +557,6 @@ async function save() {
               <label class="block text-xs text-text-muted">
                 Data de encerramento
                 <input v-model="draft.endDate" type="date" :class="fieldClass" />
-              </label>
-
-              <label class="block text-xs text-text-muted">
-                Agência
-                <input
-                  v-model="draft.agency"
-                  type="text"
-                  placeholder="Nome da agência"
-                  :class="fieldClass"
-                />
               </label>
             </div>
 

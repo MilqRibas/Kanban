@@ -14,11 +14,8 @@ import { useAuthStore } from '../../stores/auth'
 import { useCampaignsStore } from '../../stores/campaigns'
 import {
   formatCurrency,
-  formatDateTime,
-  formatMonthYear,
   formatPercent,
 } from '../../utils/campaignFormat'
-import { buildCampaignMetrics } from '../../utils/campaignMetrics'
 import CampaignStatusBadge from './CampaignStatusBadge.vue'
 import { useEphemeralDismiss } from '../../composables/useEphemeralDismiss'
 
@@ -43,14 +40,15 @@ useEphemeralDismiss({
 
 const rows = computed(() =>
   props.campaigns.map((campaign) => {
-    const metrics = buildCampaignMetrics(campaign, store.monthlyResults)
-    return { campaign, metrics }
+    const metrics = store.metricsFor(campaign)
+    const health = store.rakeHealthFor(campaign)
+    const agent = store.findAgent(campaign.agentId)
+    return { campaign, metrics, health, agent }
   }),
 )
 
 function canDelete(campaign: Campaign) {
-  if (!campaign.createdBy || campaign.createdBy === auth.memberId) return true
-  return auth.isAdmin
+  return store.canDeleteCampaign(campaign)
 }
 
 function toggleMenu(id: string) {
@@ -99,17 +97,18 @@ function typeLabel(campaign: Campaign) {
         <thead class="border-b border-border-subtle bg-surface/60 text-xs uppercase tracking-wide text-text-muted">
           <tr>
             <th class="px-3 py-3 font-medium">Campanha</th>
-            <th class="px-3 py-3 font-medium">Aquisição</th>
-            <th class="px-3 py-3 font-medium">Tipo</th>
             <th class="px-3 py-3 font-medium">Agência</th>
-            <th class="px-3 py-3 font-medium text-right">Investimento</th>
-            <th class="px-3 py-3 font-medium text-right">Captados</th>
-            <th class="px-3 py-3 font-medium text-right">Ativos</th>
+            <th class="px-3 py-3 font-medium">Agent ID</th>
+            <th class="px-3 py-3 font-medium text-right">Jogadores</th>
+            <th class="px-3 py-3 font-medium text-right">Ativos únicos</th>
             <th class="px-3 py-3 font-medium text-right">Ativação</th>
+            <th class="px-3 py-3 font-medium text-right">Investimento</th>
             <th class="px-3 py-3 font-medium text-right">Rake acum.</th>
             <th class="px-3 py-3 font-medium text-right">Recuperação</th>
+            <th class="px-3 py-3 font-medium">Saúde</th>
             <th class="px-3 py-3 font-medium">Status</th>
-            <th class="px-3 py-3 font-medium">Atualização</th>
+            <th class="px-3 py-3 font-medium text-right">Semanas</th>
+            <th class="px-3 py-3 font-medium">Último relatório</th>
             <th class="px-3 py-3 font-medium text-right">Ações</th>
           </tr>
         </thead>
@@ -127,58 +126,69 @@ function typeLabel(campaign: Campaign) {
               >
                 {{ row.campaign.name }}
               </button>
-            </td>
-            <td class="whitespace-nowrap px-3 py-3 text-text-secondary">
-              {{
-                formatMonthYear(
-                  row.campaign.acquisitionMonth,
-                  row.campaign.acquisitionYear,
-                )
-              }}
+              <p class="text-[11px] text-text-muted">{{ typeLabel(row.campaign) }}</p>
             </td>
             <td class="px-3 py-3 text-text-secondary">
-              {{ typeLabel(row.campaign) }}
+              {{ row.agent?.name || row.campaign.agency || '—' }}
             </td>
-            <td class="px-3 py-3 text-text-secondary">
-              {{ row.campaign.agency || '—' }}
+            <td class="px-3 py-3 font-mono text-xs text-text-secondary">
+              {{ row.campaign.agentId || '—' }}
             </td>
-            <td class="whitespace-nowrap px-3 py-3 text-right tabular-nums text-text-primary">
-              {{ formatCurrency(row.campaign.investment) }}
+            <td class="px-3 py-3 text-right tabular-nums">
+              {{ row.metrics.agencyPlayers }}
             </td>
-            <td class="px-3 py-3 text-right tabular-nums text-text-primary">
-              {{ row.campaign.capturedPlayers }}
+            <td class="px-3 py-3 text-right tabular-nums">
+              {{ row.metrics.uniqueActivePlayers }}
             </td>
-            <td class="px-3 py-3 text-right tabular-nums text-text-primary">
-              {{ row.campaign.activePlayers }}
-            </td>
-            <td class="whitespace-nowrap px-3 py-3 text-right tabular-nums text-text-primary">
+            <td class="px-3 py-3 text-right tabular-nums">
               {{ formatPercent(row.metrics.activationRate) }}
             </td>
-            <td class="whitespace-nowrap px-3 py-3 text-right tabular-nums text-text-primary">
+            <td class="px-3 py-3 text-right tabular-nums">
+              {{ formatCurrency(row.campaign.investment) }}
+            </td>
+            <td class="px-3 py-3 text-right tabular-nums">
               {{ formatCurrency(row.metrics.accumulatedRake) }}
             </td>
-            <td class="whitespace-nowrap px-3 py-3 text-right tabular-nums text-text-primary">
+            <td class="px-3 py-3 text-right tabular-nums">
               {{ formatPercent(row.metrics.recoveryRate) }}
+            </td>
+            <td class="px-3 py-3 text-xs text-text-secondary">
+              {{
+                row.metrics.weeksTracked > 0
+                  ? row.health.classificationLabel
+                  : '—'
+              }}
             </td>
             <td class="px-3 py-3">
               <CampaignStatusBadge :status="row.metrics.status" />
             </td>
-            <td class="whitespace-nowrap px-3 py-3 text-text-muted">
-              {{ formatDateTime(row.campaign.updatedAt) }}
+            <td class="px-3 py-3 text-right tabular-nums">
+              {{ row.metrics.weeksTracked }}
+            </td>
+            <td class="px-3 py-3 text-xs text-text-muted">
+              <template v-if="row.metrics.lastPeriodStart && row.metrics.lastPeriodEnd">
+                {{
+                  store.formatPeriodLabel(
+                    row.metrics.lastPeriodStart,
+                    row.metrics.lastPeriodEnd,
+                  )
+                }}
+              </template>
+              <template v-else>—</template>
             </td>
             <td class="relative px-3 py-3 text-right">
               <div class="inline-flex items-center gap-1">
                 <button
                   type="button"
-                  class="rounded-lg p-1.5 text-text-secondary hover:bg-surface hover:text-text-primary"
-                  title="Visualizar"
+                  class="rounded-lg p-1.5 text-text-muted hover:bg-white/10 hover:text-text-primary"
+                  title="Ver"
                   @click="emit('view', row.campaign.id)"
                 >
                   <Eye :size="15" />
                 </button>
                 <button
                   type="button"
-                  class="rounded-lg p-1.5 text-text-secondary hover:bg-surface hover:text-text-primary"
+                  class="rounded-lg p-1.5 text-text-muted hover:bg-white/10 hover:text-text-primary"
                   title="Editar"
                   @click="emit('edit', row.campaign.id)"
                 >
@@ -186,46 +196,39 @@ function typeLabel(campaign: Campaign) {
                 </button>
                 <button
                   type="button"
-                  class="rounded-lg p-1.5 text-text-secondary hover:bg-surface hover:text-text-primary"
-                  title="Mais ações"
-                  data-ephemeral-menu
-                  @click.stop="toggleMenu(row.campaign.id)"
+                  class="rounded-lg p-1.5 text-text-muted hover:bg-white/10 hover:text-text-primary"
+                  title="Mais"
+                  @click="toggleMenu(row.campaign.id)"
                 >
                   <MoreHorizontal :size="15" />
                 </button>
               </div>
-
               <div
                 v-if="menuId === row.campaign.id"
-                data-ephemeral-menu
-                class="absolute right-3 z-20 mt-1 w-44 overflow-hidden rounded-xl border border-border-subtle bg-board-elevated py-1 shadow-xl"
-                @click.stop
+                class="absolute right-3 z-20 mt-1 min-w-[10rem] overflow-hidden rounded-xl border border-border-subtle bg-board-elevated py-1 shadow-xl"
               >
                 <button
                   type="button"
-                  class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface hover:text-text-primary"
+                  class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface"
                   @click="onDuplicate(row.campaign.id)"
                 >
-                  <Copy :size="14" />
-                  Duplicar
+                  <Copy :size="14" /> Duplicar
                 </button>
                 <button
                   v-if="!row.campaign.isArchived && auth.isAdmin"
                   type="button"
-                  class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface hover:text-text-primary"
+                  class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface"
                   @click="onArchive(row.campaign.id)"
                 >
-                  <Archive :size="14" />
-                  Arquivar
+                  <Archive :size="14" /> Arquivar
                 </button>
                 <button
-                  v-if="row.campaign.isArchived && auth.isAdmin"
+                  v-else-if="row.campaign.isArchived && auth.isAdmin"
                   type="button"
-                  class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface hover:text-text-primary"
+                  class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface"
                   @click="onRestore(row.campaign.id)"
                 >
-                  <RotateCcw :size="14" />
-                  Restaurar
+                  <RotateCcw :size="14" /> Restaurar
                 </button>
                 <button
                   v-if="canDelete(row.campaign)"
@@ -233,18 +236,14 @@ function typeLabel(campaign: Campaign) {
                   class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-danger hover:bg-danger/10"
                   @click="onDelete(row.campaign.id)"
                 >
-                  <Trash2 :size="14" />
-                  Excluir
+                  <Trash2 :size="14" /> Excluir
                 </button>
               </div>
             </td>
           </tr>
-          <tr v-if="!rows.length">
-            <td
-              colspan="13"
-              class="px-3 py-10 text-center text-sm text-text-muted"
-            >
-              Nenhuma campanha encontrada com os filtros atuais.
+          <tr v-if="rows.length === 0">
+            <td colspan="14" class="px-3 py-10 text-center text-sm text-text-muted">
+              Nenhuma campanha encontrada. Importe um relatório e vincule um Agent ID.
             </td>
           </tr>
         </tbody>

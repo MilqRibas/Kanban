@@ -33,12 +33,14 @@ export type CampaignComputedStatus =
   | 'payback'
   | 'recovering'
   | 'no_return'
+  | 'no_data'
   | 'archived'
 
 export const CAMPAIGN_STATUS_LABELS: Record<CampaignComputedStatus, string> = {
   payback: 'Payback concluído',
   recovering: 'Em recuperação',
   no_return: 'Sem retorno',
+  no_data: 'Sem dados importados',
   archived: 'Arquivada',
 }
 
@@ -46,6 +48,7 @@ export const CAMPAIGN_STATUS_STYLES: Record<CampaignComputedStatus, string> = {
   payback: 'bg-emerald-500/20 text-emerald-300',
   recovering: 'bg-amber-500/20 text-amber-200',
   no_return: 'bg-danger/25 text-danger',
+  no_data: 'bg-white/10 text-text-muted',
   archived: 'bg-white/10 text-text-secondary',
 }
 
@@ -60,6 +63,11 @@ export type CampaignHistoryAction =
   | 'restored'
   | 'duplicated'
   | 'deleted'
+  | 'report_imported'
+  | 'report_replaced'
+  | 'report_reprocessed'
+  | 'agency_linked'
+  | 'agency_unlinked'
 
 export interface Campaign {
   id: string
@@ -70,6 +78,8 @@ export interface Campaign {
   startDate: string | null
   endDate: string | null
   agency: string | null
+  /** Agent ID vinculado (chave da agência). */
+  agentId: string | null
   campaignType: string | null
   campaignTypeOther: string | null
   objective: string | null
@@ -79,7 +89,9 @@ export interface Campaign {
   campaignUrl: string | null
   notes: string | null
   investment: number
+  /** Jogadores na agência (manual). */
   capturedPlayers: number
+  /** Legado / cache — ativos únicos vêm dos imports. */
   activePlayers: number
   activationRuleType: ActivationRuleType
   activationMinimumRake: number | null
@@ -92,6 +104,89 @@ export interface Campaign {
   updatedAt: string
 }
 
+export interface CampaignAgent {
+  boardId: string
+  agentId: string
+  name: string
+  firstSeenStart: string | null
+  lastSeenStart: string | null
+  periodsCount: number
+  accumulatedRake: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CampaignReportImport {
+  id: string
+  boardId: string
+  originalFilename: string
+  periodStart: string
+  periodEnd: string
+  importedAt: string
+  importedBy: string | null
+  status: string
+  agentsCount: number
+  playersCount: number
+  tableRowsCount: number
+  warnings: unknown
+  summary: Record<string, unknown> | null
+  replacedImportId: string | null
+  createdAt: string
+}
+
+export interface CampaignAgentPeriod {
+  id: string
+  boardId: string
+  importId: string
+  agentId: string
+  agentName: string
+  periodStart: string
+  periodEnd: string
+  weeklyRake: number
+  gains: number
+  hands: number
+  playersRakeSum: number
+  uniquePlayers: number
+  reconciliationDiff: number
+  createdAt: string
+}
+
+export interface CampaignPlayerPeriod {
+  id: string
+  boardId: string
+  importId: string
+  agentId: string
+  playerId: string
+  playerName: string
+  nickname: string
+  periodStart: string
+  periodEnd: string
+  weeklyRake: number
+  gains: number
+  hands: number
+  createdAt: string
+}
+
+export interface CampaignTableDetail {
+  id: string
+  boardId: string
+  importId: string
+  agentId: string
+  playerId: string
+  periodStart: string
+  periodEnd: string
+  tableId: string
+  gameType: string
+  tableName: string
+  hands: number
+  buyIn: number
+  gains: number
+  rake: number
+  adminFee: number
+  createdAt: string
+}
+
+/** @deprecated Prefer weekly agent periods. Kept for legacy rows. */
 export interface CampaignMonthlyResult {
   id: string
   campaignId: string
@@ -123,9 +218,10 @@ export type CampaignCreateInput = {
   acquisitionYear: number
   startDate: string
   investment: number
+  /** Jogadores na agência */
   capturedPlayers: number
-  activePlayers: number
-  activationRuleType: ActivationRuleType
+  activationRuleType?: ActivationRuleType
+  agentId?: string | null
   endDate?: string | null
   agency?: string | null
   campaignType?: string | null
@@ -140,6 +236,8 @@ export type CampaignCreateInput = {
   activationRuleNotes?: string | null
   rakeGoal?: number | null
   activePlayersGoal?: number | null
+  /** @deprecated ativos são calculados pelos imports */
+  activePlayers?: number
 }
 
 export type CampaignUpdateInput = Partial<CampaignCreateInput> & {
@@ -154,4 +252,11 @@ export type CampaignMonthlyResultInput = {
   topPlayerRake?: number | null
   topThreePlayersRake?: number | null
   notes?: string | null
+}
+
+export type ImportConflict = {
+  periodStart: string
+  periodEnd: string
+  existingImportIds: string[]
+  affectedAgentIds: string[]
 }

@@ -113,8 +113,10 @@ export function calculatePaybackMonth(
 export function calculateCampaignStatus(
   campaign: Pick<Campaign, 'isArchived' | 'investment'>,
   accumulatedRake: number,
+  hasImportedPeriods = true,
 ): CampaignComputedStatus {
   if (campaign.isArchived) return 'archived'
+  if (!hasImportedPeriods) return 'no_data'
   if (accumulatedRake >= campaign.investment && campaign.investment > 0) {
     return 'payback'
   }

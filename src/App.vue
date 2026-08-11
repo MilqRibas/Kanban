@@ -94,6 +94,7 @@ const bootstrapping = ref(false)
 const notesReady = ref(false)
 const dailyReady = ref(false)
 const campaignsReady = ref(false)
+const hubReady = ref(false)
 const chunksPrefetched = ref(false)
 
 function goToTab(tab: NavTab) {
@@ -127,10 +128,14 @@ async function ensureTabData(tab: NavTab) {
     daily.sanitizeDetailMember()
     dailyReady.value = true
   }
-  if (tab === 'hub' && !dailyReady.value) {
+  if ((tab === 'hub' || tab === 'community') && !dailyReady.value) {
     await daily.init()
     daily.sanitizeDetailMember()
     dailyReady.value = true
+  }
+  if ((tab === 'hub' || tab === 'community') && !hubReady.value) {
+    await Promise.all([community.init(), hubSections.init()])
+    hubReady.value = true
   }
   if (tab === 'campaigns' && !campaignsReady.value) {
     await campaigns.init()
@@ -152,17 +157,29 @@ watch(
       notesReady.value = false
       dailyReady.value = false
       campaignsReady.value = false
+      hubReady.value = false
       return
     }
     bootstrapping.value = true
     try {
       await board.init()
-      await notifications.init()
       prefetchTabChunks()
       await ensureTabData(activeTab.value)
     } finally {
       bootstrapping.value = false
     }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => auth.memberId,
+  (memberId) => {
+    if (memberId && auth.isAuthenticated && !auth.passwordRecovery) {
+      void notifications.init()
+      return
+    }
+    notifications.reset()
   },
   { immediate: true },
 )
