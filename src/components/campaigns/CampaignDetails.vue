@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import {
   Archive,
   ArrowLeft,
+  ArrowDown,
   Copy,
   MoreHorizontal,
   Pencil,
@@ -10,6 +11,16 @@ import {
   Trash2,
   Search,
   ChevronDown,
+  Eye,
+  Users,
+  MessageCircle,
+  Headphones,
+  Building2,
+  Coins,
+  UserCheck,
+  AlertTriangle,
+  CheckCircle2,
+  Info,
 } from '@lucide/vue'
 import type { Campaign } from '../../types/campaigns'
 import { ACQUISITION_NATURE_LABELS } from '../../types/campaigns'
@@ -233,7 +244,91 @@ const overviewCards = computed(() => {
   ]
 })
 
-const funnelStepRows = computed(() => funnel.value.steps)
+const FUNNEL_STEP_META: Record<
+  string,
+  { hint: string; icon: typeof Eye }
+> = {
+  impressions: { hint: 'Total de impressões', icon: Eye },
+  reach: { hint: 'Pessoas alcançadas', icon: Users },
+  metaConversations: { hint: 'Conversas iniciadas na Meta', icon: MessageCircle },
+  serviceConversations: {
+    hint: 'Conversas no atendimento',
+    icon: Headphones,
+  },
+  clubConversions: { hint: 'Entraram no clube', icon: Building2 },
+  clubFichasConversions: {
+    hint: 'Clube + vínculo Fichas',
+    icon: Coins,
+  },
+  activePlayers: { hint: 'Ativos pela regra da campanha', icon: UserCheck },
+}
+
+const funnelVisualRows = computed(() => {
+  const steps = funnel.value.steps
+  const edges = funnelEdges.value
+  const maxValue = Math.max(
+    1,
+    ...steps.map((s) => (s.value != null && s.value > 0 ? s.value : 0)),
+  )
+
+  return steps.map((step, idx) => {
+    const edge = idx > 0 ? edges[idx - 1] : null
+    const meta = FUNNEL_STEP_META[step.key] ?? {
+      hint: step.label,
+      icon: Users,
+    }
+    const widthPct =
+      step.value != null && step.value > 0
+        ? Math.max(18, Math.round((step.value / maxValue) * 100))
+        : 18
+    // Alterna tonalidades do accent do sistema
+    const tone = [
+      'bg-accent/85',
+      'bg-accent/75',
+      'bg-accent/65',
+      'bg-accent/55',
+      'bg-accent/45',
+      'bg-accent/38',
+      'bg-accent/30',
+    ][idx % 7]
+    return {
+      ...step,
+      hint: meta.hint,
+      icon: meta.icon,
+      widthPct,
+      tone,
+      rate: edge?.rate ?? null,
+      loss: edge?.loss ?? null,
+      isBottleneck:
+        worstFunnelEdgeKey.value ===
+        (edge ? `${edge.from.key}->${edge.to.key}` : null),
+    }
+  })
+})
+
+const funnelFooterStats = computed(() => {
+  const steps = funnel.value.steps
+  const first = steps[0]?.value ?? null
+  const last = steps[steps.length - 1]?.value ?? null
+  const totalRate =
+    first != null && last != null && first > 0 ? (last / first) * 100 : null
+  const totalLoss =
+    first != null && last != null ? Math.max(0, first - last) : null
+  return { totalRate, totalLoss, last, first }
+})
+
+const funnelFinanceStrip = computed(() => {
+  const m = metrics.value
+  const k = funnel.value.kpis
+  return {
+    campaignInvestment: formatCurrency(m.campaignInvestment),
+    activationInvestment: formatCurrency(m.activationInvestment),
+    totalInvestment: formatCurrency(m.totalInvestment),
+    accumulatedRake: formatCurrency(m.accumulatedRake),
+    cpm: formatCurrency(k.cpm),
+    frequency: formatNumber(k.frequency),
+  }
+})
 
 const funnelEdges = computed(() => buildJourneyEdges(funnel.value.steps))
 
@@ -250,35 +345,70 @@ const funnelKpiGroups = computed(() => {
     {
       title: 'Mídia',
       items: [
-        { label: 'CPM', value: formatCurrency(k.cpm) },
-        { label: 'Frequência', value: formatNumber(k.frequency) },
-        { label: 'Alcance → Meta', value: formatPercent(k.reachToMetaRate) },
-        { label: 'Custo / Conversa Meta', value: formatCurrency(k.costPerMetaConversation) },
+        { label: 'CPM', value: formatCurrency(k.cpm), warn: false },
+        { label: 'Frequência', value: formatNumber(k.frequency), warn: false },
+        {
+          label: 'Alcance → Meta',
+          value: formatPercent(k.reachToMetaRate),
+          warn: false,
+        },
+        {
+          label: 'Custo / Conversa Meta',
+          value: formatCurrency(k.costPerMetaConversation),
+          warn: false,
+        },
       ],
     },
     {
       title: 'Atendimento',
       items: [
-        { label: 'Meta → Atendimento', value: formatPercent(k.metaToServiceRate) },
+        {
+          label: 'Meta → Atendimento',
+          value: formatPercent(k.metaToServiceRate),
+          warn: false,
+        },
         {
           label: 'Divergência Meta / Atendimento',
           value: formatMetaServiceDivergenceLabel(k) ?? '—',
+          warn: Boolean(
+            k.metaServiceAbsoluteDiff != null && k.metaServiceAbsoluteDiff !== 0,
+          ),
         },
-        { label: 'Custo / Atendimento', value: formatCurrency(k.costPerServiceConversation) },
+        {
+          label: 'Custo / Atendimento',
+          value: formatCurrency(k.costPerServiceConversation),
+          warn: false,
+        },
       ],
     },
     {
       title: 'Conversão',
       items: [
-        { label: 'Atendimento → Clube', value: formatPercent(k.serviceToClubRate) },
-        { label: 'Clube → Fichas', value: formatPercent(k.clubToFichasRate) },
+        {
+          label: 'Atendimento → Clube',
+          value: formatPercent(k.serviceToClubRate),
+          warn: false,
+        },
+        {
+          label: 'Clube → Fichas',
+          value: formatPercent(k.clubToFichasRate),
+          warn: false,
+        },
       ],
     },
     {
       title: 'Eficiência final',
       items: [
-        { label: 'Custo / Jogador', value: formatCurrency(k.costPerPlayer) },
-        { label: 'Custo / Jogador Ativo', value: formatCurrency(k.costPerActive) },
+        {
+          label: 'Custo / Jogador',
+          value: formatCurrency(k.costPerPlayer),
+          warn: false,
+        },
+        {
+          label: 'Custo / Jogador Ativo',
+          value: formatCurrency(k.costPerActive),
+          warn: false,
+        },
       ],
     },
   ]
@@ -287,9 +417,14 @@ const funnelKpiGroups = computed(() => {
 const funnelSoftMessages = computed(() => {
   const w = funnel.value.warnings
   const messages: string[] = []
-  if (w.reachGtImpressions) messages.push('Alcance maior que impressões — verificar origem/conciliação.')
-  if (w.serviceGtMeta) messages.push('Conversas de atendimento maiores que Meta — divergência possível.')
-  if (w.fichasGtClub) messages.push('Conversões Clube+Fichas maiores que Clube — conferir dados.')
+  if (w.reachGtImpressions)
+    messages.push('Alcance maior que impressões — verificar origem/conciliação.')
+  if (w.serviceGtMeta)
+    messages.push(
+      'Conversas de atendimento maiores que Meta — divergência possível.',
+    )
+  if (w.fichasGtClub)
+    messages.push('Conversões Clube+Fichas maiores que Clube — conferir dados.')
   return messages
 })
 
@@ -641,116 +776,253 @@ watch(tableDetailsPeriod, async (period) => {
             </div>
           </div>
 
-          <div v-else-if="activeTab === 'funnel'" class="space-y-5">
-            <div class="rounded-xl border border-border-subtle/70 bg-surface/30 px-4 py-3">
+          <div v-else-if="activeTab === 'funnel'" class="space-y-4">
+            <!-- Contexto financeiro -->
+            <div class="rounded-2xl border border-border-subtle/70 bg-surface/35 p-3 sm:p-4">
               <p class="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
                 Contexto financeiro
               </p>
-              <div class="mt-2 flex flex-wrap items-end justify-between gap-3">
+              <div class="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
                 <div>
-                  <p class="text-xs text-text-muted">Investimento da Campanha</p>
-                  <p class="text-lg font-semibold tabular-nums text-text-primary">
-                    {{ formatCurrency(campaign.investment) }}
+                  <p class="text-[11px] text-text-muted">Investimento da Campanha</p>
+                  <p class="mt-0.5 text-base font-semibold tabular-nums text-text-primary sm:text-lg">
+                    {{ funnelFinanceStrip.campaignInvestment }}
                   </p>
                 </div>
-                <div class="text-right">
-                  <p class="text-xs text-text-muted">CPM</p>
-                  <p class="text-sm font-semibold tabular-nums text-accent">
-                    {{ formatCurrency(funnel.kpis.cpm) }}
+                <div>
+                  <p class="text-[11px] text-text-muted">Investimento de Ativação</p>
+                  <p class="mt-0.5 text-base font-semibold tabular-nums text-text-primary sm:text-lg">
+                    {{ funnelFinanceStrip.activationInvestment }}
+                  </p>
+                </div>
+                <div>
+                  <p class="text-[11px] text-text-muted">Investimento Total</p>
+                  <p class="mt-0.5 text-base font-semibold tabular-nums text-accent sm:text-lg">
+                    {{ funnelFinanceStrip.totalInvestment }}
+                  </p>
+                </div>
+                <div>
+                  <p class="text-[11px] text-text-muted">Rake acumulado</p>
+                  <p class="mt-0.5 text-base font-semibold tabular-nums text-text-primary sm:text-lg">
+                    {{ funnelFinanceStrip.accumulatedRake }}
                   </p>
                 </div>
               </div>
+              <div class="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t border-border-subtle/50 pt-2 text-xs text-text-secondary">
+                <span>
+                  CPM
+                  <strong class="ml-1 tabular-nums text-text-primary">{{ funnelFinanceStrip.cpm }}</strong>
+                </span>
+                <span>
+                  Frequência
+                  <strong class="ml-1 tabular-nums text-text-primary">{{ funnelFinanceStrip.frequency }}</strong>
+                </span>
+              </div>
             </div>
 
-            <div class="mx-auto flex max-w-xl flex-col items-stretch gap-0">
-              <template v-for="(step, idx) in funnelStepRows" :key="step.key">
-                <div
-                  class="rounded-xl border border-border-subtle/60 bg-board-elevated/50 px-4 py-3"
-                  :style="{
-                    width: `${Math.max(42, 100 - idx * 8)}%`,
-                    marginLeft: 'auto',
-                    marginRight: 'auto',
-                  }"
-                >
-                  <div class="flex items-center justify-between gap-2">
-                    <p class="text-sm font-medium text-text-primary">{{ step.label }}</p>
-                    <p class="tabular-nums text-sm font-semibold text-text-secondary">
-                      {{ formatNumber(step.value) }}
+            <div class="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(280px,1fr)]">
+              <!-- Funil principal -->
+              <div class="rounded-2xl border border-border-subtle/70 bg-board-elevated/40 p-3 sm:p-4">
+                <div class="mb-3 flex items-end justify-between gap-2">
+                  <div>
+                    <h4 class="text-sm font-semibold text-text-primary">Jornada de conversão</h4>
+                    <p class="text-xs text-text-muted">
+                      Investimento não entra como etapa — taxas entre populações reais.
                     </p>
                   </div>
-                  <p
-                    v-if="
-                      idx > 0 &&
-                      worstFunnelEdgeKey === `${funnelEdges[idx - 1].from.key}->${funnelEdges[idx - 1].to.key}` &&
-                      (funnelEdges[idx - 1]?.loss ?? 0) > 0
-                    "
-                    class="mt-1 text-[11px] text-amber-200/90"
-                  >
-                    Perda: {{ formatNumber(funnelEdges[idx - 1].loss) }}
-                  </p>
                 </div>
+
+                <div class="hidden grid-cols-[minmax(9rem,1.1fr)_minmax(0,1.4fr)_5.5rem_6rem] gap-2 border-b border-border-subtle/60 pb-2 text-[10px] font-semibold uppercase tracking-wide text-text-muted sm:grid">
+                  <span>Etapa</span>
+                  <span class="text-center">Volume</span>
+                  <span class="text-right">Conv.</span>
+                  <span class="text-right">Perda</span>
+                </div>
+
+                <div class="mt-1 space-y-2.5">
+                  <div
+                    v-for="(row, idx) in funnelVisualRows"
+                    :key="row.key"
+                    class="grid grid-cols-1 items-center gap-2 sm:grid-cols-[minmax(9rem,1.1fr)_minmax(0,1.4fr)_5.5rem_6rem]"
+                  >
+                    <div class="flex min-w-0 items-start gap-2">
+                      <span
+                        class="mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent"
+                      >
+                        <component :is="row.icon" :size="14" />
+                      </span>
+                      <div class="min-w-0">
+                        <p class="truncate text-sm font-medium text-text-primary">
+                          {{ row.label }}
+                        </p>
+                        <p class="truncate text-[11px] text-text-muted">{{ row.hint }}</p>
+                      </div>
+                    </div>
+
+                    <div class="flex justify-center">
+                      <div
+                        class="relative flex h-9 items-center justify-center overflow-hidden rounded-md shadow-sm transition-all"
+                        :class="row.tone"
+                        :style="{ width: `${row.widthPct}%`, minWidth: '4.5rem' }"
+                      >
+                        <span class="relative z-[1] px-2 text-xs font-bold tabular-nums text-board sm:text-sm">
+                          {{ formatNumber(row.value) }}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div class="flex items-center justify-between gap-2 sm:justify-end">
+                      <span class="text-[10px] uppercase text-text-muted sm:hidden">Conv.</span>
+                      <div
+                        v-if="idx === 0"
+                        class="text-right text-xs tabular-nums text-text-muted"
+                      >
+                        —
+                      </div>
+                      <div
+                        v-else
+                        class="inline-flex items-center gap-1 text-right text-xs font-semibold tabular-nums"
+                        :class="row.isBottleneck ? 'text-danger' : 'text-accent'"
+                      >
+                        <ArrowDown :size="12" class="opacity-70" />
+                        {{ row.rate != null ? formatPercent(row.rate) : '—' }}
+                      </div>
+                    </div>
+
+                    <div class="flex items-center justify-between gap-2 sm:justify-end">
+                      <span class="text-[10px] uppercase text-text-muted sm:hidden">Perda</span>
+                      <span
+                        class="text-right text-xs tabular-nums"
+                        :class="
+                          row.loss != null && row.loss > 0
+                            ? row.isBottleneck
+                              ? 'font-semibold text-danger'
+                              : 'text-text-secondary'
+                            : 'text-text-muted'
+                        "
+                      >
+                        {{
+                          idx === 0
+                            ? '—'
+                            : row.loss != null && row.loss > 0
+                              ? formatNumber(row.loss)
+                              : '—'
+                        }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
                 <div
-                  v-if="idx < funnelStepRows.length - 1"
-                  class="flex flex-col items-center py-1.5"
+                  class="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border-subtle/60 pt-3 text-xs text-text-secondary"
                 >
-                  <span class="text-[11px] font-medium tabular-nums text-accent">
-                    {{
-                      funnelEdges[idx]?.rate != null
-                        ? formatPercent(funnelEdges[idx].rate)
-                        : '—'
-                    }}
+                  <span>
+                    Conversão total do funil:
+                    <strong class="tabular-nums text-text-primary">
+                      {{ formatPercent(funnelFooterStats.totalRate) }}
+                    </strong>
                   </span>
-                  <span class="text-text-muted">↓</span>
+                  <span>
+                    Chegada final:
+                    <strong class="tabular-nums text-text-primary">
+                      {{ formatNumber(funnelFooterStats.last) }}
+                    </strong>
+                  </span>
+                  <span>
+                    Perda acumulada:
+                    <strong class="tabular-nums text-text-primary">
+                      {{ formatNumber(funnelFooterStats.totalLoss) }}
+                    </strong>
+                  </span>
                 </div>
-              </template>
-            </div>
+              </div>
 
-            <div class="grid gap-3 sm:grid-cols-2">
-              <div
-                v-for="group in funnelKpiGroups"
-                :key="group.title"
-                class="rounded-xl border border-border-subtle/50 bg-surface/30 p-3"
-              >
-                <p class="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-                  {{ group.title }}
-                </p>
-                <ul class="mt-2 space-y-2">
-                  <li
-                    v-for="item in group.items"
-                    :key="item.label"
-                    class="flex items-start justify-between gap-2 text-sm"
+              <!-- Lateral: KPIs + diagnóstico -->
+              <div class="space-y-3">
+                <div
+                  v-for="group in funnelKpiGroups"
+                  :key="group.title"
+                  class="rounded-2xl border border-border-subtle/60 bg-surface/30 p-3"
+                >
+                  <p class="text-[11px] font-semibold uppercase tracking-wide text-accent/90">
+                    {{ group.title }}
+                  </p>
+                  <ul class="mt-2 space-y-2">
+                    <li
+                      v-for="item in group.items"
+                      :key="item.label"
+                      class="flex items-start justify-between gap-2 text-sm"
+                    >
+                      <span class="text-text-secondary">{{ item.label }}</span>
+                      <span
+                        class="shrink-0 text-right text-xs font-semibold tabular-nums sm:text-sm"
+                        :class="item.warn ? 'text-danger' : 'text-text-primary'"
+                      >
+                        {{ item.value }}
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div v-if="funnel.diagnosis?.blocks?.length" class="space-y-2">
+                  <p class="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                    Diagnóstico da campanha
+                  </p>
+                  <div
+                    v-for="(block, i) in funnel.diagnosis.blocks"
+                    :key="i"
+                    class="rounded-xl border px-3 py-2.5 text-sm"
+                    :class="{
+                      'border-danger/40 bg-danger/10': block.kind === 'bottleneck',
+                      'border-emerald-400/30 bg-emerald-500/10': block.kind === 'positive',
+                      'border-amber-400/30 bg-amber-500/10': block.kind === 'attention',
+                    }"
                   >
-                    <span class="text-text-secondary">{{ item.label }}</span>
-                    <span class="shrink-0 text-right tabular-nums font-medium text-text-primary">
-                      {{ item.value }}
-                    </span>
-                  </li>
+                    <div class="flex items-start gap-2">
+                      <AlertTriangle
+                        v-if="block.kind === 'bottleneck'"
+                        :size="15"
+                        class="mt-0.5 shrink-0 text-danger"
+                      />
+                      <CheckCircle2
+                        v-else-if="block.kind === 'positive'"
+                        :size="15"
+                        class="mt-0.5 shrink-0 text-emerald-300"
+                      />
+                      <Info
+                        v-else
+                        :size="15"
+                        class="mt-0.5 shrink-0 text-amber-200"
+                      />
+                      <div>
+                        <p
+                          class="font-medium"
+                          :class="{
+                            'text-danger': block.kind === 'bottleneck',
+                            'text-emerald-200': block.kind === 'positive',
+                            'text-amber-100': block.kind === 'attention',
+                          }"
+                        >
+                          {{ block.title }}
+                        </p>
+                        <p class="mt-0.5 text-xs text-text-secondary">{{ block.detail }}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <ul
+                  v-if="funnelSoftMessages.length"
+                  class="space-y-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-text-muted"
+                >
+                  <li v-for="(msg, i) in funnelSoftMessages" :key="i">{{ msg }}</li>
                 </ul>
+
+                <p class="text-[11px] leading-relaxed text-text-muted">
+                  Diagnóstico baseado na comparação relativa entre etapas desta campanha — sem benchmarks externos.
+                </p>
               </div>
             </div>
-
-            <div v-if="funnel.diagnosis?.blocks?.length" class="space-y-2">
-              <div
-                v-for="(block, i) in funnel.diagnosis.blocks"
-                :key="i"
-                class="rounded-xl border px-3 py-3 text-sm"
-                :class="{
-                  'border-danger/40 bg-danger/10 text-red-100': block.kind === 'bottleneck',
-                  'border-emerald-400/30 bg-emerald-500/10 text-emerald-100': block.kind === 'positive',
-                  'border-amber-400/30 bg-amber-500/10 text-amber-100': block.kind === 'attention',
-                }"
-              >
-                <p class="font-medium">{{ block.title }}</p>
-                <p class="mt-1 opacity-90">{{ block.detail }}</p>
-              </div>
-            </div>
-
-            <ul
-              v-if="funnelSoftMessages.length"
-              class="space-y-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-text-muted"
-            >
-              <li v-for="(msg, i) in funnelSoftMessages" :key="i">{{ msg }}</li>
-            </ul>
           </div>
 
           <div v-else-if="activeTab === 'evolution'">
