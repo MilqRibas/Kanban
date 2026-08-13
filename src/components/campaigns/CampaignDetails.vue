@@ -266,10 +266,31 @@ const FUNNEL_STEP_META: Record<
 const funnelVisualRows = computed(() => {
   const steps = funnel.value.steps
   const edges = funnelEdges.value
+  const n = steps.length
   const maxValue = Math.max(
     1,
     ...steps.map((s) => (s.value != null && s.value > 0 ? s.value : 0)),
   )
+
+  const widthFor = (idx: number) => {
+    if (idx >= n) {
+      const last = steps[n - 1]
+      const lastW =
+        last?.value != null && last.value > 0
+          ? Math.max(28, Math.round((last.value / maxValue) * 100))
+          : 28
+      return lastW
+    }
+    const step = steps[idx]
+    if (step.value == null || step.value <= 0) {
+      // Etapas sem dado ainda afunilam visualmente
+      return Math.max(28, Math.round(100 - (idx / Math.max(1, n - 1)) * 55))
+    }
+    // Mistura proporção real + afunilamento visual mínimo
+    const dataW = Math.max(28, Math.round((step.value / maxValue) * 100))
+    const visualW = Math.round(100 - (idx / Math.max(1, n - 1)) * 48)
+    return Math.round(dataW * 0.55 + visualW * 0.45)
+  }
 
   return steps.map((step, idx) => {
     const edge = idx > 0 ? edges[idx - 1] : null
@@ -277,26 +298,21 @@ const funnelVisualRows = computed(() => {
       hint: step.label,
       icon: Users,
     }
-    const widthPct =
-      step.value != null && step.value > 0
-        ? Math.max(18, Math.round((step.value / maxValue) * 100))
-        : 18
-    // Alterna tonalidades do accent do sistema
-    const tone = [
-      'bg-accent/85',
-      'bg-accent/75',
-      'bg-accent/65',
-      'bg-accent/55',
-      'bg-accent/45',
-      'bg-accent/38',
-      'bg-accent/30',
-    ][idx % 7]
+    const topW = widthFor(idx)
+    const bottomW = idx === n - 1 ? topW : widthFor(idx + 1)
+    const insetTop = (100 - topW) / 2
+    const insetBottom = (100 - bottomW) / 2
+    const clipPath = `polygon(${insetTop}% 0%, ${100 - insetTop}% 0%, ${100 - insetBottom}% 100%, ${insetBottom}% 100%)`
+    // Monocromático accent: topo mais saturado → base mais clara
+    const mix = Math.round(92 - (idx / Math.max(1, n - 1)) * 52)
+    const background = `color-mix(in srgb, var(--color-accent) ${mix}%, var(--color-board-elevated))`
+
     return {
       ...step,
       hint: meta.hint,
       icon: meta.icon,
-      widthPct,
-      tone,
+      clipPath,
+      background,
       rate: edge?.rate ?? null,
       loss: edge?.loss ?? null,
       isBottleneck:
@@ -788,6 +804,13 @@ watch(tableDetailsPeriod, async (period) => {
                   <p class="mt-0.5 text-base font-semibold tabular-nums text-text-primary sm:text-lg">
                     {{ funnelFinanceStrip.campaignInvestment }}
                   </p>
+                  <p class="mt-1 text-[11px] text-text-muted">
+                    CPM
+                    <span class="tabular-nums text-text-secondary">{{ funnelFinanceStrip.cpm }}</span>
+                    <span class="mx-1.5 text-border-subtle">·</span>
+                    Freq.
+                    <span class="tabular-nums text-text-secondary">{{ funnelFinanceStrip.frequency }}</span>
+                  </p>
                 </div>
                 <div>
                   <p class="text-[11px] text-text-muted">Investimento de Ativação</p>
@@ -808,46 +831,36 @@ watch(tableDetailsPeriod, async (period) => {
                   </p>
                 </div>
               </div>
-              <div class="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t border-border-subtle/50 pt-2 text-xs text-text-secondary">
-                <span>
-                  CPM
-                  <strong class="ml-1 tabular-nums text-text-primary">{{ funnelFinanceStrip.cpm }}</strong>
-                </span>
-                <span>
-                  Frequência
-                  <strong class="ml-1 tabular-nums text-text-primary">{{ funnelFinanceStrip.frequency }}</strong>
-                </span>
-              </div>
             </div>
 
-            <div class="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(280px,1fr)]">
+            <div class="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(280px,1fr)]">
               <!-- Funil principal -->
-              <div class="rounded-2xl border border-border-subtle/70 bg-board-elevated/40 p-3 sm:p-4">
-                <div class="mb-3 flex items-end justify-between gap-2">
-                  <div>
-                    <h4 class="text-sm font-semibold text-text-primary">Jornada de conversão</h4>
-                    <p class="text-xs text-text-muted">
-                      Investimento não entra como etapa — taxas entre populações reais.
-                    </p>
-                  </div>
+              <div class="rounded-2xl border border-border-subtle/70 bg-board-elevated/40 p-3 sm:p-5">
+                <div class="mb-4">
+                  <h4 class="text-sm font-semibold text-text-primary">Jornada de conversão</h4>
+                  <p class="text-xs text-text-muted">
+                    Funil contínuo entre populações — investimento fica só no contexto financeiro.
+                  </p>
                 </div>
 
-                <div class="hidden grid-cols-[minmax(9rem,1.1fr)_minmax(0,1.4fr)_5.5rem_6rem] gap-2 border-b border-border-subtle/60 pb-2 text-[10px] font-semibold uppercase tracking-wide text-text-muted sm:grid">
-                  <span>Etapa</span>
-                  <span class="text-center">Volume</span>
-                  <span class="text-right">Conv.</span>
-                  <span class="text-right">Perda</span>
-                </div>
-
-                <div class="mt-1 space-y-2.5">
+                <div
+                  class="grid grid-cols-1 gap-0 lg:grid-cols-[minmax(10.5rem,0.95fr)_minmax(0,1.35fr)_4.75rem_5.25rem]"
+                >
+                  <!-- Cabeçalho desktop -->
                   <div
-                    v-for="(row, idx) in funnelVisualRows"
-                    :key="row.key"
-                    class="grid grid-cols-1 items-center gap-2 sm:grid-cols-[minmax(9rem,1.1fr)_minmax(0,1.4fr)_5.5rem_6rem]"
+                    class="col-span-full mb-2 hidden grid-cols-subgrid gap-x-3 border-b border-border-subtle/50 pb-2 text-[10px] font-semibold uppercase tracking-wide text-text-muted lg:grid"
                   >
-                    <div class="flex min-w-0 items-start gap-2">
+                    <span>Etapa</span>
+                    <span class="text-center">Volume</span>
+                    <span class="text-right">Conv.</span>
+                    <span class="text-right">Perda</span>
+                  </div>
+
+                  <template v-for="(row, idx) in funnelVisualRows" :key="row.key">
+                    <!-- Label -->
+                    <div class="flex min-w-0 items-center gap-2 py-1.5 lg:py-0">
                       <span
-                        class="mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent"
+                        class="inline-flex size-7 shrink-0 items-center justify-center rounded-lg bg-accent/12 text-accent"
                       >
                         <component :is="row.icon" :size="14" />
                       </span>
@@ -859,40 +872,47 @@ watch(tableDetailsPeriod, async (period) => {
                       </div>
                     </div>
 
-                    <div class="flex justify-center">
+                    <!-- Segmento trapézio (sem gap = funil contínuo) -->
+                    <div class="relative flex items-stretch justify-center">
                       <div
-                        class="relative flex h-9 items-center justify-center overflow-hidden rounded-md shadow-sm transition-all"
-                        :class="row.tone"
-                        :style="{ width: `${row.widthPct}%`, minWidth: '4.5rem' }"
+                        class="relative flex w-full max-w-md items-center justify-center"
+                        :style="{
+                          height: '52px',
+                          clipPath: row.clipPath,
+                          background: row.background,
+                        }"
                       >
-                        <span class="relative z-[1] px-2 text-xs font-bold tabular-nums text-board sm:text-sm">
+                        <span
+                          class="relative z-[1] px-2 text-sm font-bold tabular-nums text-board drop-shadow-sm sm:text-base"
+                        >
                           {{ formatNumber(row.value) }}
                         </span>
                       </div>
                     </div>
 
-                    <div class="flex items-center justify-between gap-2 sm:justify-end">
-                      <span class="text-[10px] uppercase text-text-muted sm:hidden">Conv.</span>
+                    <!-- Conversão -->
+                    <div class="flex items-center justify-end py-1 lg:py-0">
                       <div
                         v-if="idx === 0"
-                        class="text-right text-xs tabular-nums text-text-muted"
+                        class="text-xs tabular-nums text-text-muted"
                       >
                         —
                       </div>
                       <div
                         v-else
-                        class="inline-flex items-center gap-1 text-right text-xs font-semibold tabular-nums"
-                        :class="row.isBottleneck ? 'text-danger' : 'text-accent'"
+                        class="inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums"
+                        :class="row.isBottleneck ? 'text-danger' : 'text-text-secondary'"
+                        :title="row.isBottleneck ? 'Menor taxa de passagem' : undefined"
                       >
-                        <ArrowDown :size="12" class="opacity-70" />
+                        <ArrowDown :size="11" class="opacity-60" />
                         {{ row.rate != null ? formatPercent(row.rate) : '—' }}
                       </div>
                     </div>
 
-                    <div class="flex items-center justify-between gap-2 sm:justify-end">
-                      <span class="text-[10px] uppercase text-text-muted sm:hidden">Perda</span>
+                    <!-- Perda -->
+                    <div class="mb-3 flex items-center justify-end border-b border-border-subtle/30 pb-2 lg:mb-0 lg:border-0 lg:pb-0">
                       <span
-                        class="text-right text-xs tabular-nums"
+                        class="text-xs tabular-nums"
                         :class="
                           row.loss != null && row.loss > 0
                             ? row.isBottleneck
@@ -910,7 +930,7 @@ watch(tableDetailsPeriod, async (period) => {
                         }}
                       </span>
                     </div>
-                  </div>
+                  </template>
                 </div>
 
                 <div
@@ -955,7 +975,7 @@ watch(tableDetailsPeriod, async (period) => {
                     >
                       <span class="text-text-secondary">{{ item.label }}</span>
                       <span
-                        class="shrink-0 text-right text-xs font-semibold tabular-nums sm:text-sm"
+                        class="max-w-[58%] shrink-0 text-right text-xs font-semibold tabular-nums sm:text-sm"
                         :class="item.warn ? 'text-danger' : 'text-text-primary'"
                       >
                         {{ item.value }}
@@ -1019,7 +1039,7 @@ watch(tableDetailsPeriod, async (period) => {
                 </ul>
 
                 <p class="text-[11px] leading-relaxed text-text-muted">
-                  Diagnóstico baseado na comparação relativa entre etapas desta campanha — sem benchmarks externos.
+                  Diagnóstico relativo entre etapas desta campanha — sem benchmarks externos.
                 </p>
               </div>
             </div>
