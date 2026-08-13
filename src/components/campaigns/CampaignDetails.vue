@@ -12,6 +12,7 @@ import {
   ChevronDown,
 } from '@lucide/vue'
 import type { Campaign } from '../../types/campaigns'
+import { ACQUISITION_NATURE_LABELS } from '../../types/campaigns'
 import { useAuthStore } from '../../stores/auth'
 import { useCampaignsStore } from '../../stores/campaigns'
 import { useEphemeralDismiss } from '../../composables/useEphemeralDismiss'
@@ -20,6 +21,7 @@ import {
   formatPercent,
   formatNumber,
 } from '../../utils/campaignFormat'
+import { stepConversionRate } from '../../utils/campaignFunnelMetrics'
 import CampaignStatusBadge from './CampaignStatusBadge.vue'
 
 const props = defineProps<{
@@ -34,12 +36,23 @@ const emit = defineEmits<{
 const auth = useAuthStore()
 const store = useCampaignsStore()
 const menuOpen = ref(false)
-const activeTab = ref<'overview' | 'evolution' | 'rake-health' | 'game-profile' | 'players' | 'table-details' | 'history'>('overview')
+type DetailTab =
+  | 'overview'
+  | 'funnel'
+  | 'evolution'
+  | 'transactions'
+  | 'rake-health'
+  | 'game-profile'
+  | 'players'
+  | 'table-details'
+  | 'history'
+const activeTab = ref<DetailTab>('overview')
 
 const rakeHealthMode = ref<'accumulated' | 'period'>('accumulated')
 const selectedRakeHealthPeriod = ref<string | null>(null)
 const gameProfilePeriod = ref<string | null>(null)
 const tableDetailsPeriod = ref<string | null>(null)
+const depositWeeklyMode = ref<'volume' | 'depositors' | 'deposits'>('volume')
 
 const playerSearch = ref('')
 const playerSortKey = ref<'rake' | 'weeks' | 'first' | 'last'>('rake')
@@ -60,6 +73,8 @@ const agent = computed(() => store.findAgent(props.campaign.agentId))
 const agentPeriods = computed(() => store.agentPeriodsFor(props.campaign.agentId))
 const playerPeriods = computed(() => store.playerPeriodsForAgent(props.campaign.agentId))
 const metrics = computed(() => store.metricsFor(props.campaign))
+const funnel = computed(() => store.funnelFor(props.campaign))
+const purchasePower = computed(() => store.purchasePowerFor(props.campaign))
 const history = computed(() =>
   store.history
     .filter((h) => h.campaignId === props.campaign.id)
@@ -186,42 +201,127 @@ const selectedPlayerDetail = computed(() => {
       accumulated: acc,
     }
   })
-  return { player, series }
+  const deposits = store.playerDepositStats(
+    selectedPlayerId.value,
+    props.campaign.agentId,
+  )
+  return { player, series, deposits }
 })
 
 const overviewCards = computed(() => {
   const m = metrics.value
-  const paybackLabel =
-    m.payback.reached && m.payback.periodStart && m.payback.periodEnd
-      ? `Semana ${store.formatPeriodLabel(m.payback.periodStart, m.payback.periodEnd)} (${m.payback.periodsToPayback} ${m.payback.periodsToPayback === 1 ? 'semana' : 'semanas'})`
-      : m.payback.reached
-        ? 'Atingido'
-        : 'Ainda não'
+  const pp = purchasePower.value
   return [
-    { label: 'Investimento', value: formatCurrency(props.campaign.investment) },
-    { label: 'Jogadores na agência', value: formatNumber(m.agencyPlayers) },
-    { label: 'Ativos únicos', value: formatNumber(m.uniqueActivePlayers) },
-    { label: 'Inativos', value: formatNumber(m.inactivePlayers) },
-    { label: 'Taxa de ativação', value: formatPercent(m.activationRate) },
-    { label: 'Rake acumulado', value: formatCurrency(m.accumulatedRake) },
-    { label: 'Custo / jogador', value: formatCurrency(m.costPerAgencyPlayer) },
+    {
+      label: 'Investimento Campanha',
+      value: formatCurrency(m.campaignInvestment),
+    },
+    { label: 'Ativação', value: formatCurrency(m.activationInvestment) },
+    { label: 'Investimento Total', value: formatCurrency(m.totalInvestment) },
+    { label: 'Jogadores', value: formatNumber(m.agencyPlayers) },
+    { label: 'Ativos', value: formatNumber(m.uniqueActivePlayers) },
+    { label: 'Ativação %', value: formatPercent(m.activationRate) },
+    { label: 'Custo / jogador (funil)', value: formatCurrency(m.costPerPlayerFunnel) },
     { label: 'Custo / ativo', value: formatCurrency(m.costPerActive) },
-    { label: 'Rake médio / ativo', value: formatCurrency(m.averageRakePerActive) },
+    { label: 'Rake acumulado', value: formatCurrency(m.accumulatedRake) },
     { label: 'Recuperação', value: formatPercent(m.recoveryRate) },
-    { label: 'Diferença', value: formatCurrency(m.investmentDifference) },
-    { label: 'Payback', value: paybackLabel },
-    { label: 'Semanas', value: formatNumber(m.weeksTracked) },
-    { label: 'Último relatório', value: m.lastPeriodStart ? store.formatPeriodLabel(m.lastPeriodStart, m.lastPeriodEnd ?? m.lastPeriodStart) : '—' },
+    { label: 'Volume depositado', value: formatCurrency(pp.depositedVolume) },
+    { label: 'Depositantes', value: formatNumber(pp.uniqueDepositors) },
   ]
+})
+
+const funnelStepRows = computed(() => {
+  const steps = funnel.value.steps
+  return steps.map((step, idx) => {
+    const prev = idx > 0 ? steps[idx - 1] : null
+    return {
+      ...step,
+      rate: prev ? stepConversionRate(step.value, prev.value) : null,
+    }
+  })
+})
+
+const funnelKpiCards = computed(() => {
+  const k = funnel.value.kpis
+  return [
+    { label: 'CPM', value: formatCurrency(k.cpm) },
+    { label: 'Frequência', value: formatNumber(k.frequency) },
+    { label: 'Custo / conversa Meta', value: formatCurrency(k.costPerMetaConversation) },
+    { label: 'Alcance → Meta', value: formatPercent(k.reachToMetaRate) },
+    { label: 'Meta → Atendimento', value: formatPercent(k.metaToServiceRate) },
+    { label: 'Divergência Meta/Atend.', value: formatPercent(k.metaServiceDivergencePct) },
+    { label: 'Custo / atendimento', value: formatCurrency(k.costPerServiceConversation) },
+    { label: 'Atend. → Clube', value: formatPercent(k.serviceToClubRate) },
+    { label: 'Clube → Fichas', value: formatPercent(k.clubToFichasRate) },
+    { label: 'Custo / jogador', value: formatCurrency(k.costPerPlayer) },
+    { label: 'Custo / ativo', value: formatCurrency(k.costPerActive) },
+  ]
+})
+
+const funnelSoftMessages = computed(() => {
+  const w = funnel.value.warnings
+  const messages: string[] = []
+  if (w.reachGtImpressions) messages.push('Alcance maior que impressões.')
+  if (w.serviceGtMeta) messages.push('Conversas de atendimento maiores que Meta.')
+  if (w.fichasGtClub) messages.push('Conversões Clube+Fichas maiores que Clube.')
+  return messages
+})
+
+const purchasePowerCards = computed(() => {
+  const pp = purchasePower.value
+  return [
+    { label: 'Volume depositado', value: formatCurrency(pp.depositedVolume) },
+    { label: 'Depositantes', value: formatNumber(pp.uniqueDepositors) },
+    { label: 'Depósitos', value: formatNumber(pp.depositCount) },
+    { label: 'Ticket médio', value: formatCurrency(pp.avgTicket) },
+    { label: 'Média / depositante', value: formatCurrency(pp.avgPerDepositor) },
+    { label: 'Mediana / depositante', value: formatCurrency(pp.medianPerDepositor) },
+    { label: 'Maior depósito', value: formatCurrency(pp.maxDeposit) },
+    { label: 'Semanas com depósito', value: formatNumber(pp.weeksWithDeposit) },
+    {
+      label: 'Top 1 concentração',
+      value: pp.top1Share != null ? formatPercent(pp.top1Share * 100) : '—',
+    },
+    {
+      label: 'Top 3 concentração',
+      value: pp.top3Share != null ? formatPercent(pp.top3Share * 100) : '—',
+    },
+    {
+      label: 'Top 10 concentração',
+      value: pp.top10Share != null ? formatPercent(pp.top10Share * 100) : '—',
+    },
+    {
+      label: 'Rake / depósito (comportamental)',
+      value: formatNumber(pp.rakeToDepositRatio),
+    },
+    { label: 'Investimento ativação', value: formatCurrency(pp.activationInvestment) },
+    { label: 'Bônus', value: formatNumber(pp.bonusCount) },
+  ]
+})
+
+const depositWeeklyMax = computed(() => {
+  const weekly = purchasePower.value.weekly
+  if (!weekly.length) return 1
+  if (depositWeeklyMode.value === 'volume') {
+    return Math.max(1, ...weekly.map((w) => w.volume))
+  }
+  if (depositWeeklyMode.value === 'depositors') {
+    return Math.max(1, ...weekly.map((w) => w.depositors))
+  }
+  return Math.max(1, ...weekly.map((w) => w.deposits))
 })
 
 const evolutionRows = computed(() => {
   let acc = 0
-  const sorted = agentPeriods.value.slice().sort((a, b) => a.periodStart.localeCompare(b.periodStart))
+  const sorted = agentPeriods.value
+    .slice()
+    .sort((a, b) => a.periodStart.localeCompare(b.periodStart))
   const maxRake = Math.max(1, ...sorted.map((p) => p.weeklyRake))
+  const totalInv = metrics.value.totalInvestment
   return sorted.map((p) => {
     acc += p.weeklyRake
-    const recoveryRate = props.campaign.investment > 0 ? (acc / props.campaign.investment) * 100 : null
+    const recoveryRate =
+      totalInv != null && totalInv > 0 ? (acc / totalInv) * 100 : null
     return {
       label: store.formatPeriodLabel(p.periodStart, p.periodEnd),
       weeklyRake: p.weeklyRake,
@@ -235,6 +335,11 @@ const evolutionRows = computed(() => {
 
 const hasAgent = computed(() => !!props.campaign.agentId)
 const hasWeeks = computed(() => metrics.value.weeksTracked > 0)
+const natureLabel = computed(
+  () =>
+    ACQUISITION_NATURE_LABELS[props.campaign.acquisitionNature] ??
+    props.campaign.acquisitionNature,
+)
 
 function canDelete() {
   return store.canDeleteCampaign(props.campaign)
@@ -328,6 +433,9 @@ watch(tableDetailsPeriod, async (period) => {
             <CampaignStatusBadge :status="metrics.status" />
           </div>
           <p class="text-sm text-text-muted">
+            <span class="mr-2 rounded-md bg-accent/15 px-1.5 py-0.5 text-xs text-accent">
+              {{ natureLabel }}
+            </span>
             <template v-if="agent">
               Agência {{ agent.name }} ({{ campaign.agentId }})
             </template>
@@ -417,10 +525,26 @@ watch(tableDetailsPeriod, async (period) => {
           <button
             type="button"
             class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+            :class="activeTab === 'funnel' ? 'bg-accent text-board' : 'text-text-secondary hover:bg-surface hover:text-text-primary'"
+            @click="activeTab = 'funnel'"
+          >
+            Funil de Desempenho
+          </button>
+          <button
+            type="button"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
             :class="activeTab === 'evolution' ? 'bg-accent text-board' : 'text-text-secondary hover:bg-surface hover:text-text-primary'"
             @click="activeTab = 'evolution'"
           >
             Evolução
+          </button>
+          <button
+            type="button"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+            :class="activeTab === 'transactions' ? 'bg-accent text-board' : 'text-text-secondary hover:bg-surface hover:text-text-primary'"
+            @click="activeTab = 'transactions'"
+          >
+            Transações
           </button>
           <button
             type="button"
@@ -466,27 +590,83 @@ watch(tableDetailsPeriod, async (period) => {
 
         <div class="mt-4">
           <div v-if="activeTab === 'overview'">
-            <template v-if="!hasAgent || !hasWeeks">
-              <p class="text-sm text-text-muted">
-                {{ !hasAgent ? 'Nenhum agente vinculado.' : 'Nenhuma semana importada ainda.' }}
-              </p>
-            </template>
-            <template v-else>
-              <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
-                <div
-                  v-for="card in overviewCards"
-                  :key="card.label"
-                  class="rounded-xl bg-surface/40 px-3 py-2.5"
-                >
-                  <p class="text-[11px] font-medium uppercase tracking-wide text-text-muted">
-                    {{ card.label }}
-                  </p>
-                  <p class="mt-1 text-base font-semibold tabular-nums text-text-primary">
-                    {{ card.value }}
+            <div class="mb-3 flex flex-wrap items-center gap-2">
+              <CampaignStatusBadge :status="metrics.status" />
+              <span
+                v-if="metrics.organicFixedPayback"
+                class="text-xs text-text-muted"
+              >
+                Captação orgânica sem investimento — payback fixo 100%.
+              </span>
+            </div>
+            <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+              <div
+                v-for="card in overviewCards"
+                :key="card.label"
+                class="rounded-xl bg-surface/40 px-3 py-2.5"
+              >
+                <p class="text-[11px] font-medium uppercase tracking-wide text-text-muted">
+                  {{ card.label }}
+                </p>
+                <p class="mt-1 text-base font-semibold tabular-nums text-text-primary">
+                  {{ card.value }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div v-else-if="activeTab === 'funnel'" class="space-y-4">
+            <div class="space-y-2">
+              <div
+                v-for="step in funnelStepRows"
+                :key="step.key"
+                class="rounded-xl bg-surface/40 px-3 py-2.5"
+              >
+                <div class="flex items-center justify-between gap-2">
+                  <p class="text-sm font-medium text-text-primary">{{ step.label }}</p>
+                  <p class="tabular-nums text-sm text-text-secondary">
+                    {{
+                      step.kind === 'money'
+                        ? formatCurrency(step.value)
+                        : formatNumber(step.value)
+                    }}
                   </p>
                 </div>
+                <p v-if="step.rate != null" class="mt-0.5 text-xs text-text-muted">
+                  Conversão etapa: {{ formatPercent(step.rate) }}
+                </p>
               </div>
-            </template>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+              <div
+                v-for="card in funnelKpiCards"
+                :key="card.label"
+                class="rounded-xl bg-surface/40 px-3 py-2.5"
+              >
+                <p class="text-[11px] font-medium uppercase tracking-wide text-text-muted">
+                  {{ card.label }}
+                </p>
+                <p class="mt-1 text-sm font-semibold tabular-nums text-text-primary">
+                  {{ card.value }}
+                </p>
+              </div>
+            </div>
+
+            <div
+              v-if="funnel.diagnosis"
+              class="rounded-xl border border-accent/30 bg-accent/10 px-3 py-3 text-sm text-text-secondary"
+            >
+              <p class="font-medium text-accent">Diagnóstico</p>
+              <p class="mt-1">{{ funnel.diagnosis.message }}</p>
+            </div>
+
+            <ul
+              v-if="funnelSoftMessages.length"
+              class="space-y-1 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100"
+            >
+              <li v-for="(msg, i) in funnelSoftMessages" :key="i">{{ msg }}</li>
+            </ul>
           </div>
 
           <div v-else-if="activeTab === 'evolution'">
@@ -536,6 +716,144 @@ watch(tableDetailsPeriod, async (period) => {
                       — {{ store.formatPeriodLabel(imp.periodStart, imp.periodEnd) }}
                     </li>
                   </ul>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <div v-else-if="activeTab === 'transactions'" class="space-y-4">
+            <template v-if="!hasAgent">
+              <p class="text-sm text-text-muted">Nenhum agente vinculado.</p>
+            </template>
+            <template v-else>
+              <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+                <div
+                  v-for="card in purchasePowerCards"
+                  :key="card.label"
+                  class="rounded-xl bg-surface/40 px-3 py-2.5"
+                >
+                  <p class="text-[11px] font-medium uppercase tracking-wide text-text-muted">
+                    {{ card.label }}
+                  </p>
+                  <p class="mt-1 text-sm font-semibold tabular-nums text-text-primary">
+                    {{ card.value }}
+                  </p>
+                </div>
+              </div>
+
+              <p class="text-xs text-text-muted">
+                Rake/depósito é métrica comportamental — não entra no payback.
+              </p>
+
+              <div class="space-y-2">
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    v-for="mode in [
+                      { id: 'volume' as const, label: 'Volume' },
+                      { id: 'depositors' as const, label: 'Depositantes' },
+                      { id: 'deposits' as const, label: 'Depósitos' },
+                    ]"
+                    :key="mode.id"
+                    type="button"
+                    class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+                    :class="
+                      depositWeeklyMode === mode.id
+                        ? 'bg-accent/20 text-accent'
+                        : 'text-text-secondary hover:bg-surface'
+                    "
+                    @click="depositWeeklyMode = mode.id"
+                  >
+                    {{ mode.label }}
+                  </button>
+                </div>
+                <ul v-if="purchasePower.weekly.length" class="space-y-1.5">
+                  <li
+                    v-for="week in purchasePower.weekly"
+                    :key="week.periodStart"
+                    class="rounded-lg bg-surface/40 px-3 py-2 text-xs"
+                  >
+                    <div class="mb-1 flex justify-between gap-2">
+                      <span class="text-text-primary">
+                        {{ store.formatPeriodLabel(week.periodStart, week.periodEnd) }}
+                      </span>
+                      <span class="tabular-nums text-text-secondary">
+                        <template v-if="depositWeeklyMode === 'volume'">
+                          {{ formatCurrency(week.volume) }}
+                        </template>
+                        <template v-else-if="depositWeeklyMode === 'depositors'">
+                          {{ week.depositors }}
+                        </template>
+                        <template v-else>
+                          {{ week.deposits }}
+                        </template>
+                      </span>
+                    </div>
+                    <div class="h-1.5 overflow-hidden rounded-full bg-black/30">
+                      <div
+                        class="h-full rounded-full bg-accent/70"
+                        :style="{
+                          width: `${
+                            ((depositWeeklyMode === 'volume'
+                              ? week.volume
+                              : depositWeeklyMode === 'depositors'
+                                ? week.depositors
+                                : week.deposits) /
+                              depositWeeklyMax) *
+                            100
+                          }%`,
+                        }"
+                      />
+                    </div>
+                  </li>
+                </ul>
+                <p v-else class="text-sm text-text-muted">
+                  Nenhum depósito importado para esta agência.
+                </p>
+              </div>
+
+              <div class="space-y-2">
+                <h4 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                  Faixas de depósito
+                </h4>
+                <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <div
+                    v-for="band in purchasePower.bands"
+                    :key="band.label"
+                    class="rounded-lg bg-surface/40 px-3 py-2 text-xs"
+                  >
+                    <p class="text-text-muted">{{ band.label }}</p>
+                    <p class="mt-0.5 text-base font-semibold text-text-primary">
+                      {{ band.count }}
+                    </p>
+                    <p class="text-text-secondary">{{ formatCurrency(band.volume) }}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                <div class="rounded-xl bg-surface/40 px-3 py-2.5">
+                  <p class="text-[11px] uppercase text-text-muted">Depositou e ativo</p>
+                  <p class="mt-1 font-semibold tabular-nums">
+                    {{ purchasePower.activationCross.depositedAndActive }}
+                  </p>
+                </div>
+                <div class="rounded-xl bg-surface/40 px-3 py-2.5">
+                  <p class="text-[11px] uppercase text-text-muted">Depositou sem ativo</p>
+                  <p class="mt-1 font-semibold tabular-nums">
+                    {{ purchasePower.activationCross.depositedNotActive }}
+                  </p>
+                </div>
+                <div class="rounded-xl bg-surface/40 px-3 py-2.5">
+                  <p class="text-[11px] uppercase text-text-muted">Ativo e depositou</p>
+                  <p class="mt-1 font-semibold tabular-nums">
+                    {{ purchasePower.activationCross.activeAndDeposited }}
+                  </p>
+                </div>
+                <div class="rounded-xl bg-surface/40 px-3 py-2.5">
+                  <p class="text-[11px] uppercase text-text-muted">Ativo sem depósito</p>
+                  <p class="mt-1 font-semibold tabular-nums">
+                    {{ purchasePower.activationCross.activeWithoutDeposit }}
+                  </p>
                 </div>
               </div>
             </template>
@@ -967,6 +1285,22 @@ watch(tableDetailsPeriod, async (period) => {
             </p>
             <p class="mt-1 text-base font-semibold tabular-nums text-text-primary">
               {{ selectedPlayerDetail.player.weeks }}
+            </p>
+          </div>
+          <div class="rounded-xl bg-surface/40 px-3 py-2.5">
+            <p class="text-[11px] font-medium uppercase tracking-wide text-text-muted">
+              Volume depositado
+            </p>
+            <p class="mt-1 text-base font-semibold tabular-nums text-text-primary">
+              {{ formatCurrency(selectedPlayerDetail.deposits.depositedVolume) }}
+            </p>
+          </div>
+          <div class="rounded-xl bg-surface/40 px-3 py-2.5">
+            <p class="text-[11px] font-medium uppercase tracking-wide text-text-muted">
+              Depósitos
+            </p>
+            <p class="mt-1 text-base font-semibold tabular-nums text-text-primary">
+              {{ formatNumber(selectedPlayerDetail.deposits.depositCount) }}
             </p>
           </div>
         </div>

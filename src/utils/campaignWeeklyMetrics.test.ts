@@ -70,6 +70,8 @@ describe('weekly rake accumulation', () => {
         investment: 2000,
         capturedPlayers: 100,
         isArchived: false,
+        acquisitionNature: 'PAID',
+        clubFichasConversions: null,
       },
       agentPeriods: [
         { periodStart: '2026-07-06', periodEnd: '2026-07-12', weeklyRake: 500 },
@@ -77,6 +79,7 @@ describe('weekly rake accumulation', () => {
         { periodStart: '2026-07-20', periodEnd: '2026-07-26', weeklyRake: 300 },
       ],
       uniqueActivePlayers: 47,
+      activationInvestment: 0,
     })
     expect(metrics.accumulatedRake).toBe(1500)
     expect(metrics.recoveryRate).toBe(75)

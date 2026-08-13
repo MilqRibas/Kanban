@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ChevronDown } from '@lucide/vue'
-import type { CampaignComputedStatus } from '../../types/campaigns'
+import type {
+  AcquisitionNature,
+  CampaignComputedStatus,
+} from '../../types/campaigns'
 import {
+  ACQUISITION_NATURE_LABELS,
   CAMPAIGN_STATUS_LABELS,
   CAMPAIGN_TYPE_OPTIONS,
 } from '../../types/campaigns'
@@ -13,6 +17,7 @@ export type CampaignFiltersState = {
   status: CampaignComputedStatus | 'all'
   name: string
   campaignType: string | 'all'
+  nature: AcquisitionNature | 'all'
 }
 
 const props = defineProps<{
@@ -63,6 +68,7 @@ const activeFilterCount = computed(() => {
   if (local.value.month !== 'all') count += 1
   if (local.value.status !== 'all') count += 1
   if (local.value.campaignType !== 'all') count += 1
+  if (local.value.nature !== 'all') count += 1
   if (local.value.name.trim()) count += 1
   if (props.showArchived) count += 1
   return count
@@ -109,7 +115,7 @@ const selectClass =
 
     <div
       v-show="expanded"
-      class="mt-2.5 grid grid-cols-2 gap-2 border-t border-border-subtle/60 pt-2.5 md:grid-cols-4 xl:grid-cols-5"
+      class="mt-2.5 grid grid-cols-2 gap-2 border-t border-border-subtle/60 pt-2.5 md:grid-cols-4 xl:grid-cols-6"
     >
       <label class="flex flex-col gap-1 text-[11px] text-text-muted">
         Ano
@@ -152,6 +158,25 @@ const selectClass =
           <option v-for="month in months" :key="month.value" :value="month.value">
             {{ month.label }}
           </option>
+        </select>
+      </label>
+
+      <label class="flex flex-col gap-1 text-[11px] text-text-muted">
+        Natureza
+        <select
+          class="w-full"
+          :class="selectClass"
+          :value="local.nature"
+          @change="
+            patch({
+              nature: ($event.target as HTMLSelectElement)
+                .value as CampaignFiltersState['nature'],
+            })
+          "
+        >
+          <option value="all">Todas</option>
+          <option value="PAID">{{ ACQUISITION_NATURE_LABELS.PAID }}</option>
+          <option value="ORGANIC">{{ ACQUISITION_NATURE_LABELS.ORGANIC }}</option>
         </select>
       </label>
 

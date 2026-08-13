@@ -27,16 +27,18 @@ export function calculateActivationRate(
 }
 
 export function calculateCostPerCapturedPlayer(
-  investment: number,
+  investment: number | null | undefined,
   capturedPlayers: number,
 ): number | null {
+  if (investment == null) return null
   return safeDivide(investment, capturedPlayers)
 }
 
 export function calculateCostPerActivePlayer(
-  investment: number,
+  investment: number | null | undefined,
   activePlayers: number,
 ): number | null {
+  if (investment == null) return null
   return safeDivide(investment, activePlayers)
 }
 
@@ -55,16 +57,18 @@ export function calculateAverageRakePerActivePlayer(
 
 export function calculateInvestmentRecovery(
   accumulatedRake: number,
-  investment: number,
+  investment: number | null | undefined,
 ): number | null {
+  if (investment == null) return null
   const rate = safeDivide(accumulatedRake, investment)
   return rate === null ? null : rate * 100
 }
 
 export function calculateInvestmentDifference(
   accumulatedRake: number,
-  investment: number,
-): number {
+  investment: number | null | undefined,
+): number | null {
+  if (investment == null) return null
   return accumulatedRake - investment
 }
 
@@ -76,12 +80,20 @@ export type PaybackResult = {
 }
 
 export function calculatePaybackMonth(
-  investment: number,
+  investment: number | null | undefined,
   monthlyResults: Pick<
     CampaignMonthlyResult,
     'monthlyRake' | 'referenceYear' | 'referenceMonth'
   >[],
 ): PaybackResult {
+  if (investment == null || investment <= 0) {
+    return {
+      reached: false,
+      month: null,
+      year: null,
+      monthsToPayback: null,
+    }
+  }
   const sorted = [...monthlyResults].sort((a, b) => {
     if (a.referenceYear !== b.referenceYear) {
       return a.referenceYear - b.referenceYear
@@ -92,7 +104,7 @@ export function calculatePaybackMonth(
   let accumulated = 0
   for (let i = 0; i < sorted.length; i += 1) {
     accumulated += Number(sorted[i].monthlyRake) || 0
-    if (accumulated >= investment && investment > 0) {
+    if (accumulated >= investment) {
       return {
         reached: true,
         month: sorted[i].referenceMonth,
@@ -117,10 +129,12 @@ export function calculateCampaignStatus(
 ): CampaignComputedStatus {
   if (campaign.isArchived) return 'archived'
   if (!hasImportedPeriods) return 'no_data'
-  if (accumulatedRake >= campaign.investment && campaign.investment > 0) {
+  const investment = campaign.investment
+  if (investment == null || investment <= 0) return 'no_return'
+  if (accumulatedRake >= investment) {
     return 'payback'
   }
-  if (accumulatedRake > 0 && accumulatedRake < campaign.investment) {
+  if (accumulatedRake > 0 && accumulatedRake < investment) {
     return 'recovering'
   }
   return 'no_return'
@@ -134,7 +148,7 @@ export type CampaignMetrics = {
   accumulatedRake: number
   averageRakePerActive: number | null
   recoveryRate: number | null
-  investmentDifference: number
+  investmentDifference: number | null
   payback: PaybackResult
   status: CampaignComputedStatus
   monthsTracked: number
@@ -194,7 +208,10 @@ export function buildOverviewKpis(
   campaigns: Campaign[],
   monthlyResults: CampaignMonthlyResult[],
 ): OverviewKpis {
-  const totalInvestment = campaigns.reduce((sum, c) => sum + c.investment, 0)
+  const totalInvestment = campaigns.reduce(
+    (sum, c) => sum + (c.investment ?? 0),
+    0,
+  )
   const totalCaptured = campaigns.reduce((sum, c) => sum + c.capturedPlayers, 0)
   const totalActive = campaigns.reduce((sum, c) => sum + c.activePlayers, 0)
 
@@ -341,7 +358,11 @@ export function generateCampaignInsights(params: {
     }
   }
 
-  if (!metrics.payback.reached && metrics.investmentDifference < 0) {
+  if (
+    !metrics.payback.reached &&
+    metrics.investmentDifference != null &&
+    metrics.investmentDifference < 0
+  ) {
     const remaining = Math.abs(metrics.investmentDifference)
     insights.push({
       id: 'payback-remaining',
@@ -431,7 +452,10 @@ export function generateComparisonInsights(
         id: `cmp-payback-${row.campaign.id}`,
         text: `A campanha ${row.campaign.name} já atingiu o payback.`,
       })
-    } else if (row.metrics.investmentDifference < 0) {
+    } else if (
+      row.metrics.investmentDifference != null &&
+      row.metrics.investmentDifference < 0
+    ) {
       const remaining = Math.abs(row.metrics.investmentDifference)
       insights.push({
         id: `cmp-gap-${row.campaign.id}`,

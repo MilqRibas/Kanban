@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { Campaign } from '../../types/campaigns'
+import { ACQUISITION_NATURE_LABELS } from '../../types/campaigns'
 import { useCampaignsStore } from '../../stores/campaigns'
 import {
   formatCurrency,
@@ -40,7 +41,8 @@ const rows = computed(() =>
   selectedCampaigns.value.map((campaign) => {
     const metrics = store.metricsFor(campaign)
     const health = store.rakeHealthFor(campaign)
-    return { campaign, metrics, health }
+    const power = store.purchasePowerFor(campaign)
+    return { campaign, metrics, health, power }
   }),
 )
 
@@ -56,11 +58,36 @@ const metricDefs: Array<{
   label: string
   value: (row: (typeof rows.value)[number]) => string
 }> = [
-  { label: 'Investimento', value: (r) => formatCurrency(r.campaign.investment) },
+  {
+    label: 'Natureza',
+    value: (r) =>
+      ACQUISITION_NATURE_LABELS[r.campaign.acquisitionNature] ??
+      r.campaign.acquisitionNature,
+  },
+  {
+    label: 'Investimento Campanha',
+    value: (r) => formatCurrency(r.metrics.campaignInvestment),
+  },
+  {
+    label: 'Ativação',
+    value: (r) => formatCurrency(r.metrics.activationInvestment),
+  },
+  {
+    label: 'Investimento Total',
+    value: (r) => formatCurrency(r.metrics.totalInvestment),
+  },
   { label: 'Jogadores', value: (r) => formatNumber(r.metrics.agencyPlayers) },
   { label: 'Ativos únicos', value: (r) => formatNumber(r.metrics.uniqueActivePlayers) },
-  { label: 'Ativação', value: (r) => formatPercent(r.metrics.activationRate) },
+  { label: 'Ativação %', value: (r) => formatPercent(r.metrics.activationRate) },
   { label: 'Rake acumulado', value: (r) => formatCurrency(r.metrics.accumulatedRake) },
+  {
+    label: 'Volume depositado',
+    value: (r) => formatCurrency(r.power.depositedVolume),
+  },
+  {
+    label: 'Depositantes',
+    value: (r) => formatNumber(r.power.uniqueDepositors),
+  },
   { label: 'Rake/ativo', value: (r) => formatCurrency(r.metrics.averageRakePerActive) },
   { label: 'Recuperação', value: (r) => formatPercent(r.metrics.recoveryRate) },
   { label: 'Custo/ativo', value: (r) => formatCurrency(r.metrics.costPerActive) },

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import type {
+  AcquisitionNature,
   ActivationRuleType,
   Campaign,
   CampaignAgent,
@@ -14,6 +15,8 @@ import type {
   CampaignPlayerPeriod,
   CampaignReportImport,
   CampaignTableDetail,
+  CampaignTransaction,
+  CampaignTransactionImport,
   CampaignUpdateInput,
   ImportConflict,
 } from '../types/campaigns'
@@ -43,6 +46,27 @@ import {
   buildOverviewKpis as buildLegacyOverview,
   type OverviewKpis,
 } from '../utils/campaignMetrics'
+import {
+  buildPurchasePowerMetrics,
+  resolveHistoricalAgentId,
+  sumActivationInvestment,
+  type PurchasePowerMetrics,
+} from '../utils/campaignDepositMetrics'
+import {
+  buildFunnelKpis,
+  buildFunnelSteps,
+  diagnoseFunnel,
+  funnelWarnings,
+  type FunnelDiagnosis,
+  type FunnelKpis,
+  type FunnelStep,
+  type FunnelWarnings,
+} from '../utils/campaignFunnelMetrics'
+import { applicableAcquisitionCost } from '../utils/campaignEconomics'
+import {
+  parseTransactionReportFile,
+  type ParsedTransactionReport,
+} from '../utils/campaignTransactionParser'
 
 function createCampaignId() {
   return `campaign-${crypto.randomUUID().slice(0, 8)}`
@@ -55,6 +79,12 @@ function createHistoryId() {
 }
 function createImportId() {
   return `cri-${crypto.randomUUID().slice(0, 8)}`
+}
+function createTransactionImportId() {
+  return `cti-${crypto.randomUUID().slice(0, 8)}`
+}
+function createTransactionId() {
+  return `ctx-${crypto.randomUUID().slice(0, 8)}`
 }
 function createAgentPeriodId() {
   return `cap-${crypto.randomUUID().slice(0, 8)}`
@@ -92,6 +122,9 @@ function collapseParsedReport(parsed: ParsedReport): ParsedReport {
 
 function mapCampaign(row: Record<string, unknown>): Campaign {
   const rule = String(row.activation_rule_type ?? 'rake_gt_zero')
+  const natureRaw = String(row.acquisition_nature ?? 'PAID').toUpperCase()
+  const acquisitionNature: AcquisitionNature =
+    natureRaw === 'ORGANIC' ? 'ORGANIC' : 'PAID'
   return {
     id: String(row.id),
     boardId: String(row.board_id ?? BOARD_ID),
@@ -102,6 +135,7 @@ function mapCampaign(row: Record<string, unknown>): Campaign {
     endDate: (row.end_date as string | null) ?? null,
     agency: (row.agency as string | null) ?? null,
     agentId: (row.agent_id as string | null) ?? null,
+    acquisitionNature,
     campaignType: (row.campaign_type as string | null) ?? null,
     campaignTypeOther: (row.campaign_type_other as string | null) ?? null,
     objective: (row.objective as string | null) ?? null,
@@ -110,7 +144,13 @@ function mapCampaign(row: Record<string, unknown>): Campaign {
     origin: (row.origin as string | null) ?? null,
     campaignUrl: (row.campaign_url as string | null) ?? null,
     notes: (row.notes as string | null) ?? null,
-    investment: toNumber(row.investment),
+    investment: toNullableNumber(row.investment),
+    impressions: toNullableNumber(row.impressions),
+    reach: toNullableNumber(row.reach),
+    metaConversations: toNullableNumber(row.meta_conversations),
+    serviceConversations: toNullableNumber(row.service_conversations),
+    clubConversions: toNullableNumber(row.club_conversions),
+    clubFichasConversions: toNullableNumber(row.club_fichas_conversions),
     capturedPlayers: toNumber(row.captured_players),
     activePlayers: toNumber(row.active_players),
     activationRuleType: rule as ActivationRuleType,
@@ -185,6 +225,57 @@ function mapImport(row: Record<string, unknown>): CampaignReportImport {
     summary: (row.summary as Record<string, unknown> | null) ?? null,
     replacedImportId: (row.replaced_import_id as string | null) ?? null,
     createdAt: String(row.created_at),
+    kind: 'rake',
+  }
+}
+
+function mapTransactionImport(row: Record<string, unknown>): CampaignTransactionImport {
+  return {
+    id: String(row.id),
+    boardId: String(row.board_id),
+    originalFilename: String(row.original_filename ?? ''),
+    periodStart: String(row.period_start),
+    periodEnd: String(row.period_end),
+    importedAt: String(row.imported_at),
+    importedBy: (row.imported_by as string | null) ?? null,
+    status: String(row.status ?? 'completed'),
+    transactionsCount: toNumber(row.transactions_count),
+    depositsCount: toNumber(row.deposits_count),
+    bonusesCount: toNumber(row.bonuses_count),
+    agentsCount: toNumber(row.agents_count),
+    playersCount: toNumber(row.players_count),
+    warnings: row.warnings ?? null,
+    summary: (row.summary as Record<string, unknown> | null) ?? null,
+    replacedImportId: (row.replaced_import_id as string | null) ?? null,
+    createdAt: String(row.created_at),
+    kind: 'transactions',
+  }
+}
+
+function mapTransaction(row: Record<string, unknown>): CampaignTransaction {
+  return {
+    id: String(row.id),
+    boardId: String(row.board_id),
+    importId: String(row.import_id),
+    externalTransactionId: String(row.external_transaction_id ?? ''),
+    receiverPlayerId: String(row.receiver_player_id ?? ''),
+    receiverNickname: (row.receiver_nickname as string | null) ?? null,
+    agentId: (row.agent_id as string | null) ?? null,
+    agentNickname: (row.agent_nickname as string | null) ?? null,
+    occurredAt: (row.occurred_at as string | null) ?? null,
+    periodStart: String(row.period_start),
+    periodEnd: String(row.period_end),
+    origin: (row.origin as string | null) ?? null,
+    transactionType: (row.transaction_type as string | null) ?? null,
+    amount: toNumber(row.amount),
+    chipsSendOut: toNullableNumber(row.chips_send_out),
+    chipsClaimback: toNullableNumber(row.chips_claimback),
+    systemStatus: (row.system_status as string | null) ?? null,
+    orderStatus: (row.order_status as string | null) ?? null,
+    isDeposit: Boolean(row.is_deposit),
+    isBonus: Boolean(row.is_bonus),
+    raw: (row.raw as Record<string, unknown> | null) ?? null,
+    createdAt: String(row.created_at),
   }
 }
 
@@ -246,7 +337,10 @@ function mapTableDetail(row: Record<string, unknown>): CampaignTableDetail {
   }
 }
 
-function validateCampaignInput(input: CampaignCreateInput | CampaignUpdateInput) {
+function validateCampaignInput(
+  input: CampaignCreateInput | CampaignUpdateInput,
+  opts?: { nature?: AcquisitionNature; requirePaidInvestment?: boolean },
+) {
   if (input.name !== undefined && !String(input.name).trim()) {
     return 'Nome da campanha é obrigatório.'
   }
@@ -262,8 +356,20 @@ function validateCampaignInput(input: CampaignCreateInput | CampaignUpdateInput)
       return 'Ano de aquisição inválido.'
     }
   }
-  if (input.investment !== undefined && Number(input.investment) < 0) {
-    return 'Investimento não pode ser negativo.'
+  if (input.investment !== undefined && input.investment !== null) {
+    if (Number(input.investment) < 0) {
+      return 'Investimento não pode ser negativo.'
+    }
+  }
+  const nature = opts?.nature ?? input.acquisitionNature
+  if (
+    opts?.requirePaidInvestment &&
+    nature === 'PAID' &&
+    (input.investment === null ||
+      input.investment === undefined ||
+      !Number.isFinite(Number(input.investment)))
+  ) {
+    return 'Investimento é obrigatório para campanhas pagas.'
   }
   if (input.capturedPlayers !== undefined && Number(input.capturedPlayers) < 0) {
     return 'Jogadores na agência não pode ser negativo.'
@@ -300,12 +406,32 @@ export type CommitReportResult = {
   }>
 }
 
+export type TransactionReportPreview = {
+  parsed: ParsedTransactionReport
+  filename: string
+  conflict: ImportConflict | null
+}
+
+export type CommitTransactionResult = {
+  importId: string
+  periodLabel: string
+  transactionsCount: number
+  depositsCount: number
+  bonusesCount: number
+  agentsCount: number
+  playersCount: number
+  replaced: boolean
+  affectedCampaignIds: string[]
+}
+
 export const useCampaignsStore = defineStore('campaigns', () => {
   const campaigns = ref<Campaign[]>([])
   const monthlyResults = ref<CampaignMonthlyResult[]>([])
   const history = ref<CampaignHistoryEntry[]>([])
   const agents = ref<CampaignAgent[]>([])
   const imports = ref<CampaignReportImport[]>([])
+  const transactionImports = ref<CampaignTransactionImport[]>([])
+  const transactions = ref<CampaignTransaction[]>([])
   const agentPeriods = ref<CampaignAgentPeriod[]>([])
   const playerPeriods = ref<CampaignPlayerPeriod[]>([])
   const tableDetailsCache = ref<CampaignTableDetail[]>([])
@@ -354,6 +480,12 @@ export const useCampaignsStore = defineStore('campaigns', () => {
 
   const completedImports = computed(() =>
     imports.value
+      .filter((i) => i.status === 'completed')
+      .sort((a, b) => a.periodStart.localeCompare(b.periodStart)),
+  )
+
+  const completedTransactionImports = computed(() =>
+    transactionImports.value
       .filter((i) => i.status === 'completed')
       .sort((a, b) => a.periodStart.localeCompare(b.periodStart)),
   )
@@ -421,7 +553,89 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       campaign,
       agentPeriods: periods,
       uniqueActivePlayers: uniqueActivesForCampaign(campaign),
+      activationInvestment: activationInvestmentFor(campaign.agentId),
     })
+  }
+
+  function activationInvestmentFor(agentId: string | null | undefined) {
+    return sumActivationInvestment(transactions.value, agentId)
+  }
+
+  function activePlayerIdSet(campaign: Campaign): Set<string> {
+    const threshold = activationRakeThreshold(campaign)
+    const periods = playerPeriodsForAgent(campaign.agentId)
+    if (threshold === null) {
+      return new Set(uniquePlayerIds(periods))
+    }
+    return new Set(
+      accumulatePlayerRake(
+        periods.map((p) => ({
+          playerId: p.playerId,
+          weeklyRake: p.weeklyRake,
+          name: p.playerName,
+          nickname: p.nickname,
+        })),
+      )
+        .filter((p) => p.rake > threshold)
+        .map((p) => p.playerId),
+    )
+  }
+
+  function purchasePowerFor(campaign: Campaign): PurchasePowerMetrics {
+    const m = metricsFor(campaign)
+    return buildPurchasePowerMetrics({
+      rows: transactions.value,
+      agentId: campaign.agentId,
+      activePlayerIds: activePlayerIdSet(campaign),
+      accumulatedRake: m.accumulatedRake,
+    })
+  }
+
+  function funnelFor(campaign: Campaign): {
+    steps: FunnelStep[]
+    kpis: FunnelKpis
+    diagnosis: FunnelDiagnosis
+    warnings: FunnelWarnings
+  } {
+    const m = metricsFor(campaign)
+    const steps = buildFunnelSteps(campaign, m.uniqueActivePlayers)
+    const applicableCost = applicableAcquisitionCost({
+      acquisitionNature: campaign.acquisitionNature,
+      campaignInvestment: campaign.investment,
+      activationInvestment: m.activationInvestment,
+    })
+    const kpis = buildFunnelKpis(campaign, applicableCost, m.uniqueActivePlayers)
+    return {
+      steps,
+      kpis,
+      diagnosis: diagnoseFunnel(kpis),
+      warnings: funnelWarnings(campaign),
+    }
+  }
+
+  function playerDepositStats(playerId: string, agentId?: string | null) {
+    const scoped = transactions.value.filter(
+      (t) =>
+        t.receiverPlayerId === playerId &&
+        t.isDeposit &&
+        (!agentId || t.agentId === agentId),
+    )
+    const volume = scoped.reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0)
+    return {
+      depositCount: scoped.length,
+      depositedVolume: volume,
+      firstDepositAt:
+        scoped
+          .map((t) => t.occurredAt || t.periodStart)
+          .filter(Boolean)
+          .sort()[0] ?? null,
+      lastDepositAt:
+        scoped
+          .map((t) => t.occurredAt || t.periodStart)
+          .filter(Boolean)
+          .sort()
+          .at(-1) ?? null,
+    }
   }
 
   function rakeHealthFor(
@@ -476,6 +690,8 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     const list = visibleCampaigns.value.filter((c) => !c.isArchived)
     let totalInvestment = 0
     let totalAccumulatedRake = 0
+    let rakeForRecovery = 0
+    let investmentForRecovery = 0
     let totalCaptured = 0
     let totalActive = 0
     let paybackCount = 0
@@ -484,10 +700,14 @@ export const useCampaignsStore = defineStore('campaigns', () => {
 
     for (const campaign of list) {
       const m = metricsFor(campaign)
-      totalInvestment += campaign.investment
       totalAccumulatedRake += m.accumulatedRake
       totalCaptured += campaign.capturedPlayers
       totalActive += m.uniqueActivePlayers
+      if (m.totalInvestment != null) {
+        totalInvestment += m.totalInvestment
+        investmentForRecovery += m.totalInvestment
+        rakeForRecovery += m.accumulatedRake
+      }
       if (m.status === 'payback') paybackCount += 1
       if (m.status === 'recovering') recoveringCount += 1
       if (m.status === 'no_data') noDataCount += 1
@@ -496,9 +716,13 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     const activationRate =
       totalCaptured > 0 ? (totalActive / totalCaptured) * 100 : null
     const recoveryRate =
-      totalInvestment > 0 ? (totalAccumulatedRake / totalInvestment) * 100 : null
+      investmentForRecovery > 0
+        ? (rakeForRecovery / investmentForRecovery) * 100
+        : null
     const costPerActive =
-      totalActive > 0 ? totalInvestment / totalActive : null
+      totalActive > 0 && totalInvestment > 0
+        ? totalInvestment / totalActive
+        : null
     const averageRakePerActive =
       totalActive > 0 ? totalAccumulatedRake / totalActive : null
 
@@ -554,6 +778,8 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       historyRes,
       agentsRes,
       importsRes,
+      txImportsRes,
+      transactionsRes,
       agentPeriodsRes,
       playerPeriodsRes,
     ] = await Promise.all([
@@ -574,6 +800,16 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         .eq('board_id', BOARD_ID)
         .order('period_start', { ascending: false }),
       supabase
+        .from('campaign_transaction_imports')
+        .select('*')
+        .eq('board_id', BOARD_ID)
+        .order('period_start', { ascending: false }),
+      supabase
+        .from('campaign_transactions')
+        .select('*')
+        .eq('board_id', BOARD_ID)
+        .limit(50000),
+      supabase
         .from('campaign_agent_periods')
         .select('*')
         .eq('board_id', BOARD_ID),
@@ -589,6 +825,8 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       historyRes.error ||
       agentsRes.error ||
       importsRes.error ||
+      txImportsRes.error ||
+      transactionsRes.error ||
       agentPeriodsRes.error ||
       playerPeriodsRes.error
 
@@ -615,6 +853,12 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     imports.value = (importsRes.data ?? []).map((row) =>
       mapImport(row as Record<string, unknown>),
     )
+    transactionImports.value = (txImportsRes.data ?? []).map((row) =>
+      mapTransactionImport(row as Record<string, unknown>),
+    )
+    transactions.value = (transactionsRes.data ?? []).map((row) =>
+      mapTransaction(row as Record<string, unknown>),
+    )
     agentPeriods.value = (agentPeriodsRes.data ?? []).map((row) =>
       mapAgentPeriod(row as Record<string, unknown>),
     )
@@ -636,6 +880,8 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_report_imports' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_agent_periods' }, scheduleReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_player_periods' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_transaction_imports' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_transactions' }, scheduleReload)
       .subscribe()
   }
 
@@ -673,6 +919,8 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     history.value = []
     agents.value = []
     imports.value = []
+    transactionImports.value = []
+    transactions.value = []
     agentPeriods.value = []
     playerPeriods.value = []
     tableDetailsCache.value = []
@@ -687,7 +935,11 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   async function create(input: CampaignCreateInput) {
     const toast = useToastStore()
     const auth = useAuthStore()
-    const validation = validateCampaignInput(input)
+    const nature: AcquisitionNature = input.acquisitionNature ?? 'PAID'
+    const validation = validateCampaignInput(input, {
+      nature,
+      requirePaidInvestment: true,
+    })
     if (validation) {
       toast.error(validation)
       return null
@@ -706,6 +958,10 @@ export const useCampaignsStore = defineStore('campaigns', () => {
 
     const now = new Date().toISOString()
     const id = createCampaignId()
+    const investment =
+      input.investment === null || input.investment === undefined
+        ? null
+        : Number(input.investment)
     const row = {
       id,
       board_id: BOARD_ID,
@@ -716,6 +972,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       end_date: input.endDate ?? null,
       agency: agencyName,
       agent_id: agentId,
+      acquisition_nature: nature,
       campaign_type: input.campaignType?.trim() || null,
       campaign_type_other: input.campaignTypeOther?.trim() || null,
       objective: input.objective?.trim() || null,
@@ -724,7 +981,13 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       origin: input.origin?.trim() || null,
       campaign_url: input.campaignUrl?.trim() || null,
       notes: input.notes?.trim() || null,
-      investment: Number(input.investment),
+      investment,
+      impressions: input.impressions ?? null,
+      reach: input.reach ?? null,
+      meta_conversations: input.metaConversations ?? null,
+      service_conversations: input.serviceConversations ?? null,
+      club_conversions: input.clubConversions ?? null,
+      club_fichas_conversions: input.clubFichasConversions ?? null,
       captured_players: Number(input.capturedPlayers),
       active_players: Number(input.activePlayers ?? 0),
       activation_rule_type: input.activationRuleType ?? 'rake_gt_zero',
@@ -763,18 +1026,25 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     const campaign = campaigns.value.find((c) => c.id === id)
     if (!campaign) return false
 
+    const nextNature: AcquisitionNature =
+      patch.acquisitionNature ?? campaign.acquisitionNature
     const merged: CampaignUpdateInput = {
       name: patch.name ?? campaign.name,
       acquisitionMonth: patch.acquisitionMonth ?? campaign.acquisitionMonth,
       acquisitionYear: patch.acquisitionYear ?? campaign.acquisitionYear,
       startDate: patch.startDate ?? campaign.startDate ?? undefined,
-      investment: patch.investment ?? campaign.investment,
+      investment:
+        patch.investment !== undefined ? patch.investment : campaign.investment,
       capturedPlayers: patch.capturedPlayers ?? campaign.capturedPlayers,
       activationRuleType: patch.activationRuleType ?? campaign.activationRuleType,
+      acquisitionNature: nextNature,
       ...patch,
     }
 
-    const validation = validateCampaignInput(merged)
+    const validation = validateCampaignInput(merged, {
+      nature: nextNature,
+      requirePaidInvestment: true,
+    })
     if (validation) {
       toast.error(validation)
       return false
@@ -807,6 +1077,9 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       dbPatch.agency = agent.name
     }
     if (patch.agentId !== undefined) dbPatch.agent_id = nextAgentId
+    if (patch.acquisitionNature !== undefined) {
+      dbPatch.acquisition_nature = patch.acquisitionNature
+    }
     if (patch.campaignType !== undefined) {
       dbPatch.campaign_type = patch.campaignType?.trim() || null
     }
@@ -829,7 +1102,24 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       dbPatch.campaign_url = patch.campaignUrl?.trim() || null
     }
     if (patch.notes !== undefined) dbPatch.notes = patch.notes?.trim() || null
-    if (patch.investment !== undefined) dbPatch.investment = Number(patch.investment)
+    if (patch.investment !== undefined) {
+      dbPatch.investment =
+        patch.investment === null ? null : Number(patch.investment)
+    }
+    if (patch.impressions !== undefined) dbPatch.impressions = patch.impressions
+    if (patch.reach !== undefined) dbPatch.reach = patch.reach
+    if (patch.metaConversations !== undefined) {
+      dbPatch.meta_conversations = patch.metaConversations
+    }
+    if (patch.serviceConversations !== undefined) {
+      dbPatch.service_conversations = patch.serviceConversations
+    }
+    if (patch.clubConversions !== undefined) {
+      dbPatch.club_conversions = patch.clubConversions
+    }
+    if (patch.clubFichasConversions !== undefined) {
+      dbPatch.club_fichas_conversions = patch.clubFichasConversions
+    }
     if (patch.capturedPlayers !== undefined) {
       dbPatch.captured_players = Number(patch.capturedPlayers)
     }
@@ -863,7 +1153,30 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       return false
     }
 
+    const funnelChanged =
+      (patch.impressions !== undefined &&
+        patch.impressions !== campaign.impressions) ||
+      (patch.reach !== undefined && patch.reach !== campaign.reach) ||
+      (patch.metaConversations !== undefined &&
+        patch.metaConversations !== campaign.metaConversations) ||
+      (patch.serviceConversations !== undefined &&
+        patch.serviceConversations !== campaign.serviceConversations) ||
+      (patch.clubConversions !== undefined &&
+        patch.clubConversions !== campaign.clubConversions) ||
+      (patch.clubFichasConversions !== undefined &&
+        patch.clubFichasConversions !== campaign.clubFichasConversions)
+
     if (
+      patch.acquisitionNature !== undefined &&
+      patch.acquisitionNature !== campaign.acquisitionNature
+    ) {
+      await appendHistory(
+        id,
+        'nature_changed',
+        `Alterou a natureza de ${campaign.name}.`,
+        { from: campaign.acquisitionNature, to: patch.acquisitionNature },
+      )
+    } else if (
       patch.investment !== undefined &&
       patch.investment !== campaign.investment
     ) {
@@ -872,6 +1185,12 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         'investment_changed',
         `Alterou o investimento de ${campaign.name}.`,
         { from: campaign.investment, to: patch.investment },
+      )
+    } else if (funnelChanged) {
+      await appendHistory(
+        id,
+        'funnel_changed',
+        `Atualizou o funil de desempenho de ${campaign.name}.`,
       )
     } else if (
       patch.capturedPlayers !== undefined &&
@@ -907,37 +1226,96 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       await appendHistory(id, 'updated', `Editou a campanha ${campaign.name}.`)
     }
 
-    Object.assign(campaign, mapCampaign({ ...campaign, ...{
-      name: dbPatch.name ?? campaign.name,
-      acquisition_month: dbPatch.acquisition_month ?? campaign.acquisitionMonth,
-      acquisition_year: dbPatch.acquisition_year ?? campaign.acquisitionYear,
-      start_date: dbPatch.start_date ?? campaign.startDate,
-      end_date: dbPatch.end_date !== undefined ? dbPatch.end_date : campaign.endDate,
-      agency: dbPatch.agency !== undefined ? dbPatch.agency : campaign.agency,
-      agent_id: dbPatch.agent_id !== undefined ? dbPatch.agent_id : campaign.agentId,
-      campaign_type: dbPatch.campaign_type !== undefined ? dbPatch.campaign_type : campaign.campaignType,
-      campaign_type_other: dbPatch.campaign_type_other !== undefined ? dbPatch.campaign_type_other : campaign.campaignTypeOther,
-      objective: dbPatch.objective !== undefined ? dbPatch.objective : campaign.objective,
-      audience: dbPatch.audience !== undefined ? dbPatch.audience : campaign.audience,
-      channel: dbPatch.channel !== undefined ? dbPatch.channel : campaign.channel,
-      origin: dbPatch.origin !== undefined ? dbPatch.origin : campaign.origin,
-      campaign_url: dbPatch.campaign_url !== undefined ? dbPatch.campaign_url : campaign.campaignUrl,
-      notes: dbPatch.notes !== undefined ? dbPatch.notes : campaign.notes,
-      investment: dbPatch.investment ?? campaign.investment,
-      captured_players: dbPatch.captured_players ?? campaign.capturedPlayers,
-      active_players: dbPatch.active_players ?? campaign.activePlayers,
-      activation_rule_type: dbPatch.activation_rule_type ?? campaign.activationRuleType,
-      activation_minimum_rake: dbPatch.activation_minimum_rake !== undefined ? dbPatch.activation_minimum_rake : campaign.activationMinimumRake,
-      activation_rule_notes: dbPatch.activation_rule_notes !== undefined ? dbPatch.activation_rule_notes : campaign.activationRuleNotes,
-      rake_goal: dbPatch.rake_goal !== undefined ? dbPatch.rake_goal : campaign.rakeGoal,
-      active_players_goal: dbPatch.active_players_goal !== undefined ? dbPatch.active_players_goal : campaign.activePlayersGoal,
-      is_archived: dbPatch.is_archived ?? campaign.isArchived,
-      created_by: campaign.createdBy,
-      created_at: campaign.createdAt,
-      updated_at: dbPatch.updated_at,
-      board_id: campaign.boardId,
-      id: campaign.id,
-    } as Record<string, unknown> }))
+    Object.assign(
+      campaign,
+      mapCampaign({
+        ...campaign,
+        name: dbPatch.name ?? campaign.name,
+        acquisition_month:
+          dbPatch.acquisition_month ?? campaign.acquisitionMonth,
+        acquisition_year: dbPatch.acquisition_year ?? campaign.acquisitionYear,
+        start_date: dbPatch.start_date ?? campaign.startDate,
+        end_date:
+          dbPatch.end_date !== undefined ? dbPatch.end_date : campaign.endDate,
+        agency: dbPatch.agency !== undefined ? dbPatch.agency : campaign.agency,
+        agent_id:
+          dbPatch.agent_id !== undefined ? dbPatch.agent_id : campaign.agentId,
+        acquisition_nature:
+          dbPatch.acquisition_nature ?? campaign.acquisitionNature,
+        campaign_type:
+          dbPatch.campaign_type !== undefined
+            ? dbPatch.campaign_type
+            : campaign.campaignType,
+        campaign_type_other:
+          dbPatch.campaign_type_other !== undefined
+            ? dbPatch.campaign_type_other
+            : campaign.campaignTypeOther,
+        objective:
+          dbPatch.objective !== undefined
+            ? dbPatch.objective
+            : campaign.objective,
+        audience:
+          dbPatch.audience !== undefined ? dbPatch.audience : campaign.audience,
+        channel:
+          dbPatch.channel !== undefined ? dbPatch.channel : campaign.channel,
+        origin: dbPatch.origin !== undefined ? dbPatch.origin : campaign.origin,
+        campaign_url:
+          dbPatch.campaign_url !== undefined
+            ? dbPatch.campaign_url
+            : campaign.campaignUrl,
+        notes: dbPatch.notes !== undefined ? dbPatch.notes : campaign.notes,
+        investment:
+          dbPatch.investment !== undefined
+            ? dbPatch.investment
+            : campaign.investment,
+        impressions:
+          dbPatch.impressions !== undefined
+            ? dbPatch.impressions
+            : campaign.impressions,
+        reach: dbPatch.reach !== undefined ? dbPatch.reach : campaign.reach,
+        meta_conversations:
+          dbPatch.meta_conversations !== undefined
+            ? dbPatch.meta_conversations
+            : campaign.metaConversations,
+        service_conversations:
+          dbPatch.service_conversations !== undefined
+            ? dbPatch.service_conversations
+            : campaign.serviceConversations,
+        club_conversions:
+          dbPatch.club_conversions !== undefined
+            ? dbPatch.club_conversions
+            : campaign.clubConversions,
+        club_fichas_conversions:
+          dbPatch.club_fichas_conversions !== undefined
+            ? dbPatch.club_fichas_conversions
+            : campaign.clubFichasConversions,
+        captured_players:
+          dbPatch.captured_players ?? campaign.capturedPlayers,
+        active_players: dbPatch.active_players ?? campaign.activePlayers,
+        activation_rule_type:
+          dbPatch.activation_rule_type ?? campaign.activationRuleType,
+        activation_minimum_rake:
+          dbPatch.activation_minimum_rake !== undefined
+            ? dbPatch.activation_minimum_rake
+            : campaign.activationMinimumRake,
+        activation_rule_notes:
+          dbPatch.activation_rule_notes !== undefined
+            ? dbPatch.activation_rule_notes
+            : campaign.activationRuleNotes,
+        rake_goal:
+          dbPatch.rake_goal !== undefined ? dbPatch.rake_goal : campaign.rakeGoal,
+        active_players_goal:
+          dbPatch.active_players_goal !== undefined
+            ? dbPatch.active_players_goal
+            : campaign.activePlayersGoal,
+        is_archived: dbPatch.is_archived ?? campaign.isArchived,
+        created_by: campaign.createdBy,
+        created_at: campaign.createdAt,
+        updated_at: dbPatch.updated_at,
+        board_id: campaign.boardId,
+        id: campaign.id,
+      } as Record<string, unknown>),
+    )
 
     toast.success('Campanha atualizada.')
     return true
@@ -954,6 +1332,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       endDate: source.endDate,
       agency: source.agency,
       agentId: source.agentId,
+      acquisitionNature: source.acquisitionNature,
       campaignType: source.campaignType,
       campaignTypeOther: source.campaignTypeOther,
       objective: source.objective,
@@ -963,6 +1342,12 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       campaignUrl: source.campaignUrl,
       notes: source.notes,
       investment: source.investment,
+      impressions: null,
+      reach: null,
+      metaConversations: null,
+      serviceConversations: null,
+      clubConversions: null,
+      clubFichasConversions: null,
       capturedPlayers: source.capturedPlayers,
       activationRuleType: source.activationRuleType,
       activationMinimumRake: source.activationMinimumRake,
@@ -1423,6 +1808,243 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     return true
   }
 
+  async function previewTransactionReport(
+    file: File,
+  ): Promise<TransactionReportPreview | null> {
+    const toast = useToastStore()
+    try {
+      const parsed = await parseTransactionReportFile(file)
+      const existing = transactionImports.value.filter(
+        (i) =>
+          i.status === 'completed' &&
+          i.periodStart === parsed.period.start &&
+          i.periodEnd === parsed.period.end,
+      )
+      const conflict: ImportConflict | null =
+        existing.length > 0
+          ? {
+              periodStart: parsed.period.start,
+              periodEnd: parsed.period.end,
+              existingImportIds: existing.map((e) => e.id),
+              affectedAgentIds: parsed.uniqueAgentIds,
+            }
+          : null
+      return {
+        parsed,
+        filename: file.name,
+        conflict,
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Falha ao ler o relatório de transações.'
+      toast.error(message)
+      return null
+    }
+  }
+
+  async function commitTransactionReport(params: {
+    preview: TransactionReportPreview
+    replace: boolean
+  }): Promise<CommitTransactionResult | null> {
+    const toast = useToastStore()
+    const auth = useAuthStore()
+    const { preview, replace } = params
+    const { parsed, filename, conflict } = preview
+
+    if (conflict && !replace) {
+      toast.error('Já existem transações para este período. Confirme a substituição.')
+      return null
+    }
+
+    importing.value = true
+    quietRealtime(8000)
+
+    try {
+      const playerLinks = playerPeriods.value.map((p) => ({
+        playerId: p.playerId,
+        agentId: p.agentId,
+        periodStart: p.periodStart,
+        periodEnd: p.periodEnd,
+      }))
+
+      const resolvedRows = parsed.transactions.map((t) => {
+        const agentId = resolveHistoricalAgentId({
+          reportAgentId: t.agentId,
+          receiverPlayerId: t.receiverPlayerId,
+          periodStart: parsed.period.start,
+          periodEnd: parsed.period.end,
+          playerPeriodLinks: playerLinks,
+        })
+        return { ...t, agentId }
+      })
+
+      const replacedIds =
+        conflict && replace ? conflict.existingImportIds : []
+      const replacedImportId = replacedIds[0] ?? null
+      const importId = createTransactionImportId()
+      const now = new Date().toISOString()
+
+      const uniqueAgents = [
+        ...new Set(
+          resolvedRows
+            .map((t) => t.agentId)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ]
+      const uniquePlayers = [
+        ...new Set(resolvedRows.map((t) => t.receiverPlayerId)),
+      ]
+
+      const importRow = {
+        id: importId,
+        board_id: BOARD_ID,
+        original_filename: filename,
+        period_start: parsed.period.start,
+        period_end: parsed.period.end,
+        imported_at: now,
+        imported_by: auth.memberId,
+        status: 'completed',
+        transactions_count: resolvedRows.length,
+        deposits_count: resolvedRows.filter((t) => t.isDeposit).length,
+        bonuses_count: resolvedRows.filter((t) => t.isBonus).length,
+        agents_count: uniqueAgents.length,
+        players_count: uniquePlayers.length,
+        warnings: parsed.warnings,
+        summary: {
+          uniqueAgentIds: uniqueAgents,
+          uniquePlayerIds: uniquePlayers,
+        },
+        replaced_import_id: replacedImportId,
+        created_at: now,
+      }
+
+      const txRows = resolvedRows.map((t) => ({
+        id: createTransactionId(),
+        board_id: BOARD_ID,
+        import_id: importId,
+        external_transaction_id: t.externalTransactionId,
+        receiver_player_id: t.receiverPlayerId,
+        receiver_nickname: t.receiverNickname,
+        agent_id: t.agentId,
+        agent_nickname: t.agentNickname,
+        occurred_at: t.occurredAt,
+        period_start: parsed.period.start,
+        period_end: parsed.period.end,
+        origin: t.origin,
+        transaction_type: t.transactionType,
+        amount: t.amount,
+        chips_send_out: t.chipsSendOut,
+        chips_claimback: t.chipsClaimback,
+        system_status: t.systemStatus,
+        order_status: t.orderStatus,
+        is_deposit: t.isDeposit,
+        is_bonus: t.isBonus,
+        raw: t.raw,
+        created_at: now,
+      }))
+
+      const { error: rpcError } = await supabase.rpc(
+        'commit_campaign_transactions',
+        {
+          p_import: importRow,
+          p_transactions: txRows,
+          p_replace_import_ids: replacedIds,
+        },
+      )
+      if (rpcError) throw new Error(rpcError.message)
+
+      await load()
+
+      const affected = campaigns.value.filter(
+        (c) => c.agentId && uniqueAgents.includes(c.agentId),
+      )
+      for (const campaign of affected) {
+        await appendHistory(
+          campaign.id,
+          replace ? 'transactions_replaced' : 'transactions_imported',
+          replace
+            ? `Substituiu transações ${formatPeriodLabel(parsed.period.start, parsed.period.end)}.`
+            : `Importou transações ${formatPeriodLabel(parsed.period.start, parsed.period.end)}.`,
+          {
+            importId,
+            periodStart: parsed.period.start,
+            periodEnd: parsed.period.end,
+            transactionsCount: resolvedRows.length,
+            depositsCount: resolvedRows.filter((t) => t.isDeposit).length,
+            bonusesCount: resolvedRows.filter((t) => t.isBonus).length,
+          },
+        )
+      }
+
+      toast.success(
+        replace
+          ? 'Transações substituídas.'
+          : 'Transações importadas.',
+      )
+
+      return {
+        importId,
+        periodLabel: formatPeriodLabel(parsed.period.start, parsed.period.end),
+        transactionsCount: resolvedRows.length,
+        depositsCount: resolvedRows.filter((t) => t.isDeposit).length,
+        bonusesCount: resolvedRows.filter((t) => t.isBonus).length,
+        agentsCount: uniqueAgents.length,
+        playersCount: uniquePlayers.length,
+        replaced: Boolean(conflict && replace),
+        affectedCampaignIds: affected.map((c) => c.id),
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Falha ao processar transações.'
+      error.value = message
+      toast.error(message)
+      return null
+    } finally {
+      importing.value = false
+    }
+  }
+
+  async function removeTransactionImport(id: string) {
+    const toast = useToastStore()
+    const item = transactionImports.value.find((i) => i.id === id)
+    if (!item) return false
+
+    const agentIds = [
+      ...new Set(
+        transactions.value
+          .filter((t) => t.importId === id && t.agentId)
+          .map((t) => t.agentId!),
+      ),
+    ]
+
+    quietRealtime(4000)
+    const { error: delError } = await supabase
+      .from('campaign_transaction_imports')
+      .delete()
+      .eq('id', id)
+    if (delError) {
+      toast.error(delError.message)
+      return false
+    }
+
+    await load()
+
+    const affected = campaigns.value.filter(
+      (c) => c.agentId && agentIds.includes(c.agentId),
+    )
+    for (const campaign of affected) {
+      await appendHistory(
+        campaign.id,
+        'transactions_deleted',
+        `Removeu importação de transações ${formatPeriodLabel(item.periodStart, item.periodEnd)}.`,
+        { importId: id },
+      )
+    }
+
+    toast.success('Importação de transações excluída.')
+    return true
+  }
+
   async function loadTableDetails(agentId: string, periodStart?: string) {
     let query = supabase
       .from('campaign_table_details')
@@ -1598,10 +2220,13 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     history,
     agents,
     imports,
+    transactionImports,
+    transactions,
     agentPeriods,
     playerPeriods,
     tableDetailsCache,
     completedImports,
+    completedTransactionImports,
     selectedCampaignId,
     selectedCampaign,
     selectedMonthlyResults,
@@ -1634,12 +2259,19 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     canArchiveCampaign,
     canDeleteCampaign,
     metricsFor,
+    activationInvestmentFor,
+    purchasePowerFor,
+    funnelFor,
+    playerDepositStats,
     rakeHealthFor,
     gameProfileFor,
     overviewKpis,
     previewReport,
     commitReport,
     removeImport,
+    previewTransactionReport,
+    commitTransactionReport,
+    removeTransactionImport,
     loadTableDetails,
     loadPlayerTableDetails,
     findAgent,

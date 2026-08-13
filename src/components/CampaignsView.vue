@@ -29,6 +29,7 @@ const filters = ref<CampaignFiltersState>({
   status: 'all',
   name: '',
   campaignType: 'all',
+  nature: 'all',
 })
 
 const tabs: { id: CampaignScreen; label: string }[] = [
@@ -73,6 +74,12 @@ const filteredCampaigns = computed(() => {
     if (
       filters.value.campaignType !== 'all' &&
       campaign.campaignType !== filters.value.campaignType
+    ) {
+      return false
+    }
+    if (
+      filters.value.nature !== 'all' &&
+      campaign.acquisitionNature !== filters.value.nature
     ) {
       return false
     }

@@ -1,10 +1,18 @@
-import type { Campaign } from '../types/campaigns'
+import type { AcquisitionNature, Campaign } from '../types/campaigns'
 import {
   GAME_PROFILE,
   RAKE_BANDS,
   RAKE_HEALTH,
 } from './campaignThresholds'
 import { GAME_TYPE_LABELS, safeDivide } from './campaignMetricsBridge'
+import {
+  applicableAcquisitionCost,
+  calculateEconomicStatus,
+  calculateRecoveryRate,
+  calculateWeeklyPaybackAgainstTotal,
+  hasCampaignInvestment,
+  resolveTotalInvestment,
+} from './campaignEconomics'
 
 export type WeeklyPeriodPoint = {
   periodStart: string
@@ -62,46 +70,28 @@ export function calculateWeeklyPayback(
   investment: number,
   periods: WeeklyPeriodPoint[],
 ): WeeklyPaybackResult {
-  const sorted = sortPeriodsChronologically(periods)
-  let accumulated = 0
-  for (let i = 0; i < sorted.length; i += 1) {
-    accumulated += Number(sorted[i].weeklyRake) || 0
-    if (investment > 0 && accumulated >= investment) {
-      return {
-        reached: true,
-        periodStart: sorted[i].periodStart,
-        periodEnd: sorted[i].periodEnd,
-        periodsToPayback: i + 1,
-        accumulatedAtPayback: accumulated,
-        surplus: accumulated - investment,
-      }
-    }
-  }
-  return {
-    reached: false,
-    periodStart: null,
-    periodEnd: null,
-    periodsToPayback: null,
-    accumulatedAtPayback: null,
-    surplus: null,
-  }
+  return calculateWeeklyPaybackAgainstTotal(
+    investment > 0 ? investment : null,
+    periods,
+  )
 }
 
 export function calculateCampaignStatusV2(params: {
   isArchived: boolean
-  investment: number
+  investment: number | null | undefined
   accumulatedRake: number
   hasImportedPeriods: boolean
+  acquisitionNature?: AcquisitionNature
+  activationInvestment?: number
 }): CampaignComputedStatusV2 {
-  if (params.isArchived) return 'archived'
-  if (!params.hasImportedPeriods) return 'no_data'
-  if (params.investment > 0 && params.accumulatedRake >= params.investment) {
-    return 'payback'
-  }
-  if (params.accumulatedRake > 0 && params.accumulatedRake < params.investment) {
-    return 'recovering'
-  }
-  return 'no_return'
+  return calculateEconomicStatus({
+    isArchived: params.isArchived,
+    acquisitionNature: params.acquisitionNature ?? 'PAID',
+    campaignInvestment: params.investment,
+    activationInvestment: params.activationInvestment ?? 0,
+    accumulatedRake: params.accumulatedRake,
+    hasImportedPeriods: params.hasImportedPeriods,
+  })
 }
 
 export type PlayerRakeRow = {
@@ -327,27 +317,73 @@ export type CampaignWeeklyMetrics = {
   activationRate: number | null
   costPerAgencyPlayer: number | null
   costPerActive: number | null
+  costPerPlayerFunnel: number | null
   accumulatedRake: number
   averageRakePerActive: number | null
   recoveryRate: number | null
-  investmentDifference: number
+  investmentDifference: number | null
+  campaignInvestment: number | null
+  activationInvestment: number
+  totalInvestment: number | null
   payback: WeeklyPaybackResult
   status: CampaignComputedStatusV2
   weeksTracked: number
   lastPeriodStart: string | null
   lastPeriodEnd: string | null
+  organicFixedPayback: boolean
 }
 
 export function buildCampaignWeeklyMetrics(params: {
-  campaign: Pick<Campaign, 'investment' | 'capturedPlayers' | 'isArchived'>
+  campaign: Pick<
+    Campaign,
+    | 'investment'
+    | 'capturedPlayers'
+    | 'isArchived'
+    | 'acquisitionNature'
+    | 'clubFichasConversions'
+  >
   agentPeriods: WeeklyPeriodPoint[]
   uniqueActivePlayers: number
+  activationInvestment?: number
 }): CampaignWeeklyMetrics {
   const { campaign, agentPeriods, uniqueActivePlayers } = params
+  const activationInvestment = Number(params.activationInvestment) || 0
   const agencyPlayers = campaign.capturedPlayers
   const accumulatedRake = sumWeeklyRake(agentPeriods)
   const sorted = sortPeriodsChronologically(agentPeriods)
   const last = sorted[sorted.length - 1] ?? null
+  const nature = campaign.acquisitionNature ?? 'PAID'
+  const organicFixedPayback =
+    nature === 'ORGANIC' && !hasCampaignInvestment(campaign.investment)
+
+  const totalInvestment = resolveTotalInvestment({
+    acquisitionNature: nature,
+    campaignInvestment: campaign.investment,
+    activationInvestment,
+  })
+  const applicableCost = applicableAcquisitionCost({
+    acquisitionNature: nature,
+    campaignInvestment: campaign.investment,
+    activationInvestment,
+  })
+
+  const recoveryRate = calculateRecoveryRate({
+    acquisitionNature: nature,
+    campaignInvestment: campaign.investment,
+    activationInvestment,
+    accumulatedRake,
+  })
+
+  const payback = organicFixedPayback
+    ? {
+        reached: true,
+        periodStart: last?.periodStart ?? null,
+        periodEnd: last?.periodEnd ?? null,
+        periodsToPayback: agentPeriods.length || null,
+        accumulatedAtPayback: accumulatedRake,
+        surplus: null,
+      }
+    : calculateWeeklyPaybackAgainstTotal(totalInvestment, agentPeriods)
 
   return {
     agencyPlayers,
@@ -357,25 +393,35 @@ export function buildCampaignWeeklyMetrics(params: {
       const rate = safeDivide(uniqueActivePlayers, agencyPlayers)
       return rate === null ? null : rate * 100
     })(),
-    costPerAgencyPlayer: safeDivide(campaign.investment, agencyPlayers),
-    costPerActive: safeDivide(campaign.investment, uniqueActivePlayers),
+    costPerAgencyPlayer: safeDivide(applicableCost ?? NaN, agencyPlayers),
+    costPerActive: safeDivide(applicableCost ?? NaN, uniqueActivePlayers),
+    costPerPlayerFunnel: safeDivide(
+      applicableCost ?? NaN,
+      campaign.clubFichasConversions ?? 0,
+    ),
     accumulatedRake,
     averageRakePerActive: safeDivide(accumulatedRake, uniqueActivePlayers),
-    recoveryRate: (() => {
-      const rate = safeDivide(accumulatedRake, campaign.investment)
-      return rate === null ? null : rate * 100
-    })(),
-    investmentDifference: accumulatedRake - campaign.investment,
-    payback: calculateWeeklyPayback(campaign.investment, agentPeriods),
+    recoveryRate,
+    investmentDifference:
+      totalInvestment != null ? accumulatedRake - totalInvestment : null,
+    campaignInvestment: hasCampaignInvestment(campaign.investment)
+      ? Number(campaign.investment)
+      : null,
+    activationInvestment,
+    totalInvestment,
+    payback,
     status: calculateCampaignStatusV2({
       isArchived: campaign.isArchived,
       investment: campaign.investment,
       accumulatedRake,
       hasImportedPeriods: agentPeriods.length > 0,
+      acquisitionNature: nature,
+      activationInvestment,
     }),
     weeksTracked: agentPeriods.length,
     lastPeriodStart: last?.periodStart ?? null,
     lastPeriodEnd: last?.periodEnd ?? null,
+    organicFixedPayback,
   }
 }
 

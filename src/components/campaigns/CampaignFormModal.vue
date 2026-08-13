@@ -4,16 +4,20 @@ import { X } from '@lucide/vue'
 import { useEscapeKey } from '../../composables/useEscapeKey'
 import { useCampaignsStore } from '../../stores/campaigns'
 import type {
+  AcquisitionNature,
   ActivationRuleType,
   Campaign,
   CampaignCreateInput,
 } from '../../types/campaigns'
 import {
+  ACQUISITION_NATURE_LABELS,
+  ACQUISITION_NATURE_OPTIONS,
   ACTIVATION_RULE_LABELS,
   ACTIVATION_RULE_OPTIONS,
   CAMPAIGN_TYPE_OPTIONS,
 } from '../../types/campaigns'
 import { formatCurrency } from '../../utils/campaignFormat'
+import { funnelWarnings } from '../../utils/campaignFunnelMetrics'
 
 const props = defineProps<{
   open: boolean
@@ -44,6 +48,7 @@ const currentYear = now.getFullYear()
 
 type Draft = {
   name: string
+  acquisitionNature: AcquisitionNature
   acquisitionMonth: number
   acquisitionYear: number
   startDate: string
@@ -58,6 +63,12 @@ type Draft = {
   campaignUrl: string
   notes: string
   investment: string
+  impressions: string
+  reach: string
+  metaConversations: string
+  serviceConversations: string
+  clubConversions: string
+  clubFichasConversions: string
   capturedPlayers: string
   agentId: string
   activationRuleType: ActivationRuleType
@@ -70,6 +81,7 @@ type Draft = {
 function emptyDraft(): Draft {
   return {
     name: '',
+    acquisitionNature: 'PAID',
     acquisitionMonth: currentMonth,
     acquisitionYear: currentYear,
     startDate: now.toISOString().slice(0, 10),
@@ -84,6 +96,12 @@ function emptyDraft(): Draft {
     campaignUrl: '',
     notes: '',
     investment: '',
+    impressions: '',
+    reach: '',
+    metaConversations: '',
+    serviceConversations: '',
+    clubConversions: '',
+    clubFichasConversions: '',
     capturedPlayers: '',
     agentId: '',
     activationRuleType: 'rake_gt_zero',
@@ -155,12 +173,36 @@ const needsMinimumRake = computed(
 )
 
 const showTypeOther = computed(() => draft.campaignType === 'Outro')
+const isPaid = computed(() => draft.acquisitionNature === 'PAID')
+
+const softFunnelWarnings = computed(() => {
+  const warnings = funnelWarnings({
+    impressions: parseOptionalNumber(draft.impressions),
+    reach: parseOptionalNumber(draft.reach),
+    metaConversations: parseOptionalNumber(draft.metaConversations),
+    serviceConversations: parseOptionalNumber(draft.serviceConversations),
+    clubConversions: parseOptionalNumber(draft.clubConversions),
+    clubFichasConversions: parseOptionalNumber(draft.clubFichasConversions),
+  })
+  const messages: string[] = []
+  if (warnings.reachGtImpressions) {
+    messages.push('Alcance maior que impressões — confira os números.')
+  }
+  if (warnings.serviceGtMeta) {
+    messages.push('Conversas de atendimento maiores que Meta — confira.')
+  }
+  if (warnings.fichasGtClub) {
+    messages.push('Conversões Clube+Fichas maiores que Clube — confira.')
+  }
+  return messages
+})
 
 const fieldClass =
   'mt-1 w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent'
 
 function fillFromCampaign(campaign: Campaign) {
   draft.name = campaign.name
+  draft.acquisitionNature = campaign.acquisitionNature ?? 'PAID'
   draft.acquisitionMonth = campaign.acquisitionMonth
   draft.acquisitionYear = campaign.acquisitionYear
   draft.startDate = campaign.startDate ?? now.toISOString().slice(0, 10)
@@ -174,7 +216,25 @@ function fillFromCampaign(campaign: Campaign) {
   draft.origin = campaign.origin ?? ''
   draft.campaignUrl = campaign.campaignUrl ?? ''
   draft.notes = campaign.notes ?? ''
-  draft.investment = String(campaign.investment)
+  draft.investment =
+    campaign.investment != null ? String(campaign.investment) : ''
+  draft.impressions =
+    campaign.impressions != null ? String(campaign.impressions) : ''
+  draft.reach = campaign.reach != null ? String(campaign.reach) : ''
+  draft.metaConversations =
+    campaign.metaConversations != null
+      ? String(campaign.metaConversations)
+      : ''
+  draft.serviceConversations =
+    campaign.serviceConversations != null
+      ? String(campaign.serviceConversations)
+      : ''
+  draft.clubConversions =
+    campaign.clubConversions != null ? String(campaign.clubConversions) : ''
+  draft.clubFichasConversions =
+    campaign.clubFichasConversions != null
+      ? String(campaign.clubFichasConversions)
+      : ''
   draft.capturedPlayers = String(campaign.capturedPlayers)
   draft.agentId = campaign.agentId ?? ''
   draft.activationRuleType = campaign.activationRuleType
@@ -263,11 +323,21 @@ function buildPayload(): CampaignCreateInput | null {
     return null
   }
 
-  const investment = parseRequiredNumber(draft.investment, 'Investimento')
-  if (investment.error || investment.value === null) {
-    setFormError(investment.error ?? 'Investimento inválido.')
-    return null
+  let investmentValue: number | null = null
+  if (draft.acquisitionNature === 'PAID') {
+    const investment = parseRequiredNumber(
+      draft.investment,
+      'Investimento da Campanha',
+    )
+    if (investment.error || investment.value === null) {
+      setFormError(investment.error ?? 'Investimento inválido.')
+      return null
+    }
+    investmentValue = investment.value
+  } else {
+    investmentValue = parseOptionalNumber(draft.investment)
   }
+
   const captured = parseRequiredNumber(
     draft.capturedPlayers,
     'Jogadores na agência',
@@ -277,7 +347,7 @@ function buildPayload(): CampaignCreateInput | null {
     return null
   }
 
-  if (investment.value < 0) {
+  if (investmentValue != null && investmentValue < 0) {
     setFormError('Investimento não pode ser negativo.')
     return null
   }
@@ -307,6 +377,7 @@ function buildPayload(): CampaignCreateInput | null {
 
   return {
     name: draft.name.trim(),
+    acquisitionNature: draft.acquisitionNature,
     acquisitionMonth: draft.acquisitionMonth,
     acquisitionYear: draft.acquisitionYear,
     startDate: draft.startDate,
@@ -322,7 +393,13 @@ function buildPayload(): CampaignCreateInput | null {
     origin: draft.origin.trim() || null,
     campaignUrl: draft.campaignUrl.trim() || null,
     notes: draft.notes.trim() || null,
-    investment: investment.value,
+    investment: investmentValue,
+    impressions: parseOptionalNumber(draft.impressions),
+    reach: parseOptionalNumber(draft.reach),
+    metaConversations: parseOptionalNumber(draft.metaConversations),
+    serviceConversations: parseOptionalNumber(draft.serviceConversations),
+    clubConversions: parseOptionalNumber(draft.clubConversions),
+    clubFichasConversions: parseOptionalNumber(draft.clubFichasConversions),
     capturedPlayers: captured.value,
     activationRuleType: draft.activationRuleType,
     activationMinimumRake,
@@ -422,6 +499,19 @@ async function save() {
               />
             </label>
 
+            <label class="block text-xs text-text-muted">
+              Natureza da aquisição
+              <select v-model="draft.acquisitionNature" required :class="fieldClass">
+                <option
+                  v-for="nature in ACQUISITION_NATURE_OPTIONS"
+                  :key="nature"
+                  :value="nature"
+                >
+                  {{ ACQUISITION_NATURE_LABELS[nature] }}
+                </option>
+              </select>
+            </label>
+
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <label class="block text-xs text-text-muted">
                 Mês de aquisição
@@ -454,15 +544,18 @@ async function save() {
 
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label class="block text-xs text-text-muted">
-                Investimento (R$)
+                Investimento da Campanha (R$)
                 <input
                   v-model="draft.investment"
                   type="text"
                   inputmode="decimal"
-                  required
-                  placeholder="2779,96"
+                  :required="isPaid"
+                  :placeholder="isPaid ? '2779,96' : 'Opcional'"
                   :class="fieldClass"
                 />
+                <span v-if="!isPaid" class="mt-1 block text-[11px] text-text-muted">
+                  Opcional na captação orgânica (vazio = sem investimento).
+                </span>
               </label>
 
               <label class="block text-xs text-text-muted">
@@ -546,6 +639,85 @@ async function save() {
                 :class="[fieldClass, 'resize-none']"
               />
             </label>
+          </section>
+
+          <section class="space-y-3">
+            <h4 class="text-xs font-semibold uppercase tracking-wide text-accent/90">
+              Funil de desempenho
+            </h4>
+            <p class="text-xs text-text-muted">
+              Campos manuais do funil. Não bloqueiam o salvamento.
+            </p>
+
+            <div
+              v-if="isPaid"
+              class="grid grid-cols-1 gap-3 sm:grid-cols-3"
+            >
+              <label class="block text-xs text-text-muted">
+                Impressões
+                <input
+                  v-model="draft.impressions"
+                  type="text"
+                  inputmode="decimal"
+                  :class="fieldClass"
+                />
+              </label>
+              <label class="block text-xs text-text-muted">
+                Alcance
+                <input
+                  v-model="draft.reach"
+                  type="text"
+                  inputmode="decimal"
+                  :class="fieldClass"
+                />
+              </label>
+              <label class="block text-xs text-text-muted">
+                Conversas iniciadas — Meta
+                <input
+                  v-model="draft.metaConversations"
+                  type="text"
+                  inputmode="decimal"
+                  :class="fieldClass"
+                />
+              </label>
+            </div>
+
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label class="block text-xs text-text-muted">
+                Conversas iniciadas — Atendimento
+                <input
+                  v-model="draft.serviceConversations"
+                  type="text"
+                  inputmode="decimal"
+                  :class="fieldClass"
+                />
+              </label>
+              <label class="block text-xs text-text-muted">
+                Conversões no Clube
+                <input
+                  v-model="draft.clubConversions"
+                  type="text"
+                  inputmode="decimal"
+                  :class="fieldClass"
+                />
+              </label>
+              <label class="block text-xs text-text-muted">
+                Conversões Clube + Fichas
+                <input
+                  v-model="draft.clubFichasConversions"
+                  type="text"
+                  inputmode="decimal"
+                  :class="fieldClass"
+                />
+              </label>
+            </div>
+
+            <ul
+              v-if="softFunnelWarnings.length"
+              class="space-y-1 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100"
+            >
+              <li v-for="(msg, i) in softFunnelWarnings" :key="i">{{ msg }}</li>
+            </ul>
           </section>
 
           <section class="space-y-3">

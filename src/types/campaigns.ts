@@ -11,6 +11,14 @@ export const CAMPAIGN_TYPE_OPTIONS = [
 
 export type CampaignTypeOption = (typeof CAMPAIGN_TYPE_OPTIONS)[number]
 
+export const ACQUISITION_NATURE_OPTIONS = ['PAID', 'ORGANIC'] as const
+export type AcquisitionNature = (typeof ACQUISITION_NATURE_OPTIONS)[number]
+
+export const ACQUISITION_NATURE_LABELS: Record<AcquisitionNature, string> = {
+  PAID: 'Campanha Paga',
+  ORGANIC: 'Captação Orgânica',
+}
+
 export const ACTIVATION_RULE_OPTIONS = [
   'rake_gt_zero',
   'rake_gt_050',
@@ -68,6 +76,11 @@ export type CampaignHistoryAction =
   | 'report_reprocessed'
   | 'agency_linked'
   | 'agency_unlinked'
+  | 'nature_changed'
+  | 'funnel_changed'
+  | 'transactions_imported'
+  | 'transactions_replaced'
+  | 'transactions_deleted'
 
 export interface Campaign {
   id: string
@@ -80,6 +93,8 @@ export interface Campaign {
   agency: string | null
   /** Agent ID vinculado (chave da agência). */
   agentId: string | null
+  /** Natureza da aquisição — default PAID para legado. */
+  acquisitionNature: AcquisitionNature
   campaignType: string | null
   campaignTypeOther: string | null
   objective: string | null
@@ -88,7 +103,14 @@ export interface Campaign {
   origin: string | null
   campaignUrl: string | null
   notes: string | null
-  investment: number
+  /** Investimento da Campanha (null = não preenchido). */
+  investment: number | null
+  impressions: number | null
+  reach: number | null
+  metaConversations: number | null
+  serviceConversations: number | null
+  clubConversions: number | null
+  clubFichasConversions: number | null
   /** Jogadores na agência (manual). */
   capturedPlayers: number
   /** Legado / cache — ativos únicos vêm dos imports. */
@@ -131,6 +153,54 @@ export interface CampaignReportImport {
   warnings: unknown
   summary: Record<string, unknown> | null
   replacedImportId: string | null
+  createdAt: string
+  /** Sempre rake — tipagem para união na UI de Imports. */
+  kind?: 'rake'
+}
+
+export interface CampaignTransactionImport {
+  id: string
+  boardId: string
+  originalFilename: string
+  periodStart: string
+  periodEnd: string
+  importedAt: string
+  importedBy: string | null
+  status: string
+  transactionsCount: number
+  depositsCount: number
+  bonusesCount: number
+  agentsCount: number
+  playersCount: number
+  warnings: unknown
+  summary: Record<string, unknown> | null
+  replacedImportId: string | null
+  createdAt: string
+  kind?: 'transactions'
+}
+
+export interface CampaignTransaction {
+  id: string
+  boardId: string
+  importId: string
+  externalTransactionId: string
+  receiverPlayerId: string
+  receiverNickname: string | null
+  agentId: string | null
+  agentNickname: string | null
+  occurredAt: string | null
+  periodStart: string
+  periodEnd: string
+  origin: string | null
+  transactionType: string | null
+  amount: number
+  chipsSendOut: number | null
+  chipsClaimback: number | null
+  systemStatus: string | null
+  orderStatus: string | null
+  isDeposit: boolean
+  isBonus: boolean
+  raw: Record<string, unknown> | null
   createdAt: string
 }
 
@@ -217,9 +287,17 @@ export type CampaignCreateInput = {
   acquisitionMonth: number
   acquisitionYear: number
   startDate: string
-  investment: number
+  /** null = não informado (orgânico sem investimento). */
+  investment: number | null
   /** Jogadores na agência */
   capturedPlayers: number
+  acquisitionNature?: AcquisitionNature
+  impressions?: number | null
+  reach?: number | null
+  metaConversations?: number | null
+  serviceConversations?: number | null
+  clubConversions?: number | null
+  clubFichasConversions?: number | null
   activationRuleType?: ActivationRuleType
   agentId?: string | null
   endDate?: string | null
