@@ -67,39 +67,41 @@ function topShare(sortedDesc: number[], total: number, n: number): number | null
 
 export function classifyTransactionFlags(params: {
   origin: string | null | undefined
-  transactionType: string | null | undefined
+  /** Coluna real do relatório: SX tipo */
+  sxType?: string | null | undefined
+  transactionType?: string | null | undefined
   systemStatus?: string | null
   orderStatus?: string | null
 }): { isDeposit: boolean; isBonus: boolean } {
-  const origin = String(params.origin ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase()
-  const type = String(params.transactionType ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase()
+  const norm = (value: string | null | undefined) =>
+    String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase()
+
+  const origin = norm(params.origin)
+  const sxType = norm(params.sxType)
+  const type = norm(params.transactionType)
 
   const statusBlob = `${params.systemStatus ?? ''} ${params.orderStatus ?? ''}`
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
+  const status = norm(statusBlob)
 
   const failed =
-    /cancel|fail|erro|rejeit|negad|pendente|pending/.test(statusBlob) &&
-    !/conclu|complet|success|aprov|ok|pago/.test(statusBlob)
+    /cancel|fail|erro|rejeit|negad|pendente|pending/.test(status) &&
+    !/conclu|complet|success|aprov|ok|pago|finaliz/.test(status)
 
-  const isBonus =
-    origin.includes('bonus') ||
-    type.includes('bonus') ||
-    origin.includes('bonific')
+  // BÔNUS = SX tipo == Bônus (independente da Origem; Origem pode ser "-" ou vazia)
+  const isBonus = sxType === 'bonus' || sxType.includes('bonus')
 
+  // DEPÓSITO = Origem == SX 24 Horas (nunca misturar com bônus)
   const isDeposit =
     !isBonus &&
     !failed &&
-    (origin.includes('sx 24 horas') || origin === 'sx 24 horas')
+    (origin === 'sx 24 horas' || origin.includes('sx 24 horas'))
+
+  // type leftover unused intentionally (kept for callers) — avoid deposit via SX tipo
+  void type
 
   return { isDeposit, isBonus }
 }
@@ -149,17 +151,32 @@ export function buildPurchasePowerMetrics(params: {
     .filter(Boolean)
     .sort()
 
+  const individualAmounts = deposits.map((d) => Math.abs(Number(d.amount) || 0))
+
   const weekMap = new Map<
     string,
     { periodStart: string; periodEnd: string; volume: number; players: Set<string>; deposits: number }
   >()
   for (const d of deposits) {
-    const key = d.periodStart
+    const eventDate = (d.occurredAt || d.periodStart || '').slice(0, 10)
+    const key = eventDate || d.periodStart
+    if (!key) continue
+    // Semana = segunda–domingo da data do evento (não do lote)
+    const day = new Date(`${key}T12:00:00Z`)
+    const dow = day.getUTCDay()
+    const diffToMon = dow === 0 ? -6 : 1 - dow
+    const mon = new Date(day)
+    mon.setUTCDate(day.getUTCDate() + diffToMon)
+    const sun = new Date(mon)
+    sun.setUTCDate(mon.getUTCDate() + 6)
+    const periodStart = mon.toISOString().slice(0, 10)
+    const periodEnd = sun.toISOString().slice(0, 10)
+    const weekKey = periodStart
     const bucket =
-      weekMap.get(key) ??
+      weekMap.get(weekKey) ??
       {
-        periodStart: d.periodStart,
-        periodEnd: d.periodEnd,
+        periodStart,
+        periodEnd,
         volume: 0,
         players: new Set<string>(),
         deposits: 0,
@@ -167,7 +184,7 @@ export function buildPurchasePowerMetrics(params: {
     bucket.volume += Math.abs(Number(d.amount) || 0)
     bucket.players.add(d.receiverPlayerId)
     bucket.deposits += 1
-    weekMap.set(key, bucket)
+    weekMap.set(weekKey, bucket)
   }
 
   const depositors = new Set(byPlayer.keys())
@@ -204,7 +221,8 @@ export function buildPurchasePowerMetrics(params: {
     avgTicket: safeDivide(depositedVolume, depositCount),
     avgPerDepositor: safeDivide(depositedVolume, uniqueDepositors),
     medianPerDepositor: median(perDepositor),
-    maxDeposit: sortedDesc[0] ?? null,
+    maxDeposit:
+      individualAmounts.length > 0 ? Math.max(...individualAmounts) : null,
     firstDepositAt: dates[0] ?? null,
     lastDepositAt: dates[dates.length - 1] ?? null,
     weeksWithDeposit: weekMap.size,
@@ -237,14 +255,16 @@ export function buildPurchasePowerMetrics(params: {
 }
 
 /**
- * Resolve Agent ID histórico: prioriza o do relatório; fallback no vínculo
- * Player↔Agent do fechamento de rake daquela semana.
+ * Resolve Agent ID histórico: prioriza o do relatório (Agente player ID);
+ * fallback no vínculo Player↔Agent do fechamento de rake da semana do evento.
  */
 export function resolveHistoricalAgentId(params: {
   reportAgentId: string | null | undefined
   receiverPlayerId: string
-  periodStart: string
-  periodEnd: string
+  /** Data do evento (YYYY-MM-DD), não o período do lote. */
+  eventDate?: string | null
+  periodStart?: string
+  periodEnd?: string
   playerPeriodLinks: Array<{
     playerId: string
     agentId: string
@@ -255,11 +275,17 @@ export function resolveHistoricalAgentId(params: {
   const fromReport = String(params.reportAgentId ?? '').trim()
   if (fromReport) return fromReport
 
+  const eventDate =
+    params.eventDate?.slice(0, 10) ||
+    params.periodStart?.slice(0, 10) ||
+    null
+  if (!eventDate) return null
+
   const link = params.playerPeriodLinks.find(
     (p) =>
       p.playerId === params.receiverPlayerId &&
-      p.periodStart === params.periodStart &&
-      p.periodEnd === params.periodEnd,
+      p.periodStart <= eventDate &&
+      p.periodEnd >= eventDate,
   )
   return link?.agentId ?? null
 }

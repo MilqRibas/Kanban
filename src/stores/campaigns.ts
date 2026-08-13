@@ -65,6 +65,7 @@ import {
 import { applicableAcquisitionCost } from '../utils/campaignEconomics'
 import {
   parseTransactionReportFile,
+  mondaySundayContaining,
   type ParsedTransactionReport,
 } from '../utils/campaignTransactionParser'
 
@@ -420,8 +421,13 @@ export type CommitTransactionResult = {
   bonusesCount: number
   agentsCount: number
   playersCount: number
+  agentsLinkedToCampaigns: number
+  agentsWithoutCampaign: number
+  agentsWithoutCampaignIds: string[]
+  transactionsWithoutAgent: number
   replaced: boolean
   affectedCampaignIds: string[]
+  recognizedHeaders: Record<string, string>
 }
 
 export const useCampaignsStore = defineStore('campaigns', () => {
@@ -608,7 +614,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     return {
       steps,
       kpis,
-      diagnosis: diagnoseFunnel(kpis),
+      diagnosis: diagnoseFunnel(steps, kpis),
       warnings: funnelWarnings(campaign),
     }
   }
@@ -910,6 +916,16 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     await load()
     subscribeRealtime()
     ready.value = true
+    // Imports antigos com AGENTES=0 são irrecuperáveis (IDs trocados) — limpa para reimport.
+    const broken = transactionImports.value.filter(
+      (i) =>
+        i.status === 'completed' &&
+        i.transactionsCount > 0 &&
+        i.agentsCount === 0,
+    )
+    if (broken.length > 0) {
+      void purgeBrokenTransactionImports()
+    }
   }
 
   function reset() {
@@ -1814,18 +1830,29 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     const toast = useToastStore()
     try {
       const parsed = await parseTransactionReportFile(file)
+      const broken = transactionImports.value.filter(
+        (i) =>
+          i.status === 'completed' &&
+          i.transactionsCount > 0 &&
+          i.agentsCount === 0,
+      )
       const existing = transactionImports.value.filter(
         (i) =>
           i.status === 'completed' &&
           i.periodStart === parsed.period.start &&
           i.periodEnd === parsed.period.end,
       )
+      const replaceCandidates = [
+        ...new Map(
+          [...existing, ...broken].map((i) => [i.id, i]),
+        ).values(),
+      ]
       const conflict: ImportConflict | null =
-        existing.length > 0
+        replaceCandidates.length > 0
           ? {
               periodStart: parsed.period.start,
               periodEnd: parsed.period.end,
-              existingImportIds: existing.map((e) => e.id),
+              existingImportIds: replaceCandidates.map((e) => e.id),
               affectedAgentIds: parsed.uniqueAgentIds,
             }
           : null
@@ -1868,14 +1895,22 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       }))
 
       const resolvedRows = parsed.transactions.map((t) => {
+        const eventDate = t.occurredAt?.slice(0, 10) ?? null
         const agentId = resolveHistoricalAgentId({
           reportAgentId: t.agentId,
           receiverPlayerId: t.receiverPlayerId,
-          periodStart: parsed.period.start,
-          periodEnd: parsed.period.end,
+          eventDate,
           playerPeriodLinks: playerLinks,
         })
-        return { ...t, agentId }
+        const week = eventDate
+          ? mondaySundayContaining(eventDate)
+          : parsed.period
+        return {
+          ...t,
+          agentId,
+          periodStart: week.start,
+          periodEnd: week.end,
+        }
       })
 
       const replacedIds =
@@ -1894,6 +1929,17 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       const uniquePlayers = [
         ...new Set(resolvedRows.map((t) => t.receiverPlayerId)),
       ]
+      const campaignAgentIds = new Set(
+        campaigns.value
+          .map((c) => c.agentId)
+          .filter((id): id is string => Boolean(id)),
+      )
+      const agentsLinked = uniqueAgents.filter((id) => campaignAgentIds.has(id))
+      const agentsWithout = uniqueAgents.filter((id) => !campaignAgentIds.has(id))
+      const transactionsWithoutAgent = resolvedRows.filter((t) => !t.agentId).length
+
+      const depositsCount = resolvedRows.filter((t) => t.isDeposit).length
+      const bonusesCount = resolvedRows.filter((t) => t.isBonus).length
 
       const importRow = {
         id: importId,
@@ -1905,14 +1951,20 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         imported_by: auth.memberId,
         status: 'completed',
         transactions_count: resolvedRows.length,
-        deposits_count: resolvedRows.filter((t) => t.isDeposit).length,
-        bonuses_count: resolvedRows.filter((t) => t.isBonus).length,
+        deposits_count: depositsCount,
+        bonuses_count: bonusesCount,
         agents_count: uniqueAgents.length,
         players_count: uniquePlayers.length,
         warnings: parsed.warnings,
         summary: {
           uniqueAgentIds: uniqueAgents,
           uniquePlayerIds: uniquePlayers,
+          agentsLinkedToCampaigns: agentsLinked,
+          agentsWithoutCampaign: agentsWithout,
+          transactionsWithoutAgent,
+          recognizedHeaders: parsed.recognizedHeaders,
+          depositsCount,
+          bonusesCount,
         },
         replaced_import_id: replacedImportId,
         created_at: now,
@@ -1928,10 +1980,10 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         agent_id: t.agentId,
         agent_nickname: t.agentNickname,
         occurred_at: t.occurredAt,
-        period_start: parsed.period.start,
-        period_end: parsed.period.end,
+        period_start: t.periodStart,
+        period_end: t.periodEnd,
         origin: t.origin,
-        transaction_type: t.transactionType,
+        transaction_type: t.sxType ?? t.transactionType,
         amount: t.amount,
         chips_send_out: t.chipsSendOut,
         chips_claimback: t.chipsClaimback,
@@ -1970,8 +2022,9 @@ export const useCampaignsStore = defineStore('campaigns', () => {
             periodStart: parsed.period.start,
             periodEnd: parsed.period.end,
             transactionsCount: resolvedRows.length,
-            depositsCount: resolvedRows.filter((t) => t.isDeposit).length,
-            bonusesCount: resolvedRows.filter((t) => t.isBonus).length,
+            depositsCount,
+            bonusesCount,
+            agentsCount: uniqueAgents.length,
           },
         )
       }
@@ -1986,12 +2039,17 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         importId,
         periodLabel: formatPeriodLabel(parsed.period.start, parsed.period.end),
         transactionsCount: resolvedRows.length,
-        depositsCount: resolvedRows.filter((t) => t.isDeposit).length,
-        bonusesCount: resolvedRows.filter((t) => t.isBonus).length,
+        depositsCount,
+        bonusesCount,
         agentsCount: uniqueAgents.length,
         playersCount: uniquePlayers.length,
+        agentsLinkedToCampaigns: agentsLinked.length,
+        agentsWithoutCampaign: agentsWithout.length,
+        agentsWithoutCampaignIds: agentsWithout,
+        transactionsWithoutAgent,
         replaced: Boolean(conflict && replace),
         affectedCampaignIds: affected.map((c) => c.id),
+        recognizedHeaders: parsed.recognizedHeaders,
       }
     } catch (err) {
       const message =
@@ -2002,6 +2060,38 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     } finally {
       importing.value = false
     }
+  }
+
+  /**
+   * Remove imports de Transações com conciliação quebrada (AGENTES=0)
+   * para permitir reimportação segura após correção do parser.
+   */
+  async function purgeBrokenTransactionImports(): Promise<number> {
+    const toast = useToastStore()
+    const broken = transactionImports.value.filter(
+      (i) =>
+        i.status === 'completed' &&
+        i.transactionsCount > 0 &&
+        i.agentsCount === 0,
+    )
+    if (broken.length === 0) return 0
+
+    quietRealtime(6000)
+    let removed = 0
+    for (const item of broken) {
+      const { error: delError } = await supabase
+        .from('campaign_transaction_imports')
+        .delete()
+        .eq('id', item.id)
+      if (!delError) removed += 1
+    }
+    await load()
+    if (removed > 0) {
+      toast.success(
+        `${removed} import(s) de transações inválido(s) removido(s). Reimporte o XLSX.`,
+      )
+    }
+    return removed
   }
 
   async function removeTransactionImport(id: string) {
@@ -2272,6 +2362,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     previewTransactionReport,
     commitTransactionReport,
     removeTransactionImport,
+    purgeBrokenTransactionImports,
     loadTableDetails,
     loadPlayerTableDetails,
     findAgent,

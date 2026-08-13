@@ -122,8 +122,8 @@ describe('transaction classification', () => {
 
   it('bonus never counts as deposit', () => {
     const flags = classifyTransactionFlags({
-      origin: 'Bônus',
-      transactionType: 'Bonus',
+      origin: '-',
+      sxType: 'Bônus',
     })
     expect(flags.isBonus).toBe(true)
     expect(flags.isDeposit).toBe(false)
@@ -133,15 +133,13 @@ describe('transaction classification', () => {
     const week1 = resolveHistoricalAgentId({
       reportAgentId: 'A',
       receiverPlayerId: '123',
-      periodStart: '2026-08-03',
-      periodEnd: '2026-08-09',
+      eventDate: '2026-08-05',
       playerPeriodLinks: [],
     })
     const week2 = resolveHistoricalAgentId({
       reportAgentId: null,
       receiverPlayerId: '123',
-      periodStart: '2026-08-10',
-      periodEnd: '2026-08-16',
+      eventDate: '2026-08-12',
       playerPeriodLinks: [
         {
           playerId: '123',

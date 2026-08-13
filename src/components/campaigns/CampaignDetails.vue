@@ -21,7 +21,10 @@ import {
   formatPercent,
   formatNumber,
 } from '../../utils/campaignFormat'
-import { stepConversionRate } from '../../utils/campaignFunnelMetrics'
+import {
+  buildJourneyEdges,
+  formatMetaServiceDivergenceLabel,
+} from '../../utils/campaignFunnelMetrics'
 import CampaignStatusBadge from './CampaignStatusBadge.vue'
 
 const props = defineProps<{
@@ -230,44 +233,67 @@ const overviewCards = computed(() => {
   ]
 })
 
-const funnelStepRows = computed(() => {
-  const steps = funnel.value.steps
-  return steps.map((step, idx) => {
-    const prev = idx > 0 ? steps[idx - 1] : null
-    return {
-      ...step,
-      rate: prev ? stepConversionRate(step.value, prev.value) : null,
-    }
-  })
+const funnelStepRows = computed(() => funnel.value.steps)
+
+const funnelEdges = computed(() => buildJourneyEdges(funnel.value.steps))
+
+const worstFunnelEdgeKey = computed(() => {
+  const edges = funnelEdges.value.filter((e) => e.rate != null)
+  if (!edges.length) return null
+  const worst = [...edges].sort((a, b) => (a.rate ?? 999) - (b.rate ?? 999))[0]
+  return `${worst.from.key}->${worst.to.key}`
 })
 
-const funnelKpiCards = computed(() => {
+const funnelKpiGroups = computed(() => {
   const k = funnel.value.kpis
   return [
-    { label: 'CPM', value: formatCurrency(k.cpm) },
-    { label: 'Frequência', value: formatNumber(k.frequency) },
-    { label: 'Custo / conversa Meta', value: formatCurrency(k.costPerMetaConversation) },
-    { label: 'Alcance → Meta', value: formatPercent(k.reachToMetaRate) },
-    { label: 'Meta → Atendimento', value: formatPercent(k.metaToServiceRate) },
-    { label: 'Divergência Meta/Atend.', value: formatPercent(k.metaServiceDivergencePct) },
-    { label: 'Custo / atendimento', value: formatCurrency(k.costPerServiceConversation) },
-    { label: 'Atend. → Clube', value: formatPercent(k.serviceToClubRate) },
-    { label: 'Clube → Fichas', value: formatPercent(k.clubToFichasRate) },
-    { label: 'Custo / jogador', value: formatCurrency(k.costPerPlayer) },
-    { label: 'Custo / ativo', value: formatCurrency(k.costPerActive) },
+    {
+      title: 'Mídia',
+      items: [
+        { label: 'CPM', value: formatCurrency(k.cpm) },
+        { label: 'Frequência', value: formatNumber(k.frequency) },
+        { label: 'Alcance → Meta', value: formatPercent(k.reachToMetaRate) },
+        { label: 'Custo / Conversa Meta', value: formatCurrency(k.costPerMetaConversation) },
+      ],
+    },
+    {
+      title: 'Atendimento',
+      items: [
+        { label: 'Meta → Atendimento', value: formatPercent(k.metaToServiceRate) },
+        {
+          label: 'Divergência Meta / Atendimento',
+          value: formatMetaServiceDivergenceLabel(k) ?? '—',
+        },
+        { label: 'Custo / Atendimento', value: formatCurrency(k.costPerServiceConversation) },
+      ],
+    },
+    {
+      title: 'Conversão',
+      items: [
+        { label: 'Atendimento → Clube', value: formatPercent(k.serviceToClubRate) },
+        { label: 'Clube → Fichas', value: formatPercent(k.clubToFichasRate) },
+      ],
+    },
+    {
+      title: 'Eficiência final',
+      items: [
+        { label: 'Custo / Jogador', value: formatCurrency(k.costPerPlayer) },
+        { label: 'Custo / Jogador Ativo', value: formatCurrency(k.costPerActive) },
+      ],
+    },
   ]
 })
 
 const funnelSoftMessages = computed(() => {
   const w = funnel.value.warnings
   const messages: string[] = []
-  if (w.reachGtImpressions) messages.push('Alcance maior que impressões.')
-  if (w.serviceGtMeta) messages.push('Conversas de atendimento maiores que Meta.')
-  if (w.fichasGtClub) messages.push('Conversões Clube+Fichas maiores que Clube.')
+  if (w.reachGtImpressions) messages.push('Alcance maior que impressões — verificar origem/conciliação.')
+  if (w.serviceGtMeta) messages.push('Conversas de atendimento maiores que Meta — divergência possível.')
+  if (w.fichasGtClub) messages.push('Conversões Clube+Fichas maiores que Clube — conferir dados.')
   return messages
 })
 
-const purchasePowerCards = computed(() => {
+const purchasePowerSummary = computed(() => {
   const pp = purchasePower.value
   return [
     { label: 'Volume depositado', value: formatCurrency(pp.depositedVolume) },
@@ -275,27 +301,27 @@ const purchasePowerCards = computed(() => {
     { label: 'Depósitos', value: formatNumber(pp.depositCount) },
     { label: 'Ticket médio', value: formatCurrency(pp.avgTicket) },
     { label: 'Média / depositante', value: formatCurrency(pp.avgPerDepositor) },
+  ]
+})
+
+const purchasePowerDistribution = computed(() => {
+  const pp = purchasePower.value
+  return [
     { label: 'Mediana / depositante', value: formatCurrency(pp.medianPerDepositor) },
     { label: 'Maior depósito', value: formatCurrency(pp.maxDeposit) },
-    { label: 'Semanas com depósito', value: formatNumber(pp.weeksWithDeposit) },
     {
-      label: 'Top 1 concentração',
+      label: 'Top 1',
       value: pp.top1Share != null ? formatPercent(pp.top1Share * 100) : '—',
     },
     {
-      label: 'Top 3 concentração',
+      label: 'Top 3',
       value: pp.top3Share != null ? formatPercent(pp.top3Share * 100) : '—',
     },
     {
-      label: 'Top 10 concentração',
+      label: 'Top 10',
       value: pp.top10Share != null ? formatPercent(pp.top10Share * 100) : '—',
     },
-    {
-      label: 'Rake / depósito (comportamental)',
-      value: formatNumber(pp.rakeToDepositRatio),
-    },
-    { label: 'Investimento ativação', value: formatCurrency(pp.activationInvestment) },
-    { label: 'Bônus', value: formatNumber(pp.bonusCount) },
+    { label: 'Semanas com depósito', value: formatNumber(pp.weeksWithDeposit) },
   ]
 })
 
@@ -615,55 +641,113 @@ watch(tableDetailsPeriod, async (period) => {
             </div>
           </div>
 
-          <div v-else-if="activeTab === 'funnel'" class="space-y-4">
-            <div class="space-y-2">
-              <div
-                v-for="step in funnelStepRows"
-                :key="step.key"
-                class="rounded-xl bg-surface/40 px-3 py-2.5"
-              >
-                <div class="flex items-center justify-between gap-2">
-                  <p class="text-sm font-medium text-text-primary">{{ step.label }}</p>
-                  <p class="tabular-nums text-sm text-text-secondary">
-                    {{
-                      step.kind === 'money'
-                        ? formatCurrency(step.value)
-                        : formatNumber(step.value)
-                    }}
+          <div v-else-if="activeTab === 'funnel'" class="space-y-5">
+            <div class="rounded-xl border border-border-subtle/70 bg-surface/30 px-4 py-3">
+              <p class="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                Contexto financeiro
+              </p>
+              <div class="mt-2 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <p class="text-xs text-text-muted">Investimento da Campanha</p>
+                  <p class="text-lg font-semibold tabular-nums text-text-primary">
+                    {{ formatCurrency(campaign.investment) }}
                   </p>
                 </div>
-                <p v-if="step.rate != null" class="mt-0.5 text-xs text-text-muted">
-                  Conversão etapa: {{ formatPercent(step.rate) }}
-                </p>
+                <div class="text-right">
+                  <p class="text-xs text-text-muted">CPM</p>
+                  <p class="text-sm font-semibold tabular-nums text-accent">
+                    {{ formatCurrency(funnel.kpis.cpm) }}
+                  </p>
+                </div>
               </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+            <div class="mx-auto flex max-w-xl flex-col items-stretch gap-0">
+              <template v-for="(step, idx) in funnelStepRows" :key="step.key">
+                <div
+                  class="rounded-xl border border-border-subtle/60 bg-board-elevated/50 px-4 py-3"
+                  :style="{
+                    width: `${Math.max(42, 100 - idx * 8)}%`,
+                    marginLeft: 'auto',
+                    marginRight: 'auto',
+                  }"
+                >
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="text-sm font-medium text-text-primary">{{ step.label }}</p>
+                    <p class="tabular-nums text-sm font-semibold text-text-secondary">
+                      {{ formatNumber(step.value) }}
+                    </p>
+                  </div>
+                  <p
+                    v-if="
+                      idx > 0 &&
+                      worstFunnelEdgeKey === `${funnelEdges[idx - 1].from.key}->${funnelEdges[idx - 1].to.key}` &&
+                      (funnelEdges[idx - 1]?.loss ?? 0) > 0
+                    "
+                    class="mt-1 text-[11px] text-amber-200/90"
+                  >
+                    Perda: {{ formatNumber(funnelEdges[idx - 1].loss) }}
+                  </p>
+                </div>
+                <div
+                  v-if="idx < funnelStepRows.length - 1"
+                  class="flex flex-col items-center py-1.5"
+                >
+                  <span class="text-[11px] font-medium tabular-nums text-accent">
+                    {{
+                      funnelEdges[idx]?.rate != null
+                        ? formatPercent(funnelEdges[idx].rate)
+                        : '—'
+                    }}
+                  </span>
+                  <span class="text-text-muted">↓</span>
+                </div>
+              </template>
+            </div>
+
+            <div class="grid gap-3 sm:grid-cols-2">
               <div
-                v-for="card in funnelKpiCards"
-                :key="card.label"
-                class="rounded-xl bg-surface/40 px-3 py-2.5"
+                v-for="group in funnelKpiGroups"
+                :key="group.title"
+                class="rounded-xl border border-border-subtle/50 bg-surface/30 p-3"
               >
-                <p class="text-[11px] font-medium uppercase tracking-wide text-text-muted">
-                  {{ card.label }}
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                  {{ group.title }}
                 </p>
-                <p class="mt-1 text-sm font-semibold tabular-nums text-text-primary">
-                  {{ card.value }}
-                </p>
+                <ul class="mt-2 space-y-2">
+                  <li
+                    v-for="item in group.items"
+                    :key="item.label"
+                    class="flex items-start justify-between gap-2 text-sm"
+                  >
+                    <span class="text-text-secondary">{{ item.label }}</span>
+                    <span class="shrink-0 text-right tabular-nums font-medium text-text-primary">
+                      {{ item.value }}
+                    </span>
+                  </li>
+                </ul>
               </div>
             </div>
 
-            <div
-              v-if="funnel.diagnosis"
-              class="rounded-xl border border-accent/30 bg-accent/10 px-3 py-3 text-sm text-text-secondary"
-            >
-              <p class="font-medium text-accent">Diagnóstico</p>
-              <p class="mt-1">{{ funnel.diagnosis.message }}</p>
+            <div v-if="funnel.diagnosis?.blocks?.length" class="space-y-2">
+              <div
+                v-for="(block, i) in funnel.diagnosis.blocks"
+                :key="i"
+                class="rounded-xl border px-3 py-3 text-sm"
+                :class="{
+                  'border-danger/40 bg-danger/10 text-red-100': block.kind === 'bottleneck',
+                  'border-emerald-400/30 bg-emerald-500/10 text-emerald-100': block.kind === 'positive',
+                  'border-amber-400/30 bg-amber-500/10 text-amber-100': block.kind === 'attention',
+                }"
+              >
+                <p class="font-medium">{{ block.title }}</p>
+                <p class="mt-1 opacity-90">{{ block.detail }}</p>
+              </div>
             </div>
 
             <ul
               v-if="funnelSoftMessages.length"
-              class="space-y-1 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100"
+              class="space-y-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-text-muted"
             >
               <li v-for="(msg, i) in funnelSoftMessages" :key="i">{{ msg }}</li>
             </ul>
@@ -721,31 +805,66 @@ watch(tableDetailsPeriod, async (period) => {
             </template>
           </div>
 
-          <div v-else-if="activeTab === 'transactions'" class="space-y-4">
+          <div v-else-if="activeTab === 'transactions'" class="space-y-5">
             <template v-if="!hasAgent">
               <p class="text-sm text-text-muted">Nenhum agente vinculado.</p>
             </template>
             <template v-else>
-              <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
-                <div
-                  v-for="card in purchasePowerCards"
-                  :key="card.label"
-                  class="rounded-xl bg-surface/40 px-3 py-2.5"
-                >
-                  <p class="text-[11px] font-medium uppercase tracking-wide text-text-muted">
-                    {{ card.label }}
-                  </p>
-                  <p class="mt-1 text-sm font-semibold tabular-nums text-text-primary">
-                    {{ card.value }}
-                  </p>
+              <section class="space-y-2">
+                <h4 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                  Resumo de poder de compra
+                </h4>
+                <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+                  <div
+                    v-for="card in purchasePowerSummary"
+                    :key="card.label"
+                    class="rounded-xl bg-surface/40 px-3 py-2.5"
+                  >
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-text-muted">
+                      {{ card.label }}
+                    </p>
+                    <p class="mt-1 text-sm font-semibold tabular-nums text-text-primary">
+                      {{ card.value }}
+                    </p>
+                  </div>
                 </div>
-              </div>
+              </section>
 
-              <p class="text-xs text-text-muted">
-                Rake/depósito é métrica comportamental — não entra no payback.
-              </p>
+              <section class="space-y-2">
+                <h4 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                  Distribuição
+                </h4>
+                <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                  <div
+                    v-for="card in purchasePowerDistribution"
+                    :key="card.label"
+                    class="rounded-xl bg-surface/30 px-3 py-2.5"
+                  >
+                    <p class="text-[11px] text-text-muted">{{ card.label }}</p>
+                    <p class="mt-1 text-sm font-semibold tabular-nums text-text-primary">
+                      {{ card.value }}
+                    </p>
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <div
+                    v-for="band in purchasePower.bands"
+                    :key="band.label"
+                    class="rounded-lg bg-surface/40 px-3 py-2 text-xs"
+                  >
+                    <p class="text-text-muted">{{ band.label }}</p>
+                    <p class="mt-0.5 text-base font-semibold text-text-primary">
+                      {{ band.count }}
+                    </p>
+                    <p class="text-text-secondary">{{ formatCurrency(band.volume) }}</p>
+                  </div>
+                </div>
+              </section>
 
-              <div class="space-y-2">
+              <section class="space-y-2">
+                <h4 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                  Evolução
+                </h4>
                 <div class="flex flex-wrap gap-2">
                   <button
                     v-for="mode in [
@@ -809,53 +928,68 @@ watch(tableDetailsPeriod, async (period) => {
                 <p v-else class="text-sm text-text-muted">
                   Nenhum depósito importado para esta agência.
                 </p>
-              </div>
+              </section>
 
-              <div class="space-y-2">
+              <section class="space-y-2">
                 <h4 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                  Faixas de depósito
+                  Ativação × depósito
                 </h4>
-                <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  <div
-                    v-for="band in purchasePower.bands"
-                    :key="band.label"
-                    class="rounded-lg bg-surface/40 px-3 py-2 text-xs"
-                  >
-                    <p class="text-text-muted">{{ band.label }}</p>
-                    <p class="mt-0.5 text-base font-semibold text-text-primary">
-                      {{ band.count }}
+                <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                  <div class="rounded-xl bg-surface/40 px-3 py-2.5">
+                    <p class="text-[11px] uppercase text-text-muted">Depositou e ativo</p>
+                    <p class="mt-1 font-semibold tabular-nums">
+                      {{ purchasePower.activationCross.depositedAndActive }}
                     </p>
-                    <p class="text-text-secondary">{{ formatCurrency(band.volume) }}</p>
+                  </div>
+                  <div class="rounded-xl bg-surface/40 px-3 py-2.5">
+                    <p class="text-[11px] uppercase text-text-muted">Depositou sem ativo</p>
+                    <p class="mt-1 font-semibold tabular-nums">
+                      {{ purchasePower.activationCross.depositedNotActive }}
+                    </p>
+                  </div>
+                  <div class="rounded-xl bg-surface/40 px-3 py-2.5">
+                    <p class="text-[11px] uppercase text-text-muted">Ativo e depositou</p>
+                    <p class="mt-1 font-semibold tabular-nums">
+                      {{ purchasePower.activationCross.activeAndDeposited }}
+                    </p>
+                  </div>
+                  <div class="rounded-xl bg-surface/40 px-3 py-2.5">
+                    <p class="text-[11px] uppercase text-text-muted">Ativo sem depósito</p>
+                    <p class="mt-1 font-semibold tabular-nums">
+                      {{ purchasePower.activationCross.activeWithoutDeposit }}
+                    </p>
                   </div>
                 </div>
-              </div>
+              </section>
 
-              <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                <div class="rounded-xl bg-surface/40 px-3 py-2.5">
-                  <p class="text-[11px] uppercase text-text-muted">Depositou e ativo</p>
-                  <p class="mt-1 font-semibold tabular-nums">
-                    {{ purchasePower.activationCross.depositedAndActive }}
-                  </p>
+              <section class="space-y-2">
+                <h4 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                  Custo de ativação
+                </h4>
+                <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                  <div class="rounded-xl border border-border-subtle/50 bg-surface/30 px-3 py-2.5">
+                    <p class="text-[11px] text-text-muted">Investimento de Ativação</p>
+                    <p class="mt-1 text-sm font-semibold tabular-nums text-text-primary">
+                      {{ formatCurrency(purchasePower.activationInvestment) }}
+                    </p>
+                  </div>
+                  <div class="rounded-xl border border-border-subtle/50 bg-surface/30 px-3 py-2.5">
+                    <p class="text-[11px] text-text-muted">Bônus</p>
+                    <p class="mt-1 text-sm font-semibold tabular-nums text-text-primary">
+                      {{ formatNumber(purchasePower.bonusCount) }}
+                    </p>
+                  </div>
+                  <div class="rounded-xl border border-border-subtle/50 bg-surface/30 px-3 py-2.5">
+                    <p class="text-[11px] text-text-muted">Rake / depósito</p>
+                    <p class="mt-1 text-sm font-semibold tabular-nums text-text-primary">
+                      {{ formatNumber(purchasePower.rakeToDepositRatio) }}
+                    </p>
+                    <p class="mt-0.5 text-[10px] text-text-muted">
+                      Comportamental — não é payback
+                    </p>
+                  </div>
                 </div>
-                <div class="rounded-xl bg-surface/40 px-3 py-2.5">
-                  <p class="text-[11px] uppercase text-text-muted">Depositou sem ativo</p>
-                  <p class="mt-1 font-semibold tabular-nums">
-                    {{ purchasePower.activationCross.depositedNotActive }}
-                  </p>
-                </div>
-                <div class="rounded-xl bg-surface/40 px-3 py-2.5">
-                  <p class="text-[11px] uppercase text-text-muted">Ativo e depositou</p>
-                  <p class="mt-1 font-semibold tabular-nums">
-                    {{ purchasePower.activationCross.activeAndDeposited }}
-                  </p>
-                </div>
-                <div class="rounded-xl bg-surface/40 px-3 py-2.5">
-                  <p class="text-[11px] uppercase text-text-muted">Ativo sem depósito</p>
-                  <p class="mt-1 font-semibold tabular-nums">
-                    {{ purchasePower.activationCross.activeWithoutDeposit }}
-                  </p>
-                </div>
-              </div>
+              </section>
             </template>
           </div>
 

@@ -331,16 +331,23 @@ const hasResult = computed(() => Boolean(result.value || txResult.value))
               class="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-3 text-sm text-amber-100"
             >
               <p class="font-medium">
-                Já existem transações para este período.
+                Já existem transações deste período (ou import anterior com conciliação inválida).
               </p>
               <p class="mt-1 text-xs text-amber-100/80">
-                Substituir remove o import anterior do período e reinsere (upsert por Transaction ID).
+                Substituir remove o(s) lote(s) anterior(es) e reinsere com upsert por Transaction ID.
               </p>
               <label class="mt-3 flex items-center gap-2 text-sm">
                 <input v-model="replaceConfirmed" type="checkbox" class="rounded border-white/20" />
-                Substituir / reprocessar o período existente
+                Substituir / reprocessar
               </label>
             </div>
+
+            <p
+              v-if="txPreview.parsed.uniqueAgentIds.length === 0"
+              class="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
+            >
+              Nenhum Agente player ID reconhecido no arquivo. Verifique o cabeçalho antes de confirmar.
+            </p>
 
             <ul
               v-if="txPreview.parsed.warnings.length"
@@ -401,11 +408,28 @@ const hasResult = computed(() => Boolean(result.value || txResult.value))
             <p class="text-sm font-semibold text-success">
               Transações processadas — {{ txResult.periodLabel }}
             </p>
-            <p class="text-sm text-text-secondary">
-              {{ txResult.transactionsCount }} transações ·
-              {{ txResult.depositsCount }} depósitos ·
-              {{ txResult.bonusesCount }} bônus ·
-              {{ txResult.agentsCount }} agências
+            <ul class="grid grid-cols-2 gap-2 text-sm text-text-secondary sm:grid-cols-3">
+              <li>{{ txResult.transactionsCount }} transações</li>
+              <li>{{ txResult.depositsCount }} depósitos</li>
+              <li>{{ txResult.bonusesCount }} bônus</li>
+              <li>{{ txResult.playersCount }} jogadores</li>
+              <li>{{ txResult.agentsCount }} Agent IDs</li>
+              <li>{{ txResult.agentsLinkedToCampaigns }} vinculados</li>
+            </ul>
+            <p
+              v-if="txResult.agentsWithoutCampaign > 0"
+              class="text-xs text-amber-100"
+            >
+              {{ txResult.agentsWithoutCampaign }} Agent ID(s) sem campanha:
+              {{ txResult.agentsWithoutCampaignIds.slice(0, 8).join(', ') }}
+              <template v-if="txResult.agentsWithoutCampaignIds.length > 8">…</template>
+            </p>
+            <p
+              v-if="txResult.transactionsWithoutAgent > 0"
+              class="text-xs text-amber-100"
+            >
+              {{ txResult.transactionsWithoutAgent }} transação(ões) sem Agent ID
+              (preservadas, sem campanha).
             </p>
             <p class="text-xs text-text-muted">
               {{ txResult.affectedCampaignIds.length }} campanha(s) afetada(s).

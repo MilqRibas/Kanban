@@ -2,7 +2,6 @@ import { safeDivide } from './campaignMetricsBridge'
 import type { Campaign } from '../types/campaigns'
 
 export type FunnelStepKey =
-  | 'investment'
   | 'impressions'
   | 'reach'
   | 'metaConversations'
@@ -15,7 +14,7 @@ export type FunnelStep = {
   key: FunnelStepKey
   label: string
   value: number | null
-  kind: 'money' | 'count'
+  kind: 'count'
   source: 'manual' | 'computed'
 }
 
@@ -26,6 +25,7 @@ export type FunnelKpis = {
   reachToMetaRate: number | null
   metaToServiceRate: number | null
   metaServiceDivergencePct: number | null
+  metaServiceAbsoluteDiff: number | null
   costPerServiceConversation: number | null
   serviceToClubRate: number | null
   clubToFichasRate: number | null
@@ -33,9 +33,14 @@ export type FunnelKpis = {
   costPerActive: number | null
 }
 
+export type FunnelDiagnosisBlock = {
+  kind: 'bottleneck' | 'positive' | 'attention'
+  title: string
+  detail: string
+}
+
 export type FunnelDiagnosis = {
-  code: string
-  message: string
+  blocks: FunnelDiagnosisBlock[]
 } | null
 
 export type FunnelWarnings = {
@@ -49,11 +54,14 @@ function n(value: number | null | undefined): number | null {
   return Number(value)
 }
 
+/**
+ * Jornada de conversão — SEM investimento (contexto financeiro separado).
+ * Nunca calcular Impressões/Investimento como “conversão”.
+ */
 export function buildFunnelSteps(
   campaign: Pick<
     Campaign,
     | 'acquisitionNature'
-    | 'investment'
     | 'impressions'
     | 'reach'
     | 'metaConversations'
@@ -64,90 +72,65 @@ export function buildFunnelSteps(
   activePlayers: number,
 ): FunnelStep[] {
   const paid = campaign.acquisitionNature === 'PAID'
-  const steps: FunnelStep[] = [
-    {
-      key: 'investment',
-      label: 'Investimento da Campanha',
-      value: n(campaign.investment),
-      kind: 'money',
-      source: 'manual',
-    },
-  ]
+  const steps: FunnelStep[] = []
 
-  if (paid || campaign.impressions != null) {
-    steps.push({
-      key: 'impressions',
-      label: 'Impressões',
-      value: n(campaign.impressions),
-      kind: 'count',
-      source: 'manual',
-    })
-  }
-  if (paid || campaign.reach != null) {
-    steps.push({
-      key: 'reach',
-      label: 'Alcance',
-      value: n(campaign.reach),
-      kind: 'count',
-      source: 'manual',
-    })
-  }
-  if (paid || campaign.metaConversations != null) {
-    steps.push({
-      key: 'metaConversations',
-      label: 'Conversas iniciadas — Meta',
-      value: n(campaign.metaConversations),
-      kind: 'count',
-      source: 'manual',
-    })
+  const pushIf = (
+    key: FunnelStepKey,
+    label: string,
+    value: number | null,
+    source: 'manual' | 'computed',
+    force = false,
+  ) => {
+    if (force || value != null || paid) {
+      if (!paid && value == null && key !== 'activePlayers' && key !== 'clubConversions' && key !== 'clubFichasConversions') {
+        return
+      }
+      steps.push({ key, label, value, kind: 'count', source })
+    }
   }
 
-  if (campaign.serviceConversations != null || paid) {
-    steps.push({
-      key: 'serviceConversations',
-      label: 'Conversas iniciadas — Atendimento',
-      value: n(campaign.serviceConversations),
-      kind: 'count',
-      source: 'manual',
-    })
-  }
-
-  steps.push(
-    {
-      key: 'clubConversions',
-      label: 'Conversões no Clube',
-      value: n(campaign.clubConversions),
-      kind: 'count',
-      source: 'manual',
-    },
-    {
-      key: 'clubFichasConversions',
-      label: 'Conversões Clube + Fichas',
-      value: n(campaign.clubFichasConversions),
-      kind: 'count',
-      source: 'manual',
-    },
-    {
-      key: 'activePlayers',
-      label: 'Jogadores Ativos',
-      value: Number.isFinite(activePlayers) ? activePlayers : null,
-      kind: 'count',
-      source: 'computed',
-    },
+  pushIf('impressions', 'Impressões', n(campaign.impressions), 'manual')
+  pushIf('reach', 'Alcance', n(campaign.reach), 'manual')
+  pushIf(
+    'metaConversations',
+    'Conversas Meta',
+    n(campaign.metaConversations),
+    'manual',
   )
+  pushIf(
+    'serviceConversations',
+    'Conversas Atendimento',
+    n(campaign.serviceConversations),
+    'manual',
+    !paid && campaign.serviceConversations != null,
+  )
+  steps.push({
+    key: 'clubConversions',
+    label: 'Conversões no Clube',
+    value: n(campaign.clubConversions),
+    kind: 'count',
+    source: 'manual',
+  })
+  steps.push({
+    key: 'clubFichasConversions',
+    label: 'Clube + Fichas',
+    value: n(campaign.clubFichasConversions),
+    kind: 'count',
+    source: 'manual',
+  })
+  steps.push({
+    key: 'activePlayers',
+    label: 'Jogadores Ativos',
+    value: Number.isFinite(activePlayers) ? activePlayers : null,
+    kind: 'count',
+    source: 'computed',
+  })
 
-  // Orgânico: omitir etapas de mídia sem dado (já filtradas acima).
-  // Remover etapas intermediárias vazias em orgânico (exceto finais).
   if (!paid) {
     return steps.filter((s) => {
-      if (
-        s.key === 'impressions' ||
-        s.key === 'reach' ||
-        s.key === 'metaConversations'
-      ) {
+      if (s.key === 'impressions' || s.key === 'reach' || s.key === 'metaConversations') {
         return s.value != null
       }
-      if (s.key === 'investment') return true
       if (s.key === 'serviceConversations') return s.value != null
       return true
     })
@@ -184,8 +167,12 @@ export function buildFunnelKpis(
       : null
 
   let metaServiceDivergencePct: number | null = null
-  if (meta != null && service != null && meta > 0) {
-    metaServiceDivergencePct = ((service - meta) / meta) * 100
+  let metaServiceAbsoluteDiff: number | null = null
+  if (meta != null && service != null) {
+    metaServiceAbsoluteDiff = service - meta
+    if (meta > 0) {
+      metaServiceDivergencePct = ((service - meta) / meta) * 100
+    }
   }
 
   return {
@@ -201,6 +188,7 @@ export function buildFunnelKpis(
       return r === null ? null : r * 100
     })(),
     metaServiceDivergencePct,
+    metaServiceAbsoluteDiff,
     costPerServiceConversation: safeDivide(investment ?? NaN, service ?? 0),
     serviceToClubRate: (() => {
       const r = safeDivide(club ?? NaN, service ?? 0)
@@ -215,38 +203,89 @@ export function buildFunnelKpis(
   }
 }
 
-export function diagnoseFunnel(kpis: FunnelKpis): FunnelDiagnosis {
-  const low = (rate: number | null) => rate != null && rate < 30
-  const ok = (rate: number | null) => rate != null && rate >= 50
+export type JourneyEdge = {
+  from: FunnelStep
+  to: FunnelStep
+  rate: number | null
+  loss: number | null
+}
 
-  if (ok(kpis.metaToServiceRate) && low(kpis.serviceToClubRate)) {
-    return {
-      code: 'club_bottleneck',
-      message:
-        'Boa geração de conversa, baixa conversão em clube — revisar jornada pós-atendimento.',
+export function buildJourneyEdges(steps: FunnelStep[]): JourneyEdge[] {
+  const edges: JourneyEdge[] = []
+  for (let i = 1; i < steps.length; i += 1) {
+    const from = steps[i - 1]
+    const to = steps[i]
+    const rate = stepConversionRate(to.value, from.value)
+    const loss =
+      from.value != null && to.value != null ? from.value - to.value : null
+    edges.push({ from, to, rate, loss })
+  }
+  return edges
+}
+
+/**
+ * Diagnóstico quantitativo relativo entre etapas (sem benchmarks inventados).
+ */
+export function diagnoseFunnel(
+  steps: FunnelStep[],
+  kpis: FunnelKpis,
+): FunnelDiagnosis {
+  const edges = buildJourneyEdges(steps).filter((e) => e.rate != null)
+  const blocks: FunnelDiagnosisBlock[] = []
+
+  if (edges.length > 0) {
+    const worst = [...edges].sort((a, b) => (a.rate ?? 999) - (b.rate ?? 999))[0]
+    if (worst && worst.rate != null) {
+      const lost =
+        worst.loss != null && worst.loss > 0
+          ? ` ${Math.round(worst.loss)} de ${formatCount(worst.from.value)} não passaram para ${worst.to.label.toLowerCase()}.`
+          : ''
+      blocks.push({
+        kind: 'bottleneck',
+        title: `Principal gargalo: ${worst.from.label} → ${worst.to.label}`,
+        detail: `${formatPct(worst.rate)} de conversão.${lost}`,
+      })
+    }
+
+    const best = [...edges].sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1))[0]
+    if (best && best.rate != null && best !== worst) {
+      blocks.push({
+        kind: 'positive',
+        title: `Ponto positivo: ${best.from.label} → ${best.to.label}`,
+        detail: `${formatPct(best.rate)} de passagem entre essas etapas.`,
+      })
     }
   }
-  if (ok(kpis.serviceToClubRate) && low(kpis.clubToFichasRate)) {
-    return {
-      code: 'fichas_bottleneck',
-      message:
-        'Boa conversão em clube, baixa conclusão Fichas — conciliar cadastro/vínculo.',
-    }
-  }
+
   if (
-    kpis.clubToFichasRate != null &&
-    kpis.clubToFichasRate >= 50 &&
-    kpis.costPerActive != null &&
-    kpis.costPerPlayer != null &&
-    kpis.costPerActive > kpis.costPerPlayer * 1.5
+    kpis.metaServiceAbsoluteDiff != null &&
+    kpis.metaServiceDivergencePct != null &&
+    kpis.metaServiceAbsoluteDiff !== 0
   ) {
-    return {
-      code: 'activation_bottleneck',
-      message:
-        'Boa conclusão Fichas, ativação relativa baixa — reforçar onboarding/jogo.',
-    }
+    const abs = Math.abs(kpis.metaServiceAbsoluteDiff)
+    const below = kpis.metaServiceAbsoluteDiff < 0
+    blocks.push({
+      kind: 'attention',
+      title: 'Atenção: Meta × Atendimento',
+      detail: below
+        ? `Atendimento registrou ${abs} conversas a menos que a Meta (${formatPct(Math.abs(kpis.metaServiceDivergencePct))} abaixo da Meta).`
+        : `Atendimento registrou ${abs} conversas a mais que a Meta (${formatPct(Math.abs(kpis.metaServiceDivergencePct))} acima da Meta).`,
+    })
   }
-  return null
+
+  return blocks.length ? { blocks } : null
+}
+
+function formatPct(value: number): string {
+  return `${value.toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}%`
+}
+
+function formatCount(value: number | null): string {
+  if (value == null) return '—'
+  return value.toLocaleString('pt-BR')
 }
 
 export function funnelWarnings(
@@ -278,6 +317,29 @@ export function stepConversionRate(
   current: number | null,
   previous: number | null,
 ): number | null {
+  // Nunca tratar dinheiro como população — callers devem não passar investment.
   const r = safeDivide(current ?? NaN, previous ?? 0)
   return r === null ? null : r * 100
+}
+
+export function formatMetaServiceDivergenceLabel(kpis: FunnelKpis): string | null {
+  if (
+    kpis.metaServiceDivergencePct == null ||
+    kpis.metaServiceAbsoluteDiff == null
+  ) {
+    return null
+  }
+  const absPct = Math.abs(kpis.metaServiceDivergencePct)
+  const absDiff = Math.abs(kpis.metaServiceAbsoluteDiff)
+  const pct = absPct.toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+  if (kpis.metaServiceAbsoluteDiff < 0) {
+    return `${pct}% abaixo da Meta · ${absDiff.toLocaleString('pt-BR')} conversas de diferença`
+  }
+  if (kpis.metaServiceAbsoluteDiff > 0) {
+    return `${pct}% acima da Meta · ${absDiff.toLocaleString('pt-BR')} conversas de diferença`
+  }
+  return 'Sem divergência'
 }

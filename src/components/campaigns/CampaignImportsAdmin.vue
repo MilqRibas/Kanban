@@ -48,7 +48,7 @@ const rows = computed<UnifiedImportRow[]>(() => {
     status: item.status,
     agentsCount: item.agentsCount,
     playersCount: item.playersCount,
-    extraLabel: `${item.transactionsCount} txs · ${item.depositsCount} dep.`,
+    extraLabel: `${item.transactionsCount} tx · ${item.depositsCount} dep. · ${item.bonusesCount} bônus`,
   }))
   return [...rake, ...txs].sort(
     (a, b) => new Date(b.importedAt).getTime() - new Date(a.importedAt).getTime(),
