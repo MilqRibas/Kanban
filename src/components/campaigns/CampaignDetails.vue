@@ -833,9 +833,9 @@ watch(tableDetailsPeriod, async (period) => {
               </div>
             </div>
 
-            <div class="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(280px,1fr)]">
+            <div class="grid items-start gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(280px,1fr)]">
               <!-- Funil principal -->
-              <div class="rounded-2xl border border-border-subtle/70 bg-board-elevated/40 p-3 sm:p-5">
+              <div class="h-fit rounded-2xl border border-border-subtle/70 bg-board-elevated/40 p-3 sm:p-5">
                 <div class="mb-4">
                   <h4 class="text-sm font-semibold text-text-primary">Jornada de conversão</h4>
                   <p class="text-xs text-text-muted">
@@ -877,7 +877,7 @@ watch(tableDetailsPeriod, async (period) => {
                       <div
                         class="relative flex w-full max-w-md items-center justify-center"
                         :style="{
-                          height: '52px',
+                          height: '44px',
                           clipPath: row.clipPath,
                           background: row.background,
                         }"
