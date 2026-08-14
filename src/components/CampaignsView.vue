@@ -13,6 +13,7 @@ import CampaignDetails from './campaigns/CampaignDetails.vue'
 import CampaignCharts from './campaigns/CampaignCharts.vue'
 import CampaignComparison from './campaigns/CampaignComparison.vue'
 import CampaignImportsAdmin from './campaigns/CampaignImportsAdmin.vue'
+import CollapsiblePanel from './campaigns/CollapsiblePanel.vue'
 import { buildSearchHaystack, matchesSearch } from '../utils/search'
 
 type CampaignScreen = 'overview' | 'list' | 'comparison' | 'imports'
@@ -247,20 +248,17 @@ function onBackFromDetails() {
         </section>
 
         <section v-else-if="screen === 'list'" class="space-y-3">
-          <div class="flex items-baseline justify-between gap-2">
-            <h3 class="text-base font-semibold text-text-primary sm:text-lg">
-              Lista de campanhas
-            </h3>
-            <span class="text-xs text-text-muted">
-              {{ filteredCampaigns.length }}
-              {{ filteredCampaigns.length === 1 ? 'campanha' : 'campanhas' }}
-            </span>
-          </div>
-          <CampaignTable
-            :campaigns="filteredCampaigns"
-            @view="onView"
-            @edit="onEdit"
-          />
+          <CollapsiblePanel
+            title="Lista de campanhas"
+            :hint="`${filteredCampaigns.length} ${filteredCampaigns.length === 1 ? 'campanha' : 'campanhas'}`"
+            :default-open="true"
+          >
+            <CampaignTable
+              :campaigns="filteredCampaigns"
+              @view="onView"
+              @edit="onEdit"
+            />
+          </CollapsiblePanel>
         </section>
 
         <section v-else-if="screen === 'comparison'">

@@ -39,6 +39,7 @@ import {
   formatMetaServiceDivergenceLabel,
 } from '../../utils/campaignFunnelMetrics'
 import CampaignStatusBadge from './CampaignStatusBadge.vue'
+import CollapsiblePanel from './CollapsiblePanel.vue'
 
 const props = defineProps<{
   campaign: Campaign
@@ -1538,7 +1539,13 @@ watch(tableDetailsPeriod, async (period) => {
                 </div>
               </div>
 
-              <div v-if="filteredPlayers.length" class="overflow-x-auto">
+              <CollapsiblePanel
+                v-if="filteredPlayers.length"
+                title="Jogadores"
+                :hint="`${filteredPlayers.length} na agência`"
+                :default-open="true"
+              >
+                <div class="overflow-x-auto px-3 pb-3">
                 <table class="w-full text-left text-sm">
                   <thead class="border-b border-border-subtle text-xs uppercase text-text-muted">
                     <tr>
@@ -1614,7 +1621,8 @@ watch(tableDetailsPeriod, async (period) => {
                     </tr>
                   </tbody>
                 </table>
-              </div>
+                </div>
+              </CollapsiblePanel>
               <p v-else class="text-sm text-text-muted">
                 Nenhum jogador encontrado.
               </p>
@@ -1644,7 +1652,13 @@ watch(tableDetailsPeriod, async (period) => {
                 </select>
               </div>
 
-              <div v-if="tableDetails.length" class="overflow-x-auto">
+              <CollapsiblePanel
+                v-if="tableDetails.length"
+                title="Detalhes de mesa"
+                :hint="`${tableDetails.length} linhas`"
+                :default-open="true"
+              >
+                <div class="overflow-x-auto px-3 pb-3">
                 <table class="w-full text-left text-sm">
                   <thead class="border-b border-border-subtle text-xs uppercase text-text-muted">
                     <tr>
@@ -1667,10 +1681,11 @@ watch(tableDetailsPeriod, async (period) => {
                     </tr>
                   </tbody>
                 </table>
-                <p v-if="tableDetails.length > 100" class="mt-2 text-xs text-text-muted">
+                <p v-if="tableDetails.length > 100" class="mt-2 px-3 pb-3 text-xs text-text-muted">
                   Mostrando 100 de {{ tableDetails.length }} resultados.
                 </p>
-              </div>
+                </div>
+              </CollapsiblePanel>
               <p v-else class="text-sm text-text-muted">
                 Nenhum detalhe de mesa encontrado.
               </p>

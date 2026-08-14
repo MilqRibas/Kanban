@@ -4,6 +4,7 @@ import type { Campaign } from '../../types/campaigns'
 import { useCampaignsStore } from '../../stores/campaigns'
 import { formatCurrency, formatPercent } from '../../utils/campaignFormat'
 import CampaignStatusBadge from './CampaignStatusBadge.vue'
+import CollapsiblePanel from './CollapsiblePanel.vue'
 
 const props = defineProps<{
   campaigns: Campaign[]
@@ -74,53 +75,55 @@ const lastWeekStart = computed(
 
 <template>
   <div class="space-y-3">
-    <div class="panel-glass rounded-2xl p-4">
-      <h3 class="mb-3 text-sm font-semibold text-text-primary">
-        Recuperação por campanha
-      </h3>
-      <div v-if="rows.length === 0" class="text-sm text-text-muted">
-        Nenhuma campanha para exibir.
-      </div>
-      <ul v-else class="space-y-1.5">
-        <li
-          v-for="(row, idx) in rows"
-          :key="row.campaign.id"
-          class="space-y-1 rounded-xl px-2 py-2"
-          :class="idx % 2 === 1 ? 'bg-white/[0.04]' : 'bg-transparent'"
-        >
-          <div class="flex items-center justify-between gap-2 text-sm">
-            <span class="truncate font-medium text-text-primary">
-              {{ row.campaign.name }}
-            </span>
-            <div class="flex items-center gap-2">
-              <CampaignStatusBadge :status="row.metrics.status" />
-              <span class="tabular-nums text-text-secondary">
-                {{ formatPercent(row.metrics.recoveryRate) }}
+    <CollapsiblePanel
+      title="Recuperação por campanha"
+      hint="Status e % de rake sobre o investimento total"
+      :default-open="true"
+    >
+      <div class="px-2 pb-3 sm:px-3">
+        <div v-if="rows.length === 0" class="px-2 py-4 text-sm text-text-muted">
+          Nenhuma campanha para exibir.
+        </div>
+        <ul v-else class="space-y-1.5">
+          <li
+            v-for="(row, idx) in rows"
+            :key="row.campaign.id"
+            class="space-y-1 rounded-xl px-2 py-2"
+            :class="idx % 2 === 1 ? 'bg-white/[0.04]' : 'bg-transparent'"
+          >
+            <div class="flex items-center justify-between gap-3 text-sm">
+              <span class="min-w-0 truncate font-medium text-text-primary">
+                {{ row.campaign.name }}
               </span>
+              <div class="flex shrink-0 items-center gap-2">
+                <CampaignStatusBadge :status="row.metrics.status" />
+                <span class="w-16 text-right tabular-nums text-text-secondary">
+                  {{ formatPercent(row.metrics.recoveryRate) }}
+                </span>
+              </div>
             </div>
-          </div>
-          <div class="h-2 overflow-hidden rounded-full bg-white/10">
-            <div
-              class="h-full rounded-full bg-accent transition-all"
-              :style="{ width: `${row.recoveryWidth}%` }"
-            />
-          </div>
-          <p class="text-[11px] text-text-muted">
-            {{ formatCurrency(row.metrics.accumulatedRake) }} rake ·
-            {{ row.metrics.weeksTracked }} sem. ·
-            {{ row.health.classificationLabel }}
-          </p>
-        </li>
-      </ul>
-    </div>
-
-    <div v-if="weekColumns.length" class="panel-glass overflow-hidden rounded-2xl">
-      <div class="border-b border-border-subtle px-4 py-3">
-        <h3 class="text-sm font-semibold text-text-primary">Rake semanal</h3>
-        <p class="mt-0.5 text-[11px] text-text-muted">
-          Valores por semana importada — a última coluna é a semana mais recente.
-        </p>
+            <div class="h-2 overflow-hidden rounded-full bg-white/10">
+              <div
+                class="h-full rounded-full bg-accent transition-all"
+                :style="{ width: `${row.recoveryWidth}%` }"
+              />
+            </div>
+            <p class="text-[11px] text-text-muted">
+              {{ formatCurrency(row.metrics.accumulatedRake) }} rake ·
+              {{ row.metrics.weeksTracked }} sem. ·
+              {{ row.health.classificationLabel }}
+            </p>
+          </li>
+        </ul>
       </div>
+    </CollapsiblePanel>
+
+    <CollapsiblePanel
+      v-if="weekColumns.length"
+      title="Rake semanal"
+      hint="Valores por semana importada — a última coluna é a mais recente"
+      :default-open="true"
+    >
       <div class="overflow-x-auto">
         <table class="min-w-full text-left text-sm">
           <thead class="sticky top-0 z-[2] bg-surface/90 text-[11px] uppercase tracking-wide text-text-muted backdrop-blur-sm">
@@ -176,6 +179,6 @@ const lastWeekStart = computed(
           </tbody>
         </table>
       </div>
-    </div>
+    </CollapsiblePanel>
   </div>
 </template>

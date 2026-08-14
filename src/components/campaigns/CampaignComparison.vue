@@ -10,6 +10,7 @@ import {
 } from '../../utils/campaignFormat'
 import { formatPeriodLabel } from '../../utils/campaignWeeklyMetrics'
 import CampaignStatusBadge from './CampaignStatusBadge.vue'
+import CollapsiblePanel from './CollapsiblePanel.vue'
 
 const props = defineProps<{
   campaigns: Campaign[]
@@ -166,7 +167,12 @@ const metricDefs: Array<{
       Selecione pelo menos 2 campanhas para comparar.
     </div>
 
-    <div v-else class="panel-glass overflow-hidden rounded-2xl">
+    <CollapsiblePanel
+      v-if="rows.length >= 2"
+      title="Comparativo"
+      hint="Métricas lado a lado das campanhas selecionadas"
+      :default-open="true"
+    >
       <div class="overflow-x-auto">
         <table class="min-w-full text-left text-sm">
           <thead class="border-b border-border-subtle bg-surface/60 text-xs text-text-muted">
@@ -183,15 +189,16 @@ const metricDefs: Array<{
           </thead>
           <tbody>
             <tr
-              v-for="metric in metricDefs"
+              v-for="(metric, idx) in metricDefs"
               :key="metric.label"
               class="border-b border-border-subtle/50"
+              :class="idx % 2 === 1 ? 'bg-white/[0.04]' : ''"
             >
               <td class="px-3 py-2 text-text-muted">{{ metric.label }}</td>
               <td
                 v-for="row in rows"
                 :key="row.campaign.id"
-                class="px-3 py-2 tabular-nums text-text-primary"
+                class="whitespace-nowrap px-3 py-2 tabular-nums text-text-primary"
               >
                 <CampaignStatusBadge
                   v-if="metric.label === 'Status'"
@@ -203,6 +210,6 @@ const metricDefs: Array<{
           </tbody>
         </table>
       </div>
-    </div>
+    </CollapsiblePanel>
   </div>
 </template>

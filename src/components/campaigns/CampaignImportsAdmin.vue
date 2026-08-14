@@ -4,6 +4,7 @@ import { Trash2 } from '@lucide/vue'
 import { useBoardStore } from '../../stores/board'
 import { useCampaignsStore } from '../../stores/campaigns'
 import { formatDateTime } from '../../utils/campaignFormat'
+import CollapsiblePanel from './CollapsiblePanel.vue'
 
 type UnifiedImportRow = {
   id: string
@@ -81,18 +82,12 @@ async function onDelete(row: UnifiedImportRow) {
 </script>
 
 <template>
-  <section class="space-y-3">
-    <div class="flex items-baseline justify-between gap-2">
-      <h3 class="text-base font-semibold text-text-primary sm:text-lg">
-        Importações
-      </h3>
-      <span class="text-xs text-text-muted">
-        {{ rows.length }}
-        {{ rows.length === 1 ? 'arquivo' : 'arquivos' }}
-      </span>
-    </div>
-
-    <div class="overflow-x-auto rounded-2xl border border-border-subtle">
+  <CollapsiblePanel
+    title="Importações"
+    :hint="`${rows.length} ${rows.length === 1 ? 'arquivo' : 'arquivos'}`"
+    :default-open="true"
+  >
+    <div class="overflow-x-auto">
       <table class="min-w-full text-left text-sm">
         <thead class="bg-surface/60 text-xs uppercase tracking-wide text-text-muted">
           <tr>
@@ -176,5 +171,5 @@ async function onDelete(row: UnifiedImportRow) {
         </tbody>
       </table>
     </div>
-  </section>
+  </CollapsiblePanel>
 </template>

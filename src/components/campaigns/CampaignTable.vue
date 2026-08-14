@@ -11,6 +11,7 @@ import {
   Trash2,
 } from '@lucide/vue'
 import type { Campaign } from '../../types/campaigns'
+import { CAMPAIGN_STATUS_LABELS } from '../../types/campaigns'
 import { useAuthStore } from '../../stores/auth'
 import { useCampaignsStore } from '../../stores/campaigns'
 import {
@@ -115,7 +116,11 @@ const rows = computed(() => {
         a.metrics.weeksTracked > 0 ? a.health.classificationLabel : '',
         b.metrics.weeksTracked > 0 ? b.health.classificationLabel : '',
       )
-    else if (key === 'status') cmp = compareText(a.metrics.status, b.metrics.status)
+    else if (key === 'status')
+      cmp = compareText(
+        CAMPAIGN_STATUS_LABELS[a.metrics.status] ?? a.metrics.status,
+        CAMPAIGN_STATUS_LABELS[b.metrics.status] ?? b.metrics.status,
+      )
     else if (key === 'weeks')
       cmp = compareNum(a.metrics.weeksTracked, b.metrics.weeksTracked)
     else
@@ -177,8 +182,7 @@ function typeLabel(campaign: Campaign) {
 </script>
 
 <template>
-  <div class="panel-glass overflow-hidden rounded-2xl">
-    <div class="overflow-x-auto">
+  <div class="overflow-x-auto">
       <table class="min-w-full text-left text-sm">
         <thead class="border-b border-border-subtle bg-surface/60 text-xs uppercase tracking-wide text-text-muted">
           <tr>
@@ -311,7 +315,7 @@ function typeLabel(campaign: Campaign) {
                   : '—'
               }}
             </td>
-            <td class="px-3 py-3">
+            <td class="whitespace-nowrap px-3 py-3">
               <CampaignStatusBadge :status="row.metrics.status" />
             </td>
             <td class="px-3 py-3 text-right tabular-nums">
@@ -413,5 +417,4 @@ function typeLabel(campaign: Campaign) {
         </tbody>
       </table>
     </div>
-  </div>
 </template>
