@@ -39,13 +39,13 @@ const REAL_HEADERS = [
 ]
 
 describe('transaction parser — real Suprema headers', () => {
-  it('recognizes Agente player ID and does not swap with Receiver', () => {
+  it('recognizes Agente player ID and does not swap with Receiver', async () => {
     const buffer = buildWorkbookBuffer(REAL_HEADERS, [
       [1001, 555001, 'nickA', 1730032, '03/08/2026', '10:15:00', 'SX 24 Horas', '-', 150, 'Completed'],
       [1002, 555002, 'nickB', 1730032, '03/08/2026', '11:00:00', '-', 'Bônus', 50, 'Completed'],
       [1003, 555001, 'nickA', 999888, '12/08/2026', '09:00:00', 'SX 24 Horas', '', 200, 'Completed'],
     ])
-    const parsed = parseTransactionReportBuffer(
+    const parsed = await parseTransactionReportBuffer(
       buffer,
       'Relatório de transações suprema 13-08-2026-16-21-09.xlsx',
     )
@@ -64,11 +64,11 @@ describe('transaction parser — real Suprema headers', () => {
     expect(normalizeEntityId('1730032.0')).toBe('1730032')
   })
 
-  it('uses Dia/Hora for occurredAt, not batch period', () => {
+  it('uses Dia/Hora for occurredAt, not batch period', async () => {
     const buffer = buildWorkbookBuffer(REAL_HEADERS, [
       [1, 10, 'n', 20, '03/08/2026', '14:30:00', 'SX 24 Horas', '-', 100, 'Completed'],
     ])
-    const parsed = parseTransactionReportBuffer(buffer, 'file.xlsx')
+    const parsed = await parseTransactionReportBuffer(buffer, 'file.xlsx')
     expect(parsed.transactions[0].occurredAt).toContain('2026-08-03')
     expect(parsed.transactions[0].occurredAt).toContain('14:30')
   })

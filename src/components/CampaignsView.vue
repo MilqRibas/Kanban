@@ -13,6 +13,7 @@ import CampaignDetails from './campaigns/CampaignDetails.vue'
 import CampaignCharts from './campaigns/CampaignCharts.vue'
 import CampaignComparison from './campaigns/CampaignComparison.vue'
 import CampaignImportsAdmin from './campaigns/CampaignImportsAdmin.vue'
+import { buildSearchHaystack, matchesSearch } from '../utils/search'
 
 type CampaignScreen = 'overview' | 'list' | 'comparison' | 'imports'
 
@@ -58,8 +59,28 @@ const years = computed(() => {
   return [...set].sort((a, b) => b - a)
 })
 
+const campaignSearchIndex = computed(() => {
+  const map = new Map<string, string>()
+  for (const campaign of store.campaigns) {
+    const agent = store.findAgent(campaign.agentId)
+    map.set(
+      campaign.id,
+      buildSearchHaystack([
+        campaign.name,
+        campaign.agency,
+        campaign.agentId,
+        agent?.name,
+        campaign.campaignType,
+        campaign.campaignTypeOther,
+      ]),
+    )
+  }
+  return map
+})
+
 const filteredCampaigns = computed(() => {
-  const nameQuery = filters.value.name.trim().toLowerCase()
+  const nameQuery = filters.value.name
+  const statusFilter = filters.value.status
   return store.campaigns.filter((campaign) => {
     if (!store.showArchived && campaign.isArchived) return false
     if (filters.value.year !== 'all' && campaign.acquisitionYear !== filters.value.year) {
@@ -83,12 +104,15 @@ const filteredCampaigns = computed(() => {
     ) {
       return false
     }
-    if (nameQuery && !campaign.name.toLowerCase().includes(nameQuery)) {
+    if (
+      nameQuery.trim() &&
+      !matchesSearch(campaignSearchIndex.value.get(campaign.id) ?? '', nameQuery)
+    ) {
       return false
     }
-    if (filters.value.status !== 'all') {
+    if (statusFilter !== 'all') {
       const metrics = store.metricsFor(campaign)
-      if (metrics.status !== filters.value.status) return false
+      if (metrics.status !== statusFilter) return false
     }
     return true
   })

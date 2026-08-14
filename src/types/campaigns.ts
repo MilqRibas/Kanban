@@ -45,7 +45,7 @@ export type CampaignComputedStatus =
   | 'archived'
 
 export const CAMPAIGN_STATUS_LABELS: Record<CampaignComputedStatus, string> = {
-  payback: 'Payback concluído',
+  payback: 'Payback',
   recovering: 'Em recuperação',
   no_return: 'Sem retorno',
   no_data: 'Sem dados importados',

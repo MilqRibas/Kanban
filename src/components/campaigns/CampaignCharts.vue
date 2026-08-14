@@ -41,13 +41,35 @@ const weekColumns = computed(() => {
   return [...keys.values()].sort((a, b) => a.start.localeCompare(b.start))
 })
 
+const rakeByAgentWeek = computed(() => {
+  const map = new Map<string, number>()
+  for (const campaign of props.campaigns) {
+    const agentId = campaign.agentId
+    if (!agentId) continue
+    for (const period of store.agentPeriodsFor(agentId)) {
+      map.set(`${agentId}:${period.periodStart}`, period.weeklyRake)
+    }
+  }
+  return map
+})
+
 function weekRake(campaign: Campaign, periodStart: string) {
-  return (
-    store
-      .agentPeriodsFor(campaign.agentId)
-      .find((p) => p.periodStart === periodStart)?.weeklyRake ?? null
-  )
+  if (!campaign.agentId) return null
+  const value = rakeByAgentWeek.value.get(`${campaign.agentId}:${periodStart}`)
+  return value == null ? null : value
 }
+
+function shortPeriod(start: string, end: string) {
+  const fmt = (iso: string) => {
+    const [, month, day] = iso.split('-')
+    return `${day}/${month}`
+  }
+  return `${fmt(start)}–${fmt(end)}`
+}
+
+const lastWeekStart = computed(
+  () => weekColumns.value[weekColumns.value.length - 1]?.start ?? null,
+)
 </script>
 
 <template>
@@ -59,8 +81,13 @@ function weekRake(campaign: Campaign, periodStart: string) {
       <div v-if="rows.length === 0" class="text-sm text-text-muted">
         Nenhuma campanha para exibir.
       </div>
-      <ul v-else class="space-y-3">
-        <li v-for="row in rows" :key="row.campaign.id" class="space-y-1">
+      <ul v-else class="space-y-1.5">
+        <li
+          v-for="(row, idx) in rows"
+          :key="row.campaign.id"
+          class="space-y-1 rounded-xl px-2 py-2"
+          :class="idx % 2 === 1 ? 'bg-white/[0.04]' : 'bg-transparent'"
+        >
           <div class="flex items-center justify-between gap-2 text-sm">
             <span class="truncate font-medium text-text-primary">
               {{ row.campaign.name }}
@@ -90,34 +117,54 @@ function weekRake(campaign: Campaign, periodStart: string) {
     <div v-if="weekColumns.length" class="panel-glass overflow-hidden rounded-2xl">
       <div class="border-b border-border-subtle px-4 py-3">
         <h3 class="text-sm font-semibold text-text-primary">Rake semanal</h3>
+        <p class="mt-0.5 text-[11px] text-text-muted">
+          Valores por semana importada — a última coluna é a semana mais recente.
+        </p>
       </div>
       <div class="overflow-x-auto">
         <table class="min-w-full text-left text-sm">
-          <thead class="bg-surface/50 text-xs text-text-muted">
+          <thead class="sticky top-0 z-[2] bg-surface/90 text-[11px] uppercase tracking-wide text-text-muted backdrop-blur-sm">
             <tr>
-              <th class="px-3 py-2 font-medium">Campanha</th>
+              <th
+                class="sticky left-0 z-[3] bg-surface/95 px-3 py-2.5 font-medium shadow-[2px_0_8px_-6px_rgba(0,0,0,0.65)]"
+              >
+                Campanha
+              </th>
               <th
                 v-for="col in weekColumns"
                 :key="col.start"
-                class="whitespace-nowrap px-3 py-2 font-medium"
+                class="whitespace-nowrap px-3 py-2.5 text-right font-medium"
+                :class="col.start === lastWeekStart ? 'text-accent/90' : ''"
+                :title="store.formatPeriodLabel(col.start, col.end)"
               >
-                {{ store.formatPeriodLabel(col.start, col.end) }}
+                {{ shortPeriod(col.start, col.end) }}
               </th>
             </tr>
           </thead>
           <tbody>
             <tr
-              v-for="row in rows"
+              v-for="(row, idx) in rows"
               :key="row.campaign.id"
-              class="border-t border-border-subtle/50"
+              class="border-t border-border-subtle/40 transition-colors hover:bg-white/[0.06]"
+              :class="idx % 2 === 1 ? 'bg-white/[0.04]' : 'bg-transparent'"
             >
-              <td class="px-3 py-2 font-medium text-text-primary">
+              <td
+                class="sticky left-0 z-[1] max-w-[12rem] truncate px-3 py-2 font-medium text-text-primary shadow-[2px_0_8px_-6px_rgba(0,0,0,0.55)]"
+                :class="idx % 2 === 1 ? 'bg-board-elevated' : 'bg-board'"
+                :title="row.campaign.name"
+              >
                 {{ row.campaign.name }}
               </td>
               <td
                 v-for="col in weekColumns"
                 :key="col.start"
-                class="px-3 py-2 tabular-nums text-text-secondary"
+                class="px-3 py-2 text-right tabular-nums"
+                :class="[
+                  weekRake(row.campaign, col.start) == null
+                    ? 'text-text-muted/70'
+                    : 'text-text-secondary',
+                  col.start === lastWeekStart ? 'font-medium text-text-primary' : '',
+                ]"
               >
                 {{
                   weekRake(row.campaign, col.start) != null

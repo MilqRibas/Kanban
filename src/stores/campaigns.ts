@@ -109,6 +109,45 @@ function toNullableNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+/** PostgREST default max_rows is 1000 — .limit(N) does not bypass it. */
+const PAGE_SIZE = 1000
+const HARD_ROW_CAP = 200_000
+
+async function fetchAllPaged(
+  build: () => {
+    range: (
+      from: number,
+      to: number,
+    ) => PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>
+  },
+): Promise<{ data: Record<string, unknown>[]; error: { message: string } | null }> {
+  const all: Record<string, unknown>[] = []
+  let from = 0
+  while (from < HARD_ROW_CAP) {
+    const { data, error } = await build().range(from, from + PAGE_SIZE - 1)
+    if (error) return { data: all, error }
+    const rows = (data ?? []) as Record<string, unknown>[]
+    all.push(...rows)
+    if (rows.length < PAGE_SIZE) break
+    from += PAGE_SIZE
+  }
+  return { data: all, error: null }
+}
+
+type RangeQuery = {
+  range: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>
+}
+
+function asRangeQuery(query: unknown): RangeQuery {
+  return query as RangeQuery
+}
+
+const TRANSACTION_LIST_COLUMNS =
+  'id, board_id, import_id, external_transaction_id, receiver_player_id, receiver_nickname, agent_id, agent_nickname, occurred_at, period_start, period_end, origin, transaction_type, amount, chips_send_out, chips_claimback, system_status, order_status, is_deposit, is_bonus, created_at'
+
 function collapseParsedReport(parsed: ParsedReport): ParsedReport {
   const agents = aggregateAgentsById(parsed.agents)
   const players = aggregatePlayersById(parsed.players)
@@ -496,6 +535,49 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       .sort((a, b) => a.periodStart.localeCompare(b.periodStart)),
   )
 
+  const transactionsByAgent = computed(() => {
+    const map = new Map<string, CampaignTransaction[]>()
+    for (const row of transactions.value) {
+      if (!row.agentId) continue
+      const list = map.get(row.agentId)
+      if (list) list.push(row)
+      else map.set(row.agentId, [row])
+    }
+    return map
+  })
+
+  const agentsById = computed(() => {
+    const map = new Map<string, CampaignAgent>()
+    for (const agent of agents.value) map.set(agent.agentId, agent)
+    return map
+  })
+
+  const agentPeriodsByAgent = computed(() => {
+    const map = new Map<string, CampaignAgentPeriod[]>()
+    for (const period of agentPeriods.value) {
+      const list = map.get(period.agentId)
+      if (list) list.push(period)
+      else map.set(period.agentId, [period])
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => a.periodStart.localeCompare(b.periodStart))
+    }
+    return map
+  })
+
+  const playerPeriodsByAgent = computed(() => {
+    const map = new Map<string, CampaignPlayerPeriod[]>()
+    for (const period of playerPeriods.value) {
+      const list = map.get(period.agentId)
+      if (list) list.push(period)
+      else map.set(period.agentId, [period])
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => a.periodStart.localeCompare(b.periodStart))
+    }
+    return map
+  })
+
   function quietRealtime(ms = 2500) {
     suppressRealtimeUntil = Date.now() + ms
   }
@@ -514,16 +596,12 @@ export const useCampaignsStore = defineStore('campaigns', () => {
 
   function agentPeriodsFor(agentId: string | null | undefined) {
     if (!agentId) return []
-    return agentPeriods.value
-      .filter((p) => p.agentId === agentId)
-      .sort((a, b) => a.periodStart.localeCompare(b.periodStart))
+    return agentPeriodsByAgent.value.get(agentId) ?? []
   }
 
   function playerPeriodsForAgent(agentId: string | null | undefined) {
     if (!agentId) return []
-    return playerPeriods.value
-      .filter((p) => p.agentId === agentId)
-      .sort((a, b) => a.periodStart.localeCompare(b.periodStart))
+    return playerPeriodsByAgent.value.get(agentId) ?? []
   }
 
   function uniqueActivesForAgent(agentId: string | null | undefined) {
@@ -548,7 +626,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     return campaign.createdBy === auth.memberId
   }
 
-  function metricsFor(campaign: Campaign): CampaignWeeklyMetrics {
+  function buildMetrics(campaign: Campaign): CampaignWeeklyMetrics {
     const periods = agentPeriodsFor(campaign.agentId).map((p) => ({
       periodStart: p.periodStart,
       periodEnd: p.periodEnd,
@@ -563,8 +641,24 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     })
   }
 
+  const metricsByCampaignId = computed(() => {
+    const map = new Map<string, CampaignWeeklyMetrics>()
+    for (const campaign of campaigns.value) {
+      map.set(campaign.id, buildMetrics(campaign))
+    }
+    return map
+  })
+
+  function metricsFor(campaign: Campaign): CampaignWeeklyMetrics {
+    return metricsByCampaignId.value.get(campaign.id) ?? buildMetrics(campaign)
+  }
+
   function activationInvestmentFor(agentId: string | null | undefined) {
-    return sumActivationInvestment(transactions.value, agentId)
+    if (!agentId) return 0
+    return sumActivationInvestment(
+      transactionsByAgent.value.get(agentId) ?? [],
+      agentId,
+    )
   }
 
   function activePlayerIdSet(campaign: Campaign): Set<string> {
@@ -589,9 +683,10 @@ export const useCampaignsStore = defineStore('campaigns', () => {
 
   function purchasePowerFor(campaign: Campaign): PurchasePowerMetrics {
     const m = metricsFor(campaign)
+    const agentId = campaign.agentId
     return buildPurchasePowerMetrics({
-      rows: transactions.value,
-      agentId: campaign.agentId,
+      rows: agentId ? (transactionsByAgent.value.get(agentId) ?? []) : [],
+      agentId,
       activePlayerIds: activePlayerIdSet(campaign),
       accumulatedRake: m.accumulatedRake,
     })
@@ -620,11 +715,11 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   }
 
   function playerDepositStats(playerId: string, agentId?: string | null) {
-    const scoped = transactions.value.filter(
-      (t) =>
-        t.receiverPlayerId === playerId &&
-        t.isDeposit &&
-        (!agentId || t.agentId === agentId),
+    const pool = agentId
+      ? (transactionsByAgent.value.get(agentId) ?? [])
+      : transactions.value
+    const scoped = pool.filter(
+      (t) => t.receiverPlayerId === playerId && t.isDeposit,
     )
     const volume = scoped.reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0)
     return {
@@ -644,7 +739,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     }
   }
 
-  function rakeHealthFor(
+  function buildRakeHealthFor(
     campaign: Campaign,
     periodStart?: string | null,
   ) {
@@ -667,6 +762,27 @@ export const useCampaignsStore = defineStore('campaigns', () => {
           })),
         )
     return buildRakeHealth(players)
+  }
+
+  const rakeHealthByCampaignId = computed(() => {
+    const map = new Map<string, ReturnType<typeof buildRakeHealth>>()
+    for (const campaign of campaigns.value) {
+      map.set(campaign.id, buildRakeHealthFor(campaign))
+    }
+    return map
+  })
+
+  function rakeHealthFor(
+    campaign: Campaign,
+    periodStart?: string | null,
+  ) {
+    if (!periodStart) {
+      return (
+        rakeHealthByCampaignId.value.get(campaign.id) ??
+        buildRakeHealthFor(campaign)
+      )
+    }
+    return buildRakeHealthFor(campaign, periodStart)
   }
 
   function gameProfileFor(
@@ -774,6 +890,64 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     history.value = [mapHistory(row), ...history.value]
   }
 
+  type ReloadKind = 'full' | 'tx' | 'periods'
+
+  function pagedBoardSelect(table: string, columns = '*') {
+    return fetchAllPaged(() =>
+      asRangeQuery(
+        supabase
+          .from(table)
+          .select(columns)
+          .eq('board_id', BOARD_ID)
+          .order('id', { ascending: true }),
+      ),
+    )
+  }
+
+  function applyTransactionImports(
+    rows: Record<string, unknown>[],
+    txRows: Record<string, unknown>[],
+  ) {
+    transactionImports.value = rows.map(mapTransactionImport)
+    transactions.value = txRows.map(mapTransaction)
+  }
+
+  async function loadTransactionsAndImports() {
+    const [txImportsRes, transactionsRes] = await Promise.all([
+      supabase
+        .from('campaign_transaction_imports')
+        .select('*')
+        .eq('board_id', BOARD_ID)
+        .order('period_start', { ascending: false }),
+      pagedBoardSelect('campaign_transactions', TRANSACTION_LIST_COLUMNS),
+    ])
+    const firstError = txImportsRes.error || transactionsRes.error
+    if (firstError) {
+      error.value = firstError.message
+      useToastStore().error(firstError.message)
+      return
+    }
+    applyTransactionImports(
+      (txImportsRes.data ?? []) as Record<string, unknown>[],
+      transactionsRes.data,
+    )
+  }
+
+  async function loadPeriods() {
+    const [agentPeriodsRes, playerPeriodsRes] = await Promise.all([
+      pagedBoardSelect('campaign_agent_periods'),
+      pagedBoardSelect('campaign_player_periods'),
+    ])
+    const firstError = agentPeriodsRes.error || playerPeriodsRes.error
+    if (firstError) {
+      error.value = firstError.message
+      useToastStore().error(firstError.message)
+      return
+    }
+    agentPeriods.value = agentPeriodsRes.data.map(mapAgentPeriod)
+    playerPeriods.value = playerPeriodsRes.data.map(mapPlayerPeriod)
+  }
+
   async function load() {
     loading.value = true
     error.value = null
@@ -794,11 +968,21 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         .select('*')
         .eq('board_id', BOARD_ID)
         .order('updated_at', { ascending: false }),
-      supabase.from('campaign_monthly_results').select('*'),
-      supabase
-        .from('campaign_history')
-        .select('*')
-        .order('created_at', { ascending: false }),
+      fetchAllPaged(() =>
+        asRangeQuery(
+          supabase.from('campaign_monthly_results').select('*').order('id', {
+            ascending: true,
+          }),
+        ),
+      ),
+      fetchAllPaged(() =>
+        asRangeQuery(
+          supabase
+            .from('campaign_history')
+            .select('*')
+            .order('id', { ascending: true }),
+        ),
+      ),
       supabase.from('campaign_agents').select('*').eq('board_id', BOARD_ID),
       supabase
         .from('campaign_report_imports')
@@ -810,19 +994,9 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         .select('*')
         .eq('board_id', BOARD_ID)
         .order('period_start', { ascending: false }),
-      supabase
-        .from('campaign_transactions')
-        .select('*')
-        .eq('board_id', BOARD_ID)
-        .limit(50000),
-      supabase
-        .from('campaign_agent_periods')
-        .select('*')
-        .eq('board_id', BOARD_ID),
-      supabase
-        .from('campaign_player_periods')
-        .select('*')
-        .eq('board_id', BOARD_ID),
+      pagedBoardSelect('campaign_transactions', TRANSACTION_LIST_COLUMNS),
+      pagedBoardSelect('campaign_agent_periods'),
+      pagedBoardSelect('campaign_player_periods'),
     ])
 
     const firstError =
@@ -847,11 +1021,11 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       mapCampaign(row as Record<string, unknown>),
     )
     const campaignIds = new Set(campaigns.value.map((c) => c.id))
-    monthlyResults.value = (monthlyRes.data ?? [])
-      .map((row) => mapMonthly(row as Record<string, unknown>))
+    monthlyResults.value = monthlyRes.data
+      .map(mapMonthly)
       .filter((row) => campaignIds.has(row.campaignId))
-    history.value = (historyRes.data ?? [])
-      .map((row) => mapHistory(row as Record<string, unknown>))
+    history.value = historyRes.data
+      .map(mapHistory)
       .filter((row) => campaignIds.has(row.campaignId))
     agents.value = (agentsRes.data ?? []).map((row) =>
       mapAgent(row as Record<string, unknown>),
@@ -859,45 +1033,89 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     imports.value = (importsRes.data ?? []).map((row) =>
       mapImport(row as Record<string, unknown>),
     )
-    transactionImports.value = (txImportsRes.data ?? []).map((row) =>
-      mapTransactionImport(row as Record<string, unknown>),
+    applyTransactionImports(
+      (txImportsRes.data ?? []) as Record<string, unknown>[],
+      transactionsRes.data,
     )
-    transactions.value = (transactionsRes.data ?? []).map((row) =>
-      mapTransaction(row as Record<string, unknown>),
-    )
-    agentPeriods.value = (agentPeriodsRes.data ?? []).map((row) =>
-      mapAgentPeriod(row as Record<string, unknown>),
-    )
-    playerPeriods.value = (playerPeriodsRes.data ?? []).map((row) =>
-      mapPlayerPeriod(row as Record<string, unknown>),
-    )
+    agentPeriods.value = agentPeriodsRes.data.map(mapAgentPeriod)
+    playerPeriods.value = playerPeriodsRes.data.map(mapPlayerPeriod)
 
     loading.value = false
+  }
+
+  let pendingReload: ReloadKind = 'full'
+
+  function mergeReloadKind(current: ReloadKind, next: ReloadKind): ReloadKind {
+    if (current === 'full' || next === 'full') return 'full'
+    if (current !== next) return 'full'
+    return next
   }
 
   function subscribeRealtime() {
     unsubscribeRealtime()
     channel = supabase
       .channel(`campaigns:${BOARD_ID}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaigns' }, scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_monthly_results' }, scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_history' }, scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_agents' }, scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_report_imports' }, scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_agent_periods' }, scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_player_periods' }, scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_transaction_imports' }, scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_transactions' }, scheduleReload)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'campaigns' },
+        () => scheduleReload('full'),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'campaign_monthly_results' },
+        () => scheduleReload('full'),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'campaign_history' },
+        () => scheduleReload('full'),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'campaign_agents' },
+        () => scheduleReload('full'),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'campaign_report_imports' },
+        () => scheduleReload('full'),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'campaign_agent_periods' },
+        () => scheduleReload('periods'),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'campaign_player_periods' },
+        () => scheduleReload('periods'),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'campaign_transaction_imports' },
+        () => scheduleReload('tx'),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'campaign_transactions' },
+        () => scheduleReload('tx'),
+      )
       .subscribe()
   }
 
-  function scheduleReload() {
+  function scheduleReload(kind: ReloadKind = 'full') {
     if (Date.now() < suppressRealtimeUntil) return
+    pendingReload = reloadTimer
+      ? mergeReloadKind(pendingReload, kind)
+      : kind
     if (reloadTimer) clearTimeout(reloadTimer)
     reloadTimer = setTimeout(() => {
+      const mode = pendingReload
       reloadTimer = null
       if (Date.now() < suppressRealtimeUntil) return
-      void load()
+      if (mode === 'tx') void loadTransactionsAndImports()
+      else if (mode === 'periods') void loadPeriods()
+      else void load()
     }, 700)
   }
 
@@ -2136,20 +2354,21 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   }
 
   async function loadTableDetails(agentId: string, periodStart?: string) {
-    let query = supabase
-      .from('campaign_table_details')
-      .select('*')
-      .eq('board_id', BOARD_ID)
-      .eq('agent_id', agentId)
-    if (periodStart) query = query.eq('period_start', periodStart)
-    const { data, error: qErr } = await query.limit(5000)
+    const { data, error: qErr } = await fetchAllPaged(() => {
+      let query = supabase
+        .from('campaign_table_details')
+        .select('*')
+        .eq('board_id', BOARD_ID)
+        .eq('agent_id', agentId)
+        .order('id', { ascending: true })
+      if (periodStart) query = query.eq('period_start', periodStart)
+      return asRangeQuery(query)
+    })
     if (qErr) {
       useToastStore().error(qErr.message)
       return [] as CampaignTableDetail[]
     }
-    const rows = (data ?? []).map((row) =>
-      mapTableDetail(row as Record<string, unknown>),
-    )
+    const rows = data.map(mapTableDetail)
     // merge into cache for this agent
     tableDetailsCache.value = [
       ...tableDetailsCache.value.filter(
@@ -2165,20 +2384,22 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   }
 
   async function loadPlayerTableDetails(agentId: string, playerId: string) {
-    const { data, error: qErr } = await supabase
-      .from('campaign_table_details')
-      .select('*')
-      .eq('board_id', BOARD_ID)
-      .eq('agent_id', agentId)
-      .eq('player_id', playerId)
-      .limit(2000)
+    const { data, error: qErr } = await fetchAllPaged(() =>
+      asRangeQuery(
+        supabase
+          .from('campaign_table_details')
+          .select('*')
+          .eq('board_id', BOARD_ID)
+          .eq('agent_id', agentId)
+          .eq('player_id', playerId)
+          .order('id', { ascending: true }),
+      ),
+    )
     if (qErr) {
       useToastStore().error(qErr.message)
       return [] as CampaignTableDetail[]
     }
-    return (data ?? []).map((row) =>
-      mapTableDetail(row as Record<string, unknown>),
-    )
+    return data.map(mapTableDetail)
   }
 
   // --- Legacy monthly (kept for compatibility) ---
@@ -2301,7 +2522,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
 
   function findAgent(agentId: string | null | undefined) {
     if (!agentId) return null
-    return agents.value.find((a) => a.agentId === agentId) ?? null
+    return agentsById.value.get(agentId) ?? null
   }
 
   return {

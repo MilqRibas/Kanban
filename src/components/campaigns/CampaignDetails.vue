@@ -27,6 +27,8 @@ import { ACQUISITION_NATURE_LABELS } from '../../types/campaigns'
 import { useAuthStore } from '../../stores/auth'
 import { useCampaignsStore } from '../../stores/campaigns'
 import { useEphemeralDismiss } from '../../composables/useEphemeralDismiss'
+import { useDebouncedValue } from '../../composables/useDebouncedValue'
+import { buildSearchHaystack, matchesSearch } from '../../utils/search'
 import {
   formatCurrency,
   formatPercent,
@@ -69,6 +71,7 @@ const tableDetailsPeriod = ref<string | null>(null)
 const depositWeeklyMode = ref<'volume' | 'depositors' | 'deposits'>('volume')
 
 const playerSearch = ref('')
+const playerSearchQuery = useDebouncedValue(() => playerSearch.value, 150)
 const playerSortKey = ref<'rake' | 'weeks' | 'first' | 'last'>('rake')
 const playerSortAsc = ref(false)
 
@@ -87,8 +90,14 @@ const agent = computed(() => store.findAgent(props.campaign.agentId))
 const agentPeriods = computed(() => store.agentPeriodsFor(props.campaign.agentId))
 const playerPeriods = computed(() => store.playerPeriodsForAgent(props.campaign.agentId))
 const metrics = computed(() => store.metricsFor(props.campaign))
-const funnel = computed(() => store.funnelFor(props.campaign))
-const purchasePower = computed(() => store.purchasePowerFor(props.campaign))
+const funnel = computed(() =>
+  activeTab.value === 'funnel' ? store.funnelFor(props.campaign) : null,
+)
+const purchasePower = computed(() =>
+  activeTab.value === 'overview' || activeTab.value === 'transactions'
+    ? store.purchasePowerFor(props.campaign)
+    : null,
+)
 const history = computed(() =>
   store.history
     .filter((h) => h.campaignId === props.campaign.id)
@@ -114,6 +123,7 @@ const periodOptions = computed(() => {
 })
 
 const rakeHealth = computed(() => {
+  if (activeTab.value !== 'rake-health') return null
   const periodStart = rakeHealthMode.value === 'period' ? selectedRakeHealthPeriod.value : null
   return store.rakeHealthFor(props.campaign, periodStart)
 })
@@ -141,6 +151,7 @@ const tableDetails = computed(() => {
 })
 
 const uniquePlayers = computed(() => {
+  if (activeTab.value !== 'players') return []
   const map = new Map<
     string,
     {
@@ -177,13 +188,13 @@ const uniquePlayers = computed(() => {
 
 const filteredPlayers = computed(() => {
   let list = uniquePlayers.value
-  const q = playerSearch.value.trim().toLowerCase()
-  if (q) {
-    list = list.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        p.nickname.toLowerCase().includes(q) ||
-        p.playerId.toLowerCase().includes(q),
+  const q = playerSearchQuery.value
+  if (q.trim()) {
+    list = list.filter((p) =>
+      matchesSearch(
+        buildSearchHaystack([p.name, p.nickname, p.playerId]),
+        q,
+      ),
     )
   }
   list.sort((a, b) => {
@@ -239,8 +250,8 @@ const overviewCards = computed(() => {
     { label: 'Custo / ativo', value: formatCurrency(m.costPerActive) },
     { label: 'Rake acumulado', value: formatCurrency(m.accumulatedRake) },
     { label: 'Recuperação', value: formatPercent(m.recoveryRate) },
-    { label: 'Volume depositado', value: formatCurrency(pp.depositedVolume) },
-    { label: 'Depositantes', value: formatNumber(pp.uniqueDepositors) },
+    { label: 'Volume depositado', value: formatCurrency(pp?.depositedVolume) },
+    { label: 'Depositantes', value: formatNumber(pp?.uniqueDepositors) },
   ]
 })
 
@@ -264,7 +275,7 @@ const FUNNEL_STEP_META: Record<
 }
 
 const funnelVisualRows = computed(() => {
-  const steps = funnel.value.steps
+  const steps = funnel.value?.steps ?? []
   const edges = funnelEdges.value
   const n = steps.length
   const maxValue = Math.max(
@@ -323,7 +334,7 @@ const funnelVisualRows = computed(() => {
 })
 
 const funnelFooterStats = computed(() => {
-  const steps = funnel.value.steps
+  const steps = funnel.value?.steps ?? []
   const first = steps[0]?.value ?? null
   const last = steps[steps.length - 1]?.value ?? null
   const totalRate =
@@ -335,18 +346,20 @@ const funnelFooterStats = computed(() => {
 
 const funnelFinanceStrip = computed(() => {
   const m = metrics.value
-  const k = funnel.value.kpis
+  const k = funnel.value?.kpis
   return {
     campaignInvestment: formatCurrency(m.campaignInvestment),
     activationInvestment: formatCurrency(m.activationInvestment),
     totalInvestment: formatCurrency(m.totalInvestment),
     accumulatedRake: formatCurrency(m.accumulatedRake),
-    cpm: formatCurrency(k.cpm),
-    frequency: formatNumber(k.frequency),
+    cpm: formatCurrency(k?.cpm),
+    frequency: formatNumber(k?.frequency),
   }
 })
 
-const funnelEdges = computed(() => buildJourneyEdges(funnel.value.steps))
+const funnelEdges = computed(() =>
+  buildJourneyEdges(funnel.value?.steps ?? []),
+)
 
 const worstFunnelEdgeKey = computed(() => {
   const edges = funnelEdges.value.filter((e) => e.rate != null)
@@ -356,7 +369,8 @@ const worstFunnelEdgeKey = computed(() => {
 })
 
 const funnelKpiGroups = computed(() => {
-  const k = funnel.value.kpis
+  const k = funnel.value?.kpis
+  if (!k) return []
   return [
     {
       title: 'Mídia',
@@ -431,7 +445,8 @@ const funnelKpiGroups = computed(() => {
 })
 
 const funnelSoftMessages = computed(() => {
-  const w = funnel.value.warnings
+  const w = funnel.value?.warnings
+  if (!w) return [] as string[]
   const messages: string[] = []
   if (w.reachGtImpressions)
     messages.push('Alcance maior que impressões — verificar origem/conciliação.')
@@ -446,6 +461,7 @@ const funnelSoftMessages = computed(() => {
 
 const purchasePowerSummary = computed(() => {
   const pp = purchasePower.value
+  if (!pp) return []
   return [
     { label: 'Volume depositado', value: formatCurrency(pp.depositedVolume) },
     { label: 'Depositantes', value: formatNumber(pp.uniqueDepositors) },
@@ -457,6 +473,7 @@ const purchasePowerSummary = computed(() => {
 
 const purchasePowerDistribution = computed(() => {
   const pp = purchasePower.value
+  if (!pp) return []
   return [
     { label: 'Mediana / depositante', value: formatCurrency(pp.medianPerDepositor) },
     { label: 'Maior depósito', value: formatCurrency(pp.maxDeposit) },
@@ -477,7 +494,7 @@ const purchasePowerDistribution = computed(() => {
 })
 
 const depositWeeklyMax = computed(() => {
-  const weekly = purchasePower.value.weekly
+  const weekly = purchasePower.value?.weekly ?? []
   if (!weekly.length) return 1
   if (depositWeeklyMode.value === 'volume') {
     return Math.max(1, ...weekly.map((w) => w.volume))
@@ -792,7 +809,7 @@ watch(tableDetailsPeriod, async (period) => {
             </div>
           </div>
 
-          <div v-else-if="activeTab === 'funnel'" class="space-y-4">
+          <div v-else-if="activeTab === 'funnel' && funnel" class="space-y-4">
             <!-- Contexto financeiro -->
             <div class="rounded-2xl border border-border-subtle/70 bg-surface/35 p-3 sm:p-4">
               <p class="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
@@ -985,7 +1002,7 @@ watch(tableDetailsPeriod, async (period) => {
 
               <!-- Diagnóstico em faixa integrada -->
               <div
-                v-if="funnel.diagnosis?.blocks?.length || funnelSoftMessages.length"
+                v-if="funnel?.diagnosis?.blocks?.length || funnelSoftMessages.length"
                 class="rounded-2xl border border-border-subtle/70 bg-surface/25 p-3 sm:p-4"
               >
                 <div class="mb-3 flex flex-wrap items-end justify-between gap-2">
@@ -1000,11 +1017,11 @@ watch(tableDetailsPeriod, async (period) => {
                 </div>
 
                 <div
-                  v-if="funnel.diagnosis?.blocks?.length"
+                  v-if="funnel?.diagnosis?.blocks?.length"
                   class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
                 >
                   <div
-                    v-for="(block, i) in funnel.diagnosis.blocks"
+                    v-for="(block, i) in funnel?.diagnosis?.blocks"
                     :key="i"
                     class="rounded-xl border px-3 py-2.5 text-sm"
                     :class="{
@@ -1110,7 +1127,7 @@ watch(tableDetailsPeriod, async (period) => {
             </template>
           </div>
 
-          <div v-else-if="activeTab === 'transactions'" class="space-y-5">
+          <div v-else-if="activeTab === 'transactions' && purchasePower" class="space-y-5">
             <template v-if="!hasAgent">
               <p class="text-sm text-text-muted">Nenhum agente vinculado.</p>
             </template>
@@ -1338,7 +1355,7 @@ watch(tableDetailsPeriod, async (period) => {
                 </select>
               </div>
 
-              <div class="space-y-4">
+              <div v-if="rakeHealth" class="space-y-4">
                 <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
                   <div class="rounded-xl bg-surface/40 px-3 py-2.5">
                     <p class="text-[11px] font-medium uppercase tracking-wide text-text-muted">

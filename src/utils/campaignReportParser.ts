@@ -1,5 +1,13 @@
-import * as XLSX from 'xlsx'
+import type { WorkBook, WorkSheet } from 'xlsx'
 import { RECONCILIATION } from './campaignThresholds'
+
+type XlsxModule = typeof import('xlsx')
+let xlsxRuntime: XlsxModule | null = null
+
+async function loadXlsx(): Promise<XlsxModule> {
+  if (!xlsxRuntime) xlsxRuntime = await import('xlsx')
+  return xlsxRuntime
+}
 
 export type GameTypeCode = 'RG' | 'MTT' | 'SNG' | 'RODEO' | string
 
@@ -202,7 +210,7 @@ export function aggregatePlayersById(players: ParsedPlayerRow[]): ParsedPlayerRo
   return [...map.values()]
 }
 
-function findSheet(wb: XLSX.WorkBook, candidates: string[]): XLSX.WorkSheet | null {
+function findSheet(wb: WorkBook, candidates: string[]): WorkSheet | null {
   const names = wb.SheetNames
   for (const wanted of candidates) {
     const found = names.find((n) => normalizeHeader(n) === normalizeHeader(wanted))
@@ -211,8 +219,9 @@ function findSheet(wb: XLSX.WorkBook, candidates: string[]): XLSX.WorkSheet | nu
   return null
 }
 
-function sheetToMatrix(ws: XLSX.WorkSheet): unknown[][] {
-  return XLSX.utils.sheet_to_json<unknown[]>(ws, {
+function sheetToMatrix(ws: WorkSheet): unknown[][] {
+  if (!xlsxRuntime) throw new Error('Parser de planilha não inicializado.')
+  return xlsxRuntime.utils.sheet_to_json<unknown[]>(ws, {
     header: 1,
     defval: null,
     raw: true,
@@ -286,7 +295,7 @@ export function buildAgentReconciliations(
   })
 }
 
-function parseAgentsSheet(ws: XLSX.WorkSheet): {
+function parseAgentsSheet(ws: WorkSheet): {
   agents: ParsedAgentRow[]
   period: ParsedPeriod | null
   error: string | null
@@ -355,7 +364,7 @@ function parseAgentsSheet(ws: XLSX.WorkSheet): {
 }
 
 function parseBlockedSheet(
-  ws: XLSX.WorkSheet,
+  ws: WorkSheet,
   mode: 'players' | 'tables',
   fallbackPeriod: ParsedPeriod | null,
 ): {
@@ -490,7 +499,7 @@ function parseBlockedSheet(
   }
 }
 
-export function parseAgentReportWorkbook(wb: XLSX.WorkBook): ParsedReport {
+export function parseAgentReportWorkbook(wb: WorkBook): ParsedReport {
   const agentsSheet = findSheet(wb, ['Agentes', 'Agents'])
   const playersSheet = findSheet(wb, ['Jogadores', 'Players'])
   const tablesSheet = findSheet(wb, ['Detalhes de mesa', 'Detalhes da mesa', 'Table details'])
@@ -558,6 +567,7 @@ export function parseAgentReportWorkbook(wb: XLSX.WorkBook): ParsedReport {
 export async function parseAgentReportFile(file: File | ArrayBuffer): Promise<ParsedReport> {
   const buffer =
     file instanceof ArrayBuffer ? file : await file.arrayBuffer()
+  const XLSX = await loadXlsx()
   const wb = XLSX.read(buffer, { type: 'array' })
   return parseAgentReportWorkbook(wb)
 }

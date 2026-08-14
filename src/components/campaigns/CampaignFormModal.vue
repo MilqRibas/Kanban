@@ -18,6 +18,7 @@ import {
 } from '../../types/campaigns'
 import { formatCurrency } from '../../utils/campaignFormat'
 import { funnelWarnings } from '../../utils/campaignFunnelMetrics'
+import { buildSearchHaystack, matchesSearch } from '../../utils/search'
 
 const props = defineProps<{
   open: boolean
@@ -126,15 +127,13 @@ const isEditing = computed(() => Boolean(editingCampaign.value))
 const agentQuery = ref('')
 
 const agentOptions = computed(() => {
-  const q = agentQuery.value.trim().toLowerCase()
+  const q = agentQuery.value
   const list = [...store.agents].sort((a, b) =>
     a.name.localeCompare(b.name, 'pt-BR'),
   )
-  if (!q) return list
-  return list.filter(
-    (a) =>
-      a.agentId.includes(q) ||
-      a.name.toLowerCase().includes(q),
+  if (!q.trim()) return list
+  return list.filter((a) =>
+    matchesSearch(buildSearchHaystack([a.agentId, a.name]), q),
   )
 })
 

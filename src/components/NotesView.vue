@@ -13,6 +13,8 @@ import { useNotesStore } from '../stores/notes'
 import { useBoardStore } from '../stores/board'
 import { useAuthStore } from '../stores/auth'
 import type { NoteKind } from '../types/notes'
+import { useDebouncedValue } from '../composables/useDebouncedValue'
+import { buildSearchHaystack, matchesSearch } from '../utils/search'
 import {
   insertAtCursor,
   renderMarkdown,
@@ -25,6 +27,7 @@ const board = useBoardStore()
 const auth = useAuthStore()
 
 const search = ref('')
+const searchQuery = useDebouncedValue(() => search.value, 150)
 const kindFilter = ref<'all' | NoteKind>('all')
 const draftTitle = ref('')
 const draftBody = ref('')
@@ -43,17 +46,23 @@ const canDeleteSelected = computed(() => {
   return !note.authorId || note.authorId === auth.memberId || auth.isAdmin
 })
 
+const noteSearchIndex = computed(() => {
+  const map = new Map<string, string>()
+  for (const note of notesStore.sortedNotes) {
+    map.set(note.id, buildSearchHaystack([note.title, note.body]))
+  }
+  return map
+})
+
 const filteredNotes = computed(() => {
   let list = notesStore.sortedNotes
   if (kindFilter.value !== 'all') {
     list = list.filter((note) => note.kind === kindFilter.value)
   }
-  const query = search.value.trim().toLowerCase()
-  if (!query) return list
-  return list.filter(
-    (note) =>
-      note.title.toLowerCase().includes(query) ||
-      note.body.toLowerCase().includes(query),
+  const query = searchQuery.value
+  if (!query.trim()) return list
+  return list.filter((note) =>
+    matchesSearch(noteSearchIndex.value.get(note.id) ?? '', query),
   )
 })
 

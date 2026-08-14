@@ -1,5 +1,12 @@
-import * as XLSX from 'xlsx'
 import { classifyTransactionFlags } from './campaignDepositMetrics'
+
+type XlsxModule = typeof import('xlsx')
+let xlsxRuntime: XlsxModule | null = null
+
+async function loadXlsx(): Promise<XlsxModule> {
+  if (!xlsxRuntime) xlsxRuntime = await import('xlsx')
+  return xlsxRuntime
+}
 
 export type ParsedTransactionPeriod = {
   start: string
@@ -284,7 +291,7 @@ function excelSerialToParts(value: number): {
   M: number
   S: number
 } | null {
-  const parsed = XLSX.SSF.parse_date_code(value)
+  const parsed = xlsxRuntime?.SSF.parse_date_code(value)
   if (!parsed) return null
   return {
     y: parsed.y,
@@ -442,10 +449,11 @@ export function resolveTransactionAmount(params: {
   return 0
 }
 
-export function parseTransactionReportBuffer(
+export async function parseTransactionReportBuffer(
   buffer: ArrayBuffer,
   filename = 'transactions.xlsx',
-): ParsedTransactionReport {
+): Promise<ParsedTransactionReport> {
+  const XLSX = await loadXlsx()
   const workbook = XLSX.read(buffer, { type: 'array', cellDates: true })
   const warnings: ParsedTransactionReport['warnings'] = []
   const sheetName = workbook.SheetNames[0]

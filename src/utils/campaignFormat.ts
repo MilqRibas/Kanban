@@ -4,7 +4,7 @@ const currencyFormatter = new Intl.NumberFormat('pt-BR', {
 })
 
 const numberFormatter = new Intl.NumberFormat('pt-BR', {
-  maximumFractionDigits: 2,
+  maximumFractionDigits: 3,
   minimumFractionDigits: 0,
 })
 

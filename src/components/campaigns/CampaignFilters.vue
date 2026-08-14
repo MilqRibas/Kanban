@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ChevronDown } from '@lucide/vue'
 import type {
   AcquisitionNature,
@@ -78,6 +78,29 @@ function patch(partial: Partial<CampaignFiltersState>) {
   emit('update:modelValue', { ...props.modelValue, ...partial })
 }
 
+const nameDraft = ref(props.modelValue.name)
+let nameTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(
+  () => props.modelValue.name,
+  (value) => {
+    if (value !== nameDraft.value) nameDraft.value = value
+  },
+)
+
+function onNameInput(value: string) {
+  nameDraft.value = value
+  if (nameTimer) clearTimeout(nameTimer)
+  nameTimer = setTimeout(() => {
+    nameTimer = null
+    patch({ name: value })
+  }, 180)
+}
+
+onBeforeUnmount(() => {
+  if (nameTimer) clearTimeout(nameTimer)
+})
+
 const selectClass =
   'rounded-lg border border-border-subtle bg-surface px-2.5 py-1.5 text-sm text-text-primary outline-none focus:border-accent/60 sm:rounded-xl sm:px-3 sm:py-2'
 </script>
@@ -89,9 +112,9 @@ const selectClass =
         type="search"
         class="min-w-0 flex-1"
         :class="selectClass"
-        :value="local.name"
-        placeholder="Buscar campanha…"
-        @input="patch({ name: ($event.target as HTMLInputElement).value })"
+        :value="nameDraft"
+        placeholder="Buscar campanha, agência ou Agent ID…"
+        @input="onNameInput(($event.target as HTMLInputElement).value)"
       />
       <button
         type="button"

@@ -7,6 +7,21 @@ const board = useBoardStore()
 const expanded = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLInputElement | null>(null)
+const draftQuery = ref(board.searchQuery)
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+function commitSearch(value: string) {
+  board.setSearchQuery(value)
+}
+
+function onSearchInput(value: string) {
+  draftQuery.value = value
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    searchTimer = null
+    commitSearch(value)
+  }, 150)
+}
 
 async function openSearch() {
   expanded.value = true
@@ -16,6 +31,11 @@ async function openSearch() {
 
 function closeSearch() {
   expanded.value = false
+  draftQuery.value = ''
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+    searchTimer = null
+  }
   board.setSearchQuery('')
 }
 
@@ -23,7 +43,7 @@ function onDocPointer(event: PointerEvent) {
   if (!expanded.value) return
   const target = event.target as Node
   if (rootRef.value?.contains(target)) return
-  if (!board.searchQuery.trim()) {
+  if (!draftQuery.value.trim() && !board.searchQuery.trim()) {
     expanded.value = false
   }
 }
@@ -37,6 +57,7 @@ function onKeydown(event: KeyboardEvent) {
 watch(
   () => board.searchQuery,
   (value) => {
+    if (value !== draftQuery.value) draftQuery.value = value
     if (value.trim() && !expanded.value) expanded.value = true
   },
 )
@@ -49,6 +70,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', onDocPointer)
   document.removeEventListener('keydown', onKeydown)
+  if (searchTimer) clearTimeout(searchTimer)
 })
 </script>
 
@@ -69,14 +91,12 @@ onBeforeUnmount(() => {
         <Search :size="15" class="shrink-0 text-accent" :stroke-width="2.25" />
         <input
           ref="inputRef"
-          :value="board.searchQuery"
+          :value="draftQuery"
           type="search"
           placeholder="Pesquisar tarefas…"
           class="w-[9.5rem] bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted sm:w-[14rem]"
           aria-label="Pesquisar tarefas"
-          @input="
-            board.setSearchQuery(($event.target as HTMLInputElement).value)
-          "
+          @input="onSearchInput(($event.target as HTMLInputElement).value)"
           @keydown.escape.prevent="closeSearch"
         />
         <button

@@ -15,6 +15,7 @@ import type {
 import { BOARD_ID, supabase } from '../lib/supabase'
 import { useAuthStore } from './auth'
 import type { Json } from '../lib/database.types'
+import { buildSearchHaystack, matchesSearch } from '../utils/search'
 
 function createId(prefix: string) {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`
@@ -217,6 +218,21 @@ export const useBoardStore = defineStore('board', () => {
     () => cards.value.find((card) => card.id === selectedCardId.value) ?? null,
   )
 
+  const cardSearchIndex = computed(() => {
+    const map = new Map<string, string>()
+    for (const card of cards.value) {
+      map.set(
+        card.id,
+        buildSearchHaystack([
+          card.title,
+          card.description,
+          ...card.checklists.flatMap((list) => list.items.map((item) => item.text)),
+        ]),
+      )
+    }
+    return map
+  })
+
   const filteredCards = computed(() => {
     let list = cards.value.filter((card) => !card.archivedAt)
     if (memberFilterId.value) {
@@ -239,15 +255,11 @@ export const useBoardStore = defineStore('board', () => {
         ),
       )
     }
-    const query = searchQuery.value.trim().toLowerCase()
-    if (!query) return list
-    return list.filter((card) => {
-      if (card.title.toLowerCase().includes(query)) return true
-      if (card.description.toLowerCase().includes(query)) return true
-      return card.checklists.some((list) =>
-        list.items.some((item) => item.text.toLowerCase().includes(query)),
-      )
-    })
+    const query = searchQuery.value
+    if (!query.trim()) return list
+    return list.filter((card) =>
+      matchesSearch(cardSearchIndex.value.get(card.id) ?? '', query),
+    )
   })
 
   const archivedCards = computed(() =>
