@@ -38,6 +38,101 @@ export type CampaignComputedStatusV2 =
   | 'no_data'
   | 'archived'
 
+export type CampaignDateWindow = {
+  start: string | null
+  end: string | null
+}
+
+function isoDay(value: string | null | undefined): string | null {
+  if (!value) return null
+  const day = String(value).slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null
+}
+
+/** Janela da campanha: só rake/transações que intersectam início → fim. */
+export function campaignDateWindow(campaign: {
+  startDate?: string | null
+  endDate?: string | null
+}): CampaignDateWindow {
+  return {
+    start: isoDay(campaign.startDate),
+    end: isoDay(campaign.endDate),
+  }
+}
+
+/**
+ * Semana conta para a campanha se intersecta [início, fim].
+ * Sem datas na campanha, não filtra (legado: histórico inteiro do agente).
+ */
+export function periodOverlapsCampaignWindow(
+  period: { periodStart: string; periodEnd?: string | null },
+  window: CampaignDateWindow,
+): boolean {
+  if (!window.start && !window.end) return true
+  const pStart = isoDay(period.periodStart)
+  if (!pStart) return false
+  const pEnd = isoDay(period.periodEnd) || pStart
+  if (window.start && pEnd < window.start) return false
+  if (window.end && pStart > window.end) return false
+  return true
+}
+
+/** Evento pontual (depósito/bônus) entra se o dia cai na janela. */
+export function eventInCampaignWindow(
+  eventIso: string | null | undefined,
+  window: CampaignDateWindow,
+  fallbackPeriod?: { periodStart: string; periodEnd?: string | null },
+): boolean {
+  const day = isoDay(eventIso)
+  if (day) {
+    if (window.start && day < window.start) return false
+    if (window.end && day > window.end) return false
+    return true
+  }
+  if (fallbackPeriod) return periodOverlapsCampaignWindow(fallbackPeriod, window)
+  return !window.start && !window.end
+}
+
+export function filterPeriodsForCampaign<
+  T extends { periodStart: string; periodEnd?: string | null },
+>(
+  periods: T[],
+  campaign: { startDate?: string | null; endDate?: string | null },
+): T[] {
+  const window = campaignDateWindow(campaign)
+  if (!window.start && !window.end) return periods
+  return periods.filter((p) => periodOverlapsCampaignWindow(p, window))
+}
+
+export function inclusiveDayCount(
+  start: string | null | undefined,
+  end: string | null | undefined,
+): number | null {
+  const from = isoDay(start)
+  const to = isoDay(end) || from
+  if (!from || !to) return null
+  const a = Date.parse(`${from}T00:00:00Z`)
+  const b = Date.parse(`${to}T00:00:00Z`)
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return null
+  return Math.round((b - a) / 86_400_000) + 1
+}
+
+/** Campanha mais curta que o snapshot semanal do relatório (ex.: evento de 1 dia). */
+export function campaignUsesWeeklySnapshot(
+  campaign: { startDate?: string | null; endDate?: string | null },
+  periods: Array<{ periodStart: string; periodEnd?: string | null }>,
+): boolean {
+  const campaignDays = inclusiveDayCount(
+    campaign.startDate,
+    campaign.endDate || campaign.startDate,
+  )
+  if (campaignDays == null || campaignDays >= 7) return false
+  return periods.some((p) => {
+    const weekDays = inclusiveDayCount(p.periodStart, p.periodEnd || p.periodStart)
+    return weekDays != null && weekDays > campaignDays
+  })
+}
+
 /** Soma de snapshots semanais — fonte de verdade do acumulado. */
 export function sumWeeklyRake(
   periods: Pick<WeeklyPeriodPoint, 'weeklyRake'>[],
@@ -350,6 +445,7 @@ export function buildCampaignWeeklyMetrics(params: {
   const activationInvestment = Number(params.activationInvestment) || 0
   const agencyPlayers = campaign.capturedPlayers
   const accumulatedRake = sumWeeklyRake(agentPeriods)
+  const weeksWithRake = agentPeriods.filter((p) => Number(p.weeklyRake) > 0)
   const sorted = sortPeriodsChronologically(agentPeriods)
   const last = sorted[sorted.length - 1] ?? null
   const nature = campaign.acquisitionNature ?? 'PAID'
@@ -414,11 +510,11 @@ export function buildCampaignWeeklyMetrics(params: {
       isArchived: campaign.isArchived,
       investment: campaign.investment,
       accumulatedRake,
-      hasImportedPeriods: agentPeriods.length > 0,
+      hasImportedPeriods: weeksWithRake.length > 0,
       acquisitionNature: nature,
       activationInvestment,
     }),
-    weeksTracked: agentPeriods.length,
+    weeksTracked: weeksWithRake.length,
     lastPeriodStart: last?.periodStart ?? null,
     lastPeriodEnd: last?.periodEnd ?? null,
     organicFixedPayback,

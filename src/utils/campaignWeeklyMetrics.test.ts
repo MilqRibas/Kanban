@@ -6,6 +6,10 @@ import {
   buildCumulativeSeries,
   calculateWeeklyPayback,
   countActivePlayers,
+  eventInCampaignWindow,
+  filterPeriodsForCampaign,
+  periodOverlapsCampaignWindow,
+  campaignUsesWeeklySnapshot,
   sumWeeklyRake,
 } from './campaignWeeklyMetrics'
 
@@ -123,5 +127,96 @@ describe('weekly rake accumulation', () => {
         activationMinimumRake: null,
       }),
     ).toBeNull()
+  })
+})
+
+describe('campaign window reconciliation', () => {
+  const weeks = [
+    { periodStart: '2026-07-06', periodEnd: '2026-07-12', weeklyRake: 500 },
+    { periodStart: '2026-07-13', periodEnd: '2026-07-19', weeklyRake: 700 },
+    { periodStart: '2026-08-10', periodEnd: '2026-08-16', weeklyRake: 0 },
+    { periodStart: '2026-08-17', periodEnd: '2026-08-23', weeklyRake: 40 },
+  ]
+
+  it('excludes weeks that ended before campaign start', () => {
+    expect(
+      periodOverlapsCampaignWindow(weeks[1], {
+        start: '2026-08-10',
+        end: null,
+      }),
+    ).toBe(false)
+    expect(
+      periodOverlapsCampaignWindow(weeks[2], {
+        start: '2026-08-10',
+        end: null,
+      }),
+    ).toBe(true)
+  })
+
+  it('does not inherit historical rake when the window only has zero-rake weeks', () => {
+    const scoped = filterPeriodsForCampaign(weeks, {
+      startDate: '2026-08-10',
+      endDate: '2026-08-16',
+    })
+    expect(scoped).toEqual([weeks[2]])
+    expect(sumWeeklyRake(scoped)).toBe(0)
+    const metrics = buildCampaignWeeklyMetrics({
+      campaign: {
+        investment: 1000,
+        capturedPlayers: 20,
+        isArchived: false,
+        acquisitionNature: 'PAID',
+        clubFichasConversions: null,
+      },
+      agentPeriods: scoped,
+      uniqueActivePlayers: 0,
+      activationInvestment: 0,
+    })
+    expect(metrics.accumulatedRake).toBe(0)
+    expect(metrics.weeksTracked).toBe(0)
+    expect(metrics.status).toBe('no_data')
+  })
+
+  it('keeps full agent history when the campaign has no dates', () => {
+    const scoped = filterPeriodsForCampaign(weeks, {
+      startDate: null,
+      endDate: null,
+    })
+    expect(sumWeeklyRake(scoped)).toBe(1240)
+  })
+
+  it('excludes weeks that start after campaign end', () => {
+    const scoped = filterPeriodsForCampaign(weeks, {
+      startDate: '2026-07-01',
+      endDate: '2026-07-19',
+    })
+    expect(sumWeeklyRake(scoped)).toBe(1200)
+  })
+
+  it('keeps a bonus/deposit only when the event day is inside the window', () => {
+    const window = { start: '2026-08-10', end: '2026-08-16' }
+    expect(eventInCampaignWindow('2026-07-12T18:00:00Z', window)).toBe(false)
+    expect(eventInCampaignWindow('2026-08-12T18:00:00Z', window)).toBe(true)
+    expect(
+      eventInCampaignWindow(null, window, {
+        periodStart: '2026-08-10',
+        periodEnd: '2026-08-16',
+      }),
+    ).toBe(true)
+  })
+
+  it('flags 1-day campaigns that inherit a full weekly snapshot', () => {
+    expect(
+      campaignUsesWeeklySnapshot(
+        { startDate: '2026-04-24', endDate: '2026-04-24' },
+        [{ periodStart: '2026-04-20', periodEnd: '2026-04-26' }],
+      ),
+    ).toBe(true)
+    expect(
+      campaignUsesWeeklySnapshot(
+        { startDate: '2026-06-01', endDate: '2026-07-05' },
+        [{ periodStart: '2026-06-01', periodEnd: '2026-06-07' }],
+      ),
+    ).toBe(false)
   })
 })

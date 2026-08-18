@@ -32,7 +32,7 @@ const rows = computed(() => {
 const weekColumns = computed(() => {
   const keys = new Map<string, { start: string; end: string }>()
   for (const campaign of props.campaigns) {
-    for (const period of store.agentPeriodsFor(campaign.agentId)) {
+    for (const period of store.agentPeriodsForCampaign(campaign)) {
       keys.set(period.periodStart, {
         start: period.periodStart,
         end: period.periodEnd,
@@ -42,21 +42,18 @@ const weekColumns = computed(() => {
   return [...keys.values()].sort((a, b) => a.start.localeCompare(b.start))
 })
 
-const rakeByAgentWeek = computed(() => {
+const rakeByCampaignWeek = computed(() => {
   const map = new Map<string, number>()
   for (const campaign of props.campaigns) {
-    const agentId = campaign.agentId
-    if (!agentId) continue
-    for (const period of store.agentPeriodsFor(agentId)) {
-      map.set(`${agentId}:${period.periodStart}`, period.weeklyRake)
+    for (const period of store.agentPeriodsForCampaign(campaign)) {
+      map.set(`${campaign.id}:${period.periodStart}`, period.weeklyRake)
     }
   }
   return map
 })
 
 function weekRake(campaign: Campaign, periodStart: string) {
-  if (!campaign.agentId) return null
-  const value = rakeByAgentWeek.value.get(`${campaign.agentId}:${periodStart}`)
+  const value = rakeByCampaignWeek.value.get(`${campaign.id}:${periodStart}`)
   return value == null ? null : value
 }
 

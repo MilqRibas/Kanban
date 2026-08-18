@@ -16,7 +16,8 @@ import {
   ACTIVATION_RULE_OPTIONS,
   CAMPAIGN_TYPE_OPTIONS,
 } from '../../types/campaigns'
-import { formatCurrency } from '../../utils/campaignFormat'
+import { formatCurrency, parseCountInput } from '../../utils/campaignFormat'
+import { isValidAgentId } from '../../utils/campaignReportParser'
 import { funnelWarnings } from '../../utils/campaignFunnelMetrics'
 import { buildSearchHaystack, matchesSearch } from '../../utils/search'
 
@@ -128,9 +129,9 @@ const agentQuery = ref('')
 
 const agentOptions = computed(() => {
   const q = agentQuery.value
-  const list = [...store.agents].sort((a, b) =>
-    a.name.localeCompare(b.name, 'pt-BR'),
-  )
+  const list = [...store.agents]
+    .filter((a) => isValidAgentId(a.agentId))
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
   if (!q.trim()) return list
   return list.filter((a) =>
     matchesSearch(buildSearchHaystack([a.agentId, a.name]), q),
@@ -176,12 +177,12 @@ const isPaid = computed(() => draft.acquisitionNature === 'PAID')
 
 const softFunnelWarnings = computed(() => {
   const warnings = funnelWarnings({
-    impressions: parseOptionalNumber(draft.impressions),
-    reach: parseOptionalNumber(draft.reach),
-    metaConversations: parseOptionalNumber(draft.metaConversations),
-    serviceConversations: parseOptionalNumber(draft.serviceConversations),
-    clubConversions: parseOptionalNumber(draft.clubConversions),
-    clubFichasConversions: parseOptionalNumber(draft.clubFichasConversions),
+    impressions: parseOptionalCount(draft.impressions),
+    reach: parseOptionalCount(draft.reach),
+    metaConversations: parseOptionalCount(draft.metaConversations),
+    serviceConversations: parseOptionalCount(draft.serviceConversations),
+    clubConversions: parseOptionalCount(draft.clubConversions),
+    clubFichasConversions: parseOptionalCount(draft.clubFichasConversions),
   })
   const messages: string[] = []
   if (warnings.reachGtImpressions) {
@@ -274,6 +275,20 @@ watch(
   },
 )
 
+watch(
+  () => draft.startDate,
+  (iso) => {
+    if (!iso) return
+    const [yearRaw, monthRaw] = iso.slice(0, 10).split('-')
+    const year = Number(yearRaw)
+    const month = Number(monthRaw)
+    if (year >= 2000 && month >= 1 && month <= 12) {
+      draft.acquisitionYear = year
+      draft.acquisitionMonth = month
+    }
+  },
+)
+
 function normalizeNumberInput(raw: string | number | null | undefined) {
   let value = String(raw ?? '').trim()
   if (!value) return ''
@@ -304,11 +319,32 @@ function parseOptionalNumber(raw: string | number | null | undefined) {
   return Number.isFinite(value) ? value : null
 }
 
+function parseOptionalCount(raw: string | number | null | undefined) {
+  return parseCountInput(raw)
+}
+
 const accumulatedRakePreview = computed(() => {
   if (!draft.agentId) return 0
-  const agent = store.findAgent(draft.agentId)
-  return agent?.accumulatedRake ?? 0
+  return store
+    .agentPeriodsInWindow(draft.agentId, {
+      startDate: draft.startDate || null,
+      endDate: draft.endDate || null,
+    })
+    .reduce((sum, p) => sum + (Number(p.weeklyRake) || 0), 0)
 })
+
+const agentLifetimeRake = computed(() => {
+  if (!draft.agentId) return 0
+  return store.findAgent(draft.agentId)?.accumulatedRake ?? 0
+})
+
+const excludedAgentRake = computed(() =>
+  Math.max(0, agentLifetimeRake.value - accumulatedRakePreview.value),
+)
+
+const selectedAgentNoWindowRake = computed(
+  () => Boolean(draft.agentId) && accumulatedRakePreview.value <= 0.009,
+)
 
 function buildPayload(): CampaignCreateInput | null {
   formError.value = null
@@ -393,12 +429,12 @@ function buildPayload(): CampaignCreateInput | null {
     campaignUrl: draft.campaignUrl.trim() || null,
     notes: draft.notes.trim() || null,
     investment: investmentValue,
-    impressions: parseOptionalNumber(draft.impressions),
-    reach: parseOptionalNumber(draft.reach),
-    metaConversations: parseOptionalNumber(draft.metaConversations),
-    serviceConversations: parseOptionalNumber(draft.serviceConversations),
-    clubConversions: parseOptionalNumber(draft.clubConversions),
-    clubFichasConversions: parseOptionalNumber(draft.clubFichasConversions),
+    impressions: parseOptionalCount(draft.impressions),
+    reach: parseOptionalCount(draft.reach),
+    metaConversations: parseOptionalCount(draft.metaConversations),
+    serviceConversations: parseOptionalCount(draft.serviceConversations),
+    clubConversions: parseOptionalCount(draft.clubConversions),
+    clubFichasConversions: parseOptionalCount(draft.clubFichasConversions),
     capturedPlayers: captured.value,
     activationRuleType: draft.activationRuleType,
     activationMinimumRake,
@@ -596,7 +632,21 @@ async function save() {
                 </select>
                 <p v-if="selectedAgentLabel" class="text-xs text-accent">
                   Selecionado: {{ selectedAgentLabel }}
-                  · Rake acum. {{ formatCurrency(accumulatedRakePreview) }}
+                  · Rake na janela {{ formatCurrency(accumulatedRakePreview) }}
+                </p>
+                <p
+                  v-if="selectedAgentLabel && selectedAgentNoWindowRake"
+                  class="text-[11px] text-amber-200"
+                >
+                  Nenhuma semana com rake entre início e fim — importe o relatório
+                  desse período ou confira o Agent ID.
+                </p>
+                <p
+                  v-if="selectedAgentLabel && excludedAgentRake > 0.009"
+                  class="text-[11px] text-text-muted"
+                >
+                  O agente tem {{ formatCurrency(excludedAgentRake) }} de rake fora da
+                  data de início/fim desta campanha — não entra no acumulado.
                 </p>
               </template>
             </div>

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   aggregatePlayersById,
   extractAgentIdFromBlockHeader,
+  isValidAgentId,
   parsePeriodLabel,
 } from './campaignReportParser'
 
@@ -17,6 +18,17 @@ describe('agent report format', () => {
       'Liga: 128 - Suprema Union Slot: 57906 - SX Club Agente: 1641800 - CPP01',
     )
     expect(id).toBe('1641800')
+  })
+
+  it('ignores dummy Agent ID 0 / None from the spreadsheet', () => {
+    expect(isValidAgentId('0')).toBe(false)
+    expect(isValidAgentId('None')).toBe(false)
+    expect(isValidAgentId('1641800')).toBe(true)
+    expect(
+      extractAgentIdFromBlockHeader(
+        'Liga: 128 Slot: 1 Agente: 0 - None',
+      ),
+    ).toBeNull()
   })
 
   it('aggregates the same player id in the same week', () => {

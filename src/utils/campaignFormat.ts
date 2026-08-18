@@ -82,6 +82,47 @@ export function monthName(month: number): string {
   return MONTH_NAMES[month - 1]
 }
 
+/**
+ * Contagens (impressões, alcance, conversas) digitadas no padrão BR
+ * com ponto de milhar: 64.301 → 64301, 29.35 → 29350.
+ * Inteiros já corretos (≥ 1000 ou sem decimal) não mudam.
+ */
+export function coerceBrazilianCount(
+  value: number | null | undefined,
+): number | null {
+  if (value === null || value === undefined || !Number.isFinite(value)) return null
+  if (value < 0) return null
+  if (Number.isInteger(value)) return value
+  if (value > 0 && value < 1000) {
+    return Math.round(value * 1000)
+  }
+  return Math.round(value)
+}
+
+/** Parse de campo de contagem a partir do texto do formulário. */
+export function parseCountInput(
+  raw: string | number | null | undefined,
+): number | null {
+  if (raw === null || raw === undefined) return null
+  const text = String(raw).trim()
+  if (!text) return null
+  if (/^\d{1,3}(\.\d{3})+$/.test(text)) {
+    return Number(text.replace(/\./g, ''))
+  }
+  if (/^\d{1,3}(,\d{3})+$/.test(text)) {
+    return Number(text.replace(/,/g, ''))
+  }
+  let normalized = text
+  if (text.includes(',') && text.includes('.')) {
+    normalized = text.replace(/\./g, '').replace(',', '.')
+  } else if (text.includes(',')) {
+    normalized = text.replace(',', '.')
+  }
+  const n = Number(normalized)
+  if (!Number.isFinite(n)) return null
+  return coerceBrazilianCount(n)
+}
+
 export function formatPaybackLabel(params: {
   reached: boolean
   month: number | null

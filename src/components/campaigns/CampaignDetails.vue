@@ -34,6 +34,7 @@ import {
   formatPercent,
   formatNumber,
 } from '../../utils/campaignFormat'
+import { campaignUsesWeeklySnapshot } from '../../utils/campaignWeeklyMetrics'
 import {
   buildJourneyEdges,
   formatMetaServiceDivergenceLabel,
@@ -88,8 +89,8 @@ useEphemeralDismiss({
 })
 
 const agent = computed(() => store.findAgent(props.campaign.agentId))
-const agentPeriods = computed(() => store.agentPeriodsFor(props.campaign.agentId))
-const playerPeriods = computed(() => store.playerPeriodsForAgent(props.campaign.agentId))
+const agentPeriods = computed(() => store.agentPeriodsForCampaign(props.campaign))
+const playerPeriods = computed(() => store.playerPeriodsForCampaign(props.campaign))
 const metrics = computed(() => store.metricsFor(props.campaign))
 const funnel = computed(() =>
   activeTab.value === 'funnel' ? store.funnelFor(props.campaign) : null,
@@ -134,7 +135,8 @@ const gameProfile = computed(() => {
     ? store.tableDetailsCache.filter(
         (t) =>
           t.agentId === props.campaign.agentId &&
-          (!gameProfilePeriod.value || t.periodStart === gameProfilePeriod.value),
+          (!gameProfilePeriod.value || t.periodStart === gameProfilePeriod.value) &&
+          agentPeriods.value.some((p) => p.periodStart === t.periodStart),
       )
     : []
   return store.gameProfileFor(props.campaign, tables, gameProfilePeriod.value)
@@ -146,7 +148,8 @@ const tableDetails = computed(() => {
     .filter(
       (t) =>
         t.agentId === props.campaign.agentId &&
-        (!tableDetailsPeriod.value || t.periodStart === tableDetailsPeriod.value),
+        (!tableDetailsPeriod.value || t.periodStart === tableDetailsPeriod.value) &&
+        agentPeriods.value.some((p) => p.periodStart === t.periodStart),
     )
     .sort((a, b) => b.rake - a.rake)
 })
@@ -230,6 +233,7 @@ const selectedPlayerDetail = computed(() => {
   const deposits = store.playerDepositStats(
     selectedPlayerId.value,
     props.campaign.agentId,
+    props.campaign,
   )
   return { player, series, deposits }
 })
@@ -530,6 +534,9 @@ const evolutionRows = computed(() => {
 
 const hasAgent = computed(() => !!props.campaign.agentId)
 const hasWeeks = computed(() => metrics.value.weeksTracked > 0)
+const weeklySnapshotWarning = computed(() =>
+  campaignUsesWeeklySnapshot(props.campaign, agentPeriods.value),
+)
 const natureLabel = computed(
   () =>
     ACQUISITION_NATURE_LABELS[props.campaign.acquisitionNature] ??
@@ -640,6 +647,13 @@ watch(tableDetailsPeriod, async (period) => {
             <template v-else>
               Sem agente vinculado
             </template>
+          </p>
+          <p
+            v-if="weeklySnapshotWarning"
+            class="max-w-xl text-xs text-amber-200/90"
+          >
+            O relatório é semanal. O rake exibido é da semana que contém o dia do
+            evento, não só dessa data.
           </p>
         </div>
 

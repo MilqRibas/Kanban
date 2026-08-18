@@ -122,7 +122,7 @@ export function calculateEconomicStatus(params: {
 
   const total = resolveTotalInvestment(params)
   if (total === null || total <= 0) {
-    return params.accumulatedRake > 0 ? 'no_return' : 'no_return'
+    return 'no_return'
   }
   if (params.accumulatedRake >= total) return 'payback'
   if (params.accumulatedRake > 0 && params.accumulatedRake < total) {

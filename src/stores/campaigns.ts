@@ -27,6 +27,7 @@ import {
   aggregateAgentsById,
   aggregatePlayersById,
   buildAgentReconciliations,
+  isValidAgentId,
   parseAgentReportFile,
   type ParsedReport,
 } from '../utils/campaignReportParser'
@@ -36,7 +37,10 @@ import {
   buildRakeHealth,
   accumulatePlayerRake,
   activationRakeThreshold,
+  campaignDateWindow,
   countActivePlayers,
+  eventInCampaignWindow,
+  filterPeriodsForCampaign,
   formatPeriodLabel,
   sumWeeklyRake,
   uniquePlayerIds,
@@ -63,6 +67,7 @@ import {
   type FunnelWarnings,
 } from '../utils/campaignFunnelMetrics'
 import { applicableAcquisitionCost } from '../utils/campaignEconomics'
+import { coerceBrazilianCount } from '../utils/campaignFormat'
 import {
   parseTransactionReportFile,
   mondaySundayContaining,
@@ -185,12 +190,18 @@ function mapCampaign(row: Record<string, unknown>): Campaign {
     campaignUrl: (row.campaign_url as string | null) ?? null,
     notes: (row.notes as string | null) ?? null,
     investment: toNullableNumber(row.investment),
-    impressions: toNullableNumber(row.impressions),
-    reach: toNullableNumber(row.reach),
-    metaConversations: toNullableNumber(row.meta_conversations),
-    serviceConversations: toNullableNumber(row.service_conversations),
-    clubConversions: toNullableNumber(row.club_conversions),
-    clubFichasConversions: toNullableNumber(row.club_fichas_conversions),
+    impressions: coerceBrazilianCount(toNullableNumber(row.impressions)),
+    reach: coerceBrazilianCount(toNullableNumber(row.reach)),
+    metaConversations: coerceBrazilianCount(
+      toNullableNumber(row.meta_conversations),
+    ),
+    serviceConversations: coerceBrazilianCount(
+      toNullableNumber(row.service_conversations),
+    ),
+    clubConversions: coerceBrazilianCount(toNullableNumber(row.club_conversions)),
+    clubFichasConversions: coerceBrazilianCount(
+      toNullableNumber(row.club_fichas_conversions),
+    ),
     capturedPlayers: toNumber(row.captured_players),
     activePlayers: toNumber(row.active_players),
     activationRuleType: rule as ActivationRuleType,
@@ -604,13 +615,39 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     return playerPeriodsByAgent.value.get(agentId) ?? []
   }
 
+  function agentPeriodsInWindow(
+    agentId: string | null | undefined,
+    window: { startDate?: string | null; endDate?: string | null },
+  ) {
+    return filterPeriodsForCampaign(agentPeriodsFor(agentId), window)
+  }
+
+  function agentPeriodsForCampaign(campaign: Pick<Campaign, 'agentId' | 'startDate' | 'endDate'>) {
+    return agentPeriodsInWindow(campaign.agentId, campaign)
+  }
+
+  function playerPeriodsForCampaign(campaign: Pick<Campaign, 'agentId' | 'startDate' | 'endDate'>) {
+    return filterPeriodsForCampaign(playerPeriodsForAgent(campaign.agentId), campaign)
+  }
+
+  function transactionsForCampaign(campaign: Pick<Campaign, 'agentId' | 'startDate' | 'endDate'>) {
+    if (!campaign.agentId) return []
+    const window = campaignDateWindow(campaign)
+    return (transactionsByAgent.value.get(campaign.agentId) ?? []).filter((t) =>
+      eventInCampaignWindow(t.occurredAt, window, {
+        periodStart: t.periodStart,
+        periodEnd: t.periodEnd,
+      }),
+    )
+  }
+
   function uniqueActivesForAgent(agentId: string | null | undefined) {
     return uniquePlayerIds(playerPeriodsForAgent(agentId)).length
   }
 
   function uniqueActivesForCampaign(campaign: Campaign) {
     return countActivePlayers(
-      playerPeriodsForAgent(campaign.agentId),
+      playerPeriodsForCampaign(campaign),
       activationRakeThreshold(campaign),
     )
   }
@@ -627,7 +664,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   }
 
   function buildMetrics(campaign: Campaign): CampaignWeeklyMetrics {
-    const periods = agentPeriodsFor(campaign.agentId).map((p) => ({
+    const periods = agentPeriodsForCampaign(campaign).map((p) => ({
       periodStart: p.periodStart,
       periodEnd: p.periodEnd,
       weeklyRake: p.weeklyRake,
@@ -637,7 +674,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       campaign,
       agentPeriods: periods,
       uniqueActivePlayers: uniqueActivesForCampaign(campaign),
-      activationInvestment: activationInvestmentFor(campaign.agentId),
+      activationInvestment: activationInvestmentFor(campaign),
     })
   }
 
@@ -653,17 +690,14 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     return metricsByCampaignId.value.get(campaign.id) ?? buildMetrics(campaign)
   }
 
-  function activationInvestmentFor(agentId: string | null | undefined) {
-    if (!agentId) return 0
-    return sumActivationInvestment(
-      transactionsByAgent.value.get(agentId) ?? [],
-      agentId,
-    )
+  function activationInvestmentFor(campaign: Pick<Campaign, 'agentId' | 'startDate' | 'endDate'>) {
+    if (!campaign.agentId) return 0
+    return sumActivationInvestment(transactionsForCampaign(campaign), campaign.agentId)
   }
 
   function activePlayerIdSet(campaign: Campaign): Set<string> {
     const threshold = activationRakeThreshold(campaign)
-    const periods = playerPeriodsForAgent(campaign.agentId)
+    const periods = playerPeriodsForCampaign(campaign)
     if (threshold === null) {
       return new Set(uniquePlayerIds(periods))
     }
@@ -685,7 +719,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     const m = metricsFor(campaign)
     const agentId = campaign.agentId
     return buildPurchasePowerMetrics({
-      rows: agentId ? (transactionsByAgent.value.get(agentId) ?? []) : [],
+      rows: agentId ? transactionsForCampaign(campaign) : [],
       agentId,
       activePlayerIds: activePlayerIdSet(campaign),
       accumulatedRake: m.accumulatedRake,
@@ -714,13 +748,23 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     }
   }
 
-  function playerDepositStats(playerId: string, agentId?: string | null) {
+  function playerDepositStats(
+    playerId: string,
+    agentId?: string | null,
+    campaign?: Pick<Campaign, 'startDate' | 'endDate'> | null,
+  ) {
     const pool = agentId
       ? (transactionsByAgent.value.get(agentId) ?? [])
       : transactions.value
-    const scoped = pool.filter(
-      (t) => t.receiverPlayerId === playerId && t.isDeposit,
-    )
+    const window = campaign ? campaignDateWindow(campaign) : null
+    const scoped = pool.filter((t) => {
+      if (t.receiverPlayerId !== playerId || !t.isDeposit) return false
+      if (!window) return true
+      return eventInCampaignWindow(t.occurredAt, window, {
+        periodStart: t.periodStart,
+        periodEnd: t.periodEnd,
+      })
+    })
     const volume = scoped.reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0)
     return {
       depositCount: scoped.length,
@@ -743,7 +787,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     campaign: Campaign,
     periodStart?: string | null,
   ) {
-    const rows = playerPeriodsForAgent(campaign.agentId).filter(
+    const rows = playerPeriodsForCampaign(campaign).filter(
       (p) => !periodStart || p.periodStart === periodStart,
     )
     const players = periodStart
@@ -790,7 +834,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     tableRows: CampaignTableDetail[],
     periodStart?: string | null,
   ) {
-    const filtered = tableRows.filter(
+    const filtered = filterPeriodsForCampaign(tableRows, campaign).filter(
       (r) =>
         r.agentId === campaign.agentId &&
         (!periodStart || r.periodStart === periodStart),
@@ -810,10 +854,10 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     averageRakePerActive: number | null
   } {
     const list = visibleCampaigns.value.filter((c) => !c.isArchived)
-    let totalInvestment = 0
-    let totalAccumulatedRake = 0
-    let rakeForRecovery = 0
-    let investmentForRecovery = 0
+    let paidInvestment = 0
+    let paidRake = 0
+    let organicRake = 0
+    let paidActive = 0
     let totalCaptured = 0
     let totalActive = 0
     let paybackCount = 0
@@ -822,35 +866,33 @@ export const useCampaignsStore = defineStore('campaigns', () => {
 
     for (const campaign of list) {
       const m = metricsFor(campaign)
-      totalAccumulatedRake += m.accumulatedRake
+      const paid = (campaign.acquisitionNature ?? 'PAID') !== 'ORGANIC'
       totalCaptured += campaign.capturedPlayers
       totalActive += m.uniqueActivePlayers
-      if (m.totalInvestment != null) {
-        totalInvestment += m.totalInvestment
-        investmentForRecovery += m.totalInvestment
-        rakeForRecovery += m.accumulatedRake
+      if (paid) {
+        paidRake += m.accumulatedRake
+        paidActive += m.uniqueActivePlayers
+        if (m.totalInvestment != null) paidInvestment += m.totalInvestment
+        if (m.status === 'payback') paybackCount += 1
+        if (m.status === 'recovering') recoveringCount += 1
+      } else {
+        organicRake += m.accumulatedRake
       }
-      if (m.status === 'payback') paybackCount += 1
-      if (m.status === 'recovering') recoveringCount += 1
       if (m.status === 'no_data') noDataCount += 1
     }
 
     const activationRate =
       totalCaptured > 0 ? (totalActive / totalCaptured) * 100 : null
     const recoveryRate =
-      investmentForRecovery > 0
-        ? (rakeForRecovery / investmentForRecovery) * 100
-        : null
+      paidInvestment > 0 ? (paidRake / paidInvestment) * 100 : null
     const costPerActive =
-      totalActive > 0 && totalInvestment > 0
-        ? totalInvestment / totalActive
-        : null
-    const averageRakePerActive =
-      totalActive > 0 ? totalAccumulatedRake / totalActive : null
+      paidActive > 0 && paidInvestment > 0 ? paidInvestment / paidActive : null
+    const averageRakePerActive = paidActive > 0 ? paidRake / paidActive : null
 
     return {
-      totalInvestment,
-      totalAccumulatedRake,
+      totalInvestment: paidInvestment,
+      totalAccumulatedRake: paidRake,
+      organicAccumulatedRake: organicRake,
       totalCaptured,
       totalActive,
       activationRate,
@@ -1144,6 +1186,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     if (broken.length > 0) {
       void purgeBrokenTransactionImports()
     }
+    void purgeInvalidAgents()
   }
 
   function reset() {
@@ -2312,6 +2355,35 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     return removed
   }
 
+  async function purgeInvalidAgents(): Promise<number> {
+    const invalid = agents.value.filter((a) => !isValidAgentId(a.agentId))
+    if (invalid.length === 0) return 0
+
+    quietRealtime(6000)
+    let removed = 0
+    for (const agent of invalid) {
+      await supabase
+        .from('campaign_player_periods')
+        .delete()
+        .eq('agent_id', agent.agentId)
+      await supabase
+        .from('campaign_table_details')
+        .delete()
+        .eq('agent_id', agent.agentId)
+      await supabase
+        .from('campaign_agent_periods')
+        .delete()
+        .eq('agent_id', agent.agentId)
+      const { error: delError } = await supabase
+        .from('campaign_agents')
+        .delete()
+        .eq('agent_id', agent.agentId)
+      if (!delError) removed += 1
+    }
+    if (removed > 0) await load()
+    return removed
+  }
+
   async function removeTransactionImport(id: string) {
     const toast = useToastStore()
     const item = transactionImports.value.find((i) => i.id === id)
@@ -2564,7 +2636,10 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     updateMonthlyResult,
     monthlyResultsFor,
     agentPeriodsFor,
+    agentPeriodsInWindow,
+    agentPeriodsForCampaign,
     playerPeriodsForAgent,
+    playerPeriodsForCampaign,
     uniqueActivesForAgent,
     uniqueActivesForCampaign,
     canArchiveCampaign,
@@ -2584,6 +2659,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     commitTransactionReport,
     removeTransactionImport,
     purgeBrokenTransactionImports,
+    purgeInvalidAgents,
     loadTableDetails,
     loadPlayerTableDetails,
     findAgent,

@@ -130,6 +130,15 @@ function toId(value: unknown): string {
   return raw
 }
 
+/** Agent ID 0 / None é linha dummy da planilha — não é agência real. */
+export function isValidAgentId(id: string | null | undefined): boolean {
+  const t = String(id ?? '').trim()
+  if (!t) return false
+  if (t === '0') return false
+  if (/^none$/i.test(t)) return false
+  return true
+}
+
 function rowText(row: unknown[]): string {
   return row
     .map((cell) => (cell === null || cell === undefined || cell === '' ? '' : String(cell)))
@@ -172,7 +181,8 @@ export function extractAgentIdFromBlockHeader(raw: unknown): string | null {
   if (raw === null || raw === undefined) return null
   const text = String(raw)
   const match = text.match(/Agente:\s*(\d+)/i)
-  return match ? match[1] : null
+  if (!match) return null
+  return isValidAgentId(match[1]) ? match[1] : null
 }
 
 export function aggregateAgentsById(agents: ParsedAgentRow[]): ParsedAgentRow[] {
@@ -331,7 +341,7 @@ function parseAgentsSheet(ws: WorkSheet): {
   for (let r = 1; r < matrix.length; r += 1) {
     const row = matrix[r] ?? []
     const agentId = toId(row[iAgentId])
-    if (!agentId) continue
+    if (!isValidAgentId(agentId)) continue
     const weekRaw = row[iSemana]
     const parsed = parsePeriodLabel(weekRaw)
     if (!parsed) {
@@ -394,6 +404,13 @@ function parseBlockedSheet(
     }
 
     const agentFromHeader = extractAgentIdFromBlockHeader(joined)
+    const rawAgentMatch = joined.match(/Agente:\s*(\d+)/i)
+    if (rawAgentMatch && !isValidAgentId(rawAgentMatch[1])) {
+      // Cabeçalho dummy (Agente: 0 - None) — não herda o agente anterior.
+      currentAgent = null
+      headerMap = null
+      continue
+    }
     if (agentFromHeader) {
       currentAgent = agentFromHeader
       headerMap = null

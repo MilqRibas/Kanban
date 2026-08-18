@@ -196,6 +196,7 @@ export function buildCampaignMetrics(
 export type OverviewKpis = {
   totalInvestment: number
   totalAccumulatedRake: number
+  organicAccumulatedRake: number
   totalCaptured: number
   totalActive: number
   activationRate: number | null
@@ -226,6 +227,7 @@ export function buildOverviewKpis(
   return {
     totalInvestment,
     totalAccumulatedRake,
+    organicAccumulatedRake: 0,
     totalCaptured,
     totalActive,
     activationRate: calculateActivationRate(totalActive, totalCaptured),

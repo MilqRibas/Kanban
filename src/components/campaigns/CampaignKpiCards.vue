@@ -33,8 +33,8 @@ const cards: {
   },
   {
     key: 'totalAccumulatedRake',
-    label: 'Rake acumulado',
-    shortLabel: 'Rake acum.',
+    label: 'Rake das pagas',
+    shortLabel: 'Rake pagas',
     icon: CircleDollarSign,
     format: 'currency',
   },
@@ -106,6 +106,12 @@ function display(value: number | null, format: (typeof cards)[number]['format'])
       </div>
       <p class="mt-1 text-sm font-semibold tabular-nums leading-tight text-text-primary sm:text-base lg:text-lg">
         {{ display(kpis[card.key], card.format) }}
+      </p>
+      <p
+        v-if="card.key === 'totalAccumulatedRake' && (kpis.organicAccumulatedRake ?? 0) > 0.009"
+        class="mt-0.5 truncate text-[10px] text-text-muted"
+      >
+        Orgânicas {{ formatCurrency(kpis.organicAccumulatedRake) }}
       </p>
     </div>
   </div>
