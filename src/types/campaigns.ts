@@ -237,6 +237,21 @@ export interface CampaignPlayerPeriod {
   createdAt: string
 }
 
+/** Coorte de aquisição da campanha (Player IDs persistidos). */
+export interface CampaignCohortPlayer {
+  id: string
+  boardId: string
+  campaignId: string
+  playerId: string
+  acquiredAt: string
+  sourceAgentId: string
+  firstSeenWeek: string
+  lastSeenWeek: string
+  currentAgentId: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface CampaignTableDetail {
   id: string
   boardId: string

@@ -32,7 +32,7 @@ const rows = computed(() => {
 const weekColumns = computed(() => {
   const keys = new Map<string, { start: string; end: string }>()
   for (const campaign of props.campaigns) {
-    for (const period of store.agentPeriodsForCampaign(campaign)) {
+    for (const period of store.cohortWeeklyPeriodsFor(campaign)) {
       keys.set(period.periodStart, {
         start: period.periodStart,
         end: period.periodEnd,
@@ -45,7 +45,7 @@ const weekColumns = computed(() => {
 const rakeByCampaignWeek = computed(() => {
   const map = new Map<string, number>()
   for (const campaign of props.campaigns) {
-    for (const period of store.agentPeriodsForCampaign(campaign)) {
+    for (const period of store.cohortWeeklyPeriodsFor(campaign)) {
       map.set(`${campaign.id}:${period.periodStart}`, period.weeklyRake)
     }
   }

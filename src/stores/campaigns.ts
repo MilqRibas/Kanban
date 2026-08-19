@@ -7,6 +7,7 @@ import type {
   Campaign,
   CampaignAgent,
   CampaignAgentPeriod,
+  CampaignCohortPlayer,
   CampaignCreateInput,
   CampaignHistoryAction,
   CampaignHistoryEntry,
@@ -67,6 +68,12 @@ import {
   type FunnelWarnings,
 } from '../utils/campaignFunnelMetrics'
 import { applicableAcquisitionCost } from '../utils/campaignEconomics'
+import {
+  aggregateCohortWeeklyRake,
+  attributedPlayerPeriods,
+  discoverCampaignCohort,
+  type CampaignCohortMember,
+} from '../utils/campaignCohort'
 import { coerceBrazilianCount } from '../utils/campaignFormat'
 import {
   parseTransactionReportFile,
@@ -100,6 +107,9 @@ function createPlayerPeriodId() {
 }
 function createTableDetailId() {
   return `ctd-${crypto.randomUUID().slice(0, 8)}`
+}
+function createCohortPlayerId() {
+  return `ccp-${crypto.randomUUID().slice(0, 8)}`
 }
 
 function toNumber(value: unknown, fallback = 0): number {
@@ -137,6 +147,19 @@ async function fetchAllPaged(
     from += PAGE_SIZE
   }
   return { data: all, error: null }
+}
+
+async function insertInChunks(
+  table: string,
+  rows: Record<string, unknown>[],
+  chunkSize = 500,
+) {
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows.slice(i, i + chunkSize)
+    const { error } = await supabase.from(table).insert(chunk)
+    if (error) return error
+  }
+  return null
 }
 
 type RangeQuery = {
@@ -367,6 +390,22 @@ function mapPlayerPeriod(row: Record<string, unknown>): CampaignPlayerPeriod {
   }
 }
 
+function mapCohortPlayer(row: Record<string, unknown>): CampaignCohortPlayer {
+  return {
+    id: String(row.id),
+    boardId: String(row.board_id ?? BOARD_ID),
+    campaignId: String(row.campaign_id),
+    playerId: String(row.player_id),
+    acquiredAt: String(row.acquired_at).slice(0, 10),
+    sourceAgentId: String(row.source_agent_id),
+    firstSeenWeek: String(row.first_seen_week).slice(0, 10),
+    lastSeenWeek: String(row.last_seen_week).slice(0, 10),
+    currentAgentId: String(row.current_agent_id),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  }
+}
+
 function mapTableDetail(row: Record<string, unknown>): CampaignTableDetail {
   return {
     id: String(row.id),
@@ -490,6 +529,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   const transactions = ref<CampaignTransaction[]>([])
   const agentPeriods = ref<CampaignAgentPeriod[]>([])
   const playerPeriods = ref<CampaignPlayerPeriod[]>([])
+  const cohortPlayers = ref<CampaignCohortPlayer[]>([])
   const tableDetailsCache = ref<CampaignTableDetail[]>([])
   const selectedCampaignId = ref<string | null>(null)
   const loading = ref(false)
@@ -626,8 +666,46 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     return agentPeriodsInWindow(campaign.agentId, campaign)
   }
 
-  function playerPeriodsForCampaign(campaign: Pick<Campaign, 'agentId' | 'startDate' | 'endDate'>) {
-    return filterPeriodsForCampaign(playerPeriodsForAgent(campaign.agentId), campaign)
+  function cohortMembersFor(
+    campaign: Pick<Campaign, 'id' | 'agentId' | 'startDate' | 'endDate'>,
+  ): CampaignCohortMember[] {
+    return discoverCampaignCohort(campaign, playerPeriods.value)
+  }
+
+  function playerPeriodsForCampaign(
+    campaign: Pick<Campaign, 'id' | 'agentId' | 'startDate' | 'endDate'>,
+  ) {
+    return attributedPlayerPeriods(
+      cohortMembersFor(campaign),
+      playerPeriods.value,
+    )
+  }
+
+  function cohortWeeklyPeriodsFor(
+    campaign: Pick<Campaign, 'id' | 'agentId' | 'startDate' | 'endDate'>,
+  ) {
+    return aggregateCohortWeeklyRake(playerPeriodsForCampaign(campaign))
+  }
+
+  function previewCohort(params: {
+    agentId: string | null | undefined
+    startDate?: string | null
+    endDate?: string | null
+  }) {
+    const members = discoverCampaignCohort(
+      {
+        id: '_preview',
+        agentId: params.agentId ?? null,
+        startDate: params.startDate ?? null,
+        endDate: params.endDate ?? null,
+      },
+      playerPeriods.value,
+    )
+    const attributed = attributedPlayerPeriods(members, playerPeriods.value)
+    return {
+      playerCount: members.length,
+      accumulatedRake: sumWeeklyRake(attributed),
+    }
   }
 
   function transactionsForCampaign(campaign: Pick<Campaign, 'agentId' | 'startDate' | 'endDate'>) {
@@ -664,12 +742,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   }
 
   function buildMetrics(campaign: Campaign): CampaignWeeklyMetrics {
-    const periods = agentPeriodsForCampaign(campaign).map((p) => ({
-      periodStart: p.periodStart,
-      periodEnd: p.periodEnd,
-      weeklyRake: p.weeklyRake,
-      uniquePlayers: p.uniquePlayers,
-    }))
+    const periods = cohortWeeklyPeriodsFor(campaign)
     return buildCampaignWeeklyMetrics({
       campaign,
       agentPeriods: periods,
@@ -834,11 +907,15 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     tableRows: CampaignTableDetail[],
     periodStart?: string | null,
   ) {
-    const filtered = filterPeriodsForCampaign(tableRows, campaign).filter(
-      (r) =>
-        r.agentId === campaign.agentId &&
-        (!periodStart || r.periodStart === periodStart),
+    const acquiredAtByPlayer = new Map(
+      cohortMembersFor(campaign).map((m) => [m.playerId, m.acquiredAt]),
     )
+    const filtered = tableRows.filter((r) => {
+      const acquiredAt = acquiredAtByPlayer.get(r.playerId)
+      if (!acquiredAt || r.periodStart < acquiredAt) return false
+      if (periodStart && r.periodStart !== periodStart) return false
+      return true
+    })
     return buildGameProfile(
       filtered.map((r) => ({
         gameType: r.gameType,
@@ -976,11 +1053,13 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   }
 
   async function loadPeriods() {
-    const [agentPeriodsRes, playerPeriodsRes] = await Promise.all([
+    const [agentPeriodsRes, playerPeriodsRes, cohortRes] = await Promise.all([
       pagedBoardSelect('campaign_agent_periods'),
       pagedBoardSelect('campaign_player_periods'),
+      pagedBoardSelect('campaign_cohort_players'),
     ])
-    const firstError = agentPeriodsRes.error || playerPeriodsRes.error
+    const firstError =
+      agentPeriodsRes.error || playerPeriodsRes.error || cohortRes.error
     if (firstError) {
       error.value = firstError.message
       useToastStore().error(firstError.message)
@@ -988,6 +1067,52 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     }
     agentPeriods.value = agentPeriodsRes.data.map(mapAgentPeriod)
     playerPeriods.value = playerPeriodsRes.data.map(mapPlayerPeriod)
+    cohortPlayers.value = cohortRes.data.map(mapCohortPlayer)
+  }
+
+  async function persistCohorts(targets: Campaign[]) {
+    if (targets.length === 0) return
+    quietRealtime(4000)
+    const targetIds = new Set(targets.map((c) => c.id))
+    const now = new Date().toISOString()
+    const nextRows: CampaignCohortPlayer[] = []
+
+    for (const campaign of targets) {
+      const members = discoverCampaignCohort(campaign, playerPeriods.value)
+      const { error: delError } = await supabase
+        .from('campaign_cohort_players')
+        .delete()
+        .eq('campaign_id', campaign.id)
+      if (delError) {
+        console.warn('[campaigns] cohort delete', delError.message)
+        continue
+      }
+      if (members.length === 0) continue
+      const rows = members.map((member) => ({
+        id: createCohortPlayerId(),
+        board_id: BOARD_ID,
+        campaign_id: member.campaignId,
+        player_id: member.playerId,
+        acquired_at: member.acquiredAt,
+        source_agent_id: member.sourceAgentId,
+        first_seen_week: member.firstSeenWeek,
+        last_seen_week: member.lastSeenWeek,
+        current_agent_id: member.currentAgentId,
+        created_at: now,
+        updated_at: now,
+      }))
+      const insertError = await insertInChunks('campaign_cohort_players', rows)
+      if (insertError) {
+        console.warn('[campaigns] cohort insert', insertError.message)
+        continue
+      }
+      nextRows.push(...rows.map(mapCohortPlayer))
+    }
+
+    cohortPlayers.value = [
+      ...cohortPlayers.value.filter((row) => !targetIds.has(row.campaignId)),
+      ...nextRows,
+    ]
   }
 
   async function load() {
@@ -1004,6 +1129,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       transactionsRes,
       agentPeriodsRes,
       playerPeriodsRes,
+      cohortRes,
     ] = await Promise.all([
       supabase
         .from('campaigns')
@@ -1039,6 +1165,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       pagedBoardSelect('campaign_transactions', TRANSACTION_LIST_COLUMNS),
       pagedBoardSelect('campaign_agent_periods'),
       pagedBoardSelect('campaign_player_periods'),
+      pagedBoardSelect('campaign_cohort_players'),
     ])
 
     const firstError =
@@ -1050,7 +1177,8 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       txImportsRes.error ||
       transactionsRes.error ||
       agentPeriodsRes.error ||
-      playerPeriodsRes.error
+      playerPeriodsRes.error ||
+      cohortRes.error
 
     if (firstError) {
       error.value = firstError.message
@@ -1081,6 +1209,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     )
     agentPeriods.value = agentPeriodsRes.data.map(mapAgentPeriod)
     playerPeriods.value = playerPeriodsRes.data.map(mapPlayerPeriod)
+    cohortPlayers.value = cohortRes.data.map(mapCohortPlayer)
 
     loading.value = false
   }
@@ -1130,6 +1259,11 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'campaign_player_periods' },
+        () => scheduleReload('periods'),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'campaign_cohort_players' },
         () => scheduleReload('periods'),
       )
       .on(
@@ -1200,6 +1334,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     transactions.value = []
     agentPeriods.value = []
     playerPeriods.value = []
+    cohortPlayers.value = []
     tableDetailsCache.value = []
     selectedCampaignId.value = null
     loading.value = false
@@ -1288,6 +1423,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
 
     const campaign = mapCampaign(row)
     campaigns.value = [campaign, ...campaigns.value]
+    await persistCohorts([campaign])
     await appendHistory(id, 'created', `Criou a campanha ${campaign.name}.`)
     if (agentId) {
       await appendHistory(id, 'agency_linked', `Vinculou a agência ${agentId}.`, {
@@ -1594,6 +1730,14 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       } as Record<string, unknown>),
     )
 
+    if (
+      patch.startDate !== undefined ||
+      patch.endDate !== undefined ||
+      patch.agentId !== undefined
+    ) {
+      await persistCohorts([campaign])
+    }
+
     toast.success('Campanha atualizada.')
     return true
   }
@@ -1703,6 +1847,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     campaigns.value = campaigns.value.filter((c) => c.id !== id)
     monthlyResults.value = monthlyResults.value.filter((r) => r.campaignId !== id)
     history.value = history.value.filter((h) => h.campaignId !== id)
+    cohortPlayers.value = cohortPlayers.value.filter((p) => p.campaignId !== id)
     if (selectedCampaignId.value === id) selectedCampaignId.value = null
     toast.success('Campanha excluída.')
     return true
@@ -1770,7 +1915,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
 
       // Snapshot rake before for linked campaigns
       const linkedBefore = campaigns.value
-        .filter((c) => c.agentId && parsed.uniqueAgentIds.includes(c.agentId))
+        .filter((c) => c.agentId)
         .map((c) => {
           const m = metricsFor(c)
           return {
@@ -1951,6 +2096,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
 
       // Refresh local state
       await load()
+      await persistCohorts(campaigns.value)
 
       const campaignUpdates = linkedBefore.map((before) => {
         const campaign = campaigns.value.find((c) => c.id === before.campaignId)
@@ -1966,13 +2112,10 @@ export const useCampaignsStore = defineStore('campaigns', () => {
           }
         }
         const after = metricsFor(campaign)
-        const weekRake =
-          parsed.agents.find((a) => a.agentId === before.agentId)?.weeklyRake ??
-          0
         return {
           campaignId: before.campaignId,
           name: before.name,
-          rakeAdded: weekRake,
+          rakeAdded: after.accumulatedRake - before.rakeBefore,
           rakeBefore: before.rakeBefore,
           rakeAfter: after.accumulatedRake,
           recoveryBefore: before.recoveryBefore,
@@ -1981,6 +2124,11 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       })
 
       for (const upd of campaignUpdates) {
+        const campaign = campaigns.value.find((c) => c.id === upd.campaignId)
+        const agentTouched = Boolean(
+          campaign?.agentId && parsed.uniqueAgentIds.includes(campaign.agentId),
+        )
+        if (!agentTouched && Math.abs(upd.rakeAdded) < 0.009) continue
         await appendHistory(
           upd.campaignId,
           replace ? 'report_replaced' : 'report_imported',
@@ -2080,6 +2228,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
 
     await load()
     await rebuildMasterTotals()
+    await persistCohorts(campaigns.value)
     await load()
     toast.success('Importação excluída. Totais recalculados.')
     return true
@@ -2426,43 +2575,69 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   }
 
   async function loadTableDetails(agentId: string, periodStart?: string) {
-    const { data, error: qErr } = await fetchAllPaged(() => {
-      let query = supabase
-        .from('campaign_table_details')
-        .select('*')
-        .eq('board_id', BOARD_ID)
-        .eq('agent_id', agentId)
-        .order('id', { ascending: true })
-      if (periodStart) query = query.eq('period_start', periodStart)
-      return asRangeQuery(query)
-    })
-    if (qErr) {
-      useToastStore().error(qErr.message)
+    return loadTableDetailsForPlayers(
+      playerPeriodsForAgent(agentId).map((p) => p.playerId),
+      periodStart,
+    )
+  }
+
+  async function loadCampaignTableDetails(
+    campaign: Pick<Campaign, 'id' | 'agentId' | 'startDate' | 'endDate'>,
+    periodStart?: string,
+  ) {
+    return loadTableDetailsForPlayers(
+      cohortMembersFor(campaign).map((m) => m.playerId),
+      periodStart,
+    )
+  }
+
+  async function loadTableDetailsForPlayers(
+    playerIds: string[],
+    periodStart?: string,
+  ) {
+    const uniqueIds = [...new Set(playerIds.filter(Boolean))]
+    if (uniqueIds.length === 0) {
       return [] as CampaignTableDetail[]
     }
-    const rows = data.map(mapTableDetail)
-    // merge into cache for this agent
+    const rows: CampaignTableDetail[] = []
+    for (let i = 0; i < uniqueIds.length; i += 100) {
+      const chunk = uniqueIds.slice(i, i + 100)
+      const { data, error: qErr } = await fetchAllPaged(() => {
+        let query = supabase
+          .from('campaign_table_details')
+          .select('*')
+          .eq('board_id', BOARD_ID)
+          .in('player_id', chunk)
+          .order('id', { ascending: true })
+        if (periodStart) query = query.eq('period_start', periodStart)
+        return asRangeQuery(query)
+      })
+      if (qErr) {
+        useToastStore().error(qErr.message)
+        return [] as CampaignTableDetail[]
+      }
+      rows.push(...data.map(mapTableDetail))
+    }
+    const playerSet = new Set(uniqueIds)
     tableDetailsCache.value = [
-      ...tableDetailsCache.value.filter(
-        (t) =>
-          !(
-            t.agentId === agentId &&
-            (!periodStart || t.periodStart === periodStart)
-          ),
-      ),
+      ...tableDetailsCache.value.filter((t) => {
+        if (!playerSet.has(t.playerId)) return true
+        if (periodStart && t.periodStart !== periodStart) return true
+        return false
+      }),
       ...rows,
     ]
     return rows
   }
 
   async function loadPlayerTableDetails(agentId: string, playerId: string) {
+    void agentId
     const { data, error: qErr } = await fetchAllPaged(() =>
       asRangeQuery(
         supabase
           .from('campaign_table_details')
           .select('*')
           .eq('board_id', BOARD_ID)
-          .eq('agent_id', agentId)
           .eq('player_id', playerId)
           .order('id', { ascending: true }),
       ),
@@ -2607,6 +2782,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     transactions,
     agentPeriods,
     playerPeriods,
+    cohortPlayers,
     tableDetailsCache,
     completedImports,
     completedTransactionImports,
@@ -2638,6 +2814,9 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     agentPeriodsFor,
     agentPeriodsInWindow,
     agentPeriodsForCampaign,
+    cohortMembersFor,
+    cohortWeeklyPeriodsFor,
+    previewCohort,
     playerPeriodsForAgent,
     playerPeriodsForCampaign,
     uniqueActivesForAgent,
@@ -2661,6 +2840,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     purgeBrokenTransactionImports,
     purgeInvalidAgents,
     loadTableDetails,
+    loadCampaignTableDetails,
     loadPlayerTableDetails,
     findAgent,
     formatPeriodLabel,

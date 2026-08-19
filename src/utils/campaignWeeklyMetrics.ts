@@ -49,7 +49,7 @@ function isoDay(value: string | null | undefined): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null
 }
 
-/** Janela da campanha: só rake/transações que intersectam início → fim. */
+/** Janela de aquisição: identifica Player IDs no Agent ID, não o rake da campanha. */
 export function campaignDateWindow(campaign: {
   startDate?: string | null
   endDate?: string | null
@@ -61,8 +61,8 @@ export function campaignDateWindow(campaign: {
 }
 
 /**
- * Semana conta para a campanha se intersecta [início, fim].
- * Sem datas na campanha, não filtra (legado: histórico inteiro do agente).
+ * Semana intersecta a janela de aquisição [início, fim].
+ * Usada só para descobrir a coorte no Agent ID — o rake segue o jogador depois disso.
  */
 export function periodOverlapsCampaignWindow(
   period: { periodStart: string; periodEnd?: string | null },

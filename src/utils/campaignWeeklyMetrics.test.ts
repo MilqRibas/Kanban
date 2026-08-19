@@ -130,7 +130,7 @@ describe('weekly rake accumulation', () => {
   })
 })
 
-describe('campaign window reconciliation', () => {
+describe('campaign acquisition window', () => {
   const weeks = [
     { periodStart: '2026-07-06', periodEnd: '2026-07-12', weeklyRake: 500 },
     { periodStart: '2026-07-13', periodEnd: '2026-07-19', weeklyRake: 700 },

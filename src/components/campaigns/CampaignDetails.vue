@@ -90,7 +90,11 @@ useEphemeralDismiss({
 
 const agent = computed(() => store.findAgent(props.campaign.agentId))
 const agentPeriods = computed(() => store.agentPeriodsForCampaign(props.campaign))
+const cohortWeeklyPeriods = computed(() =>
+  store.cohortWeeklyPeriodsFor(props.campaign),
+)
 const playerPeriods = computed(() => store.playerPeriodsForCampaign(props.campaign))
+const cohortMembers = computed(() => store.cohortMembersFor(props.campaign))
 const metrics = computed(() => store.metricsFor(props.campaign))
 const funnel = computed(() =>
   activeTab.value === 'funnel' ? store.funnelFor(props.campaign) : null,
@@ -117,7 +121,7 @@ const importsForAgent = computed(() =>
 )
 
 const periodOptions = computed(() => {
-  const options = agentPeriods.value.map((p) => ({
+  const options = cohortWeeklyPeriods.value.map((p) => ({
     value: p.periodStart,
     label: store.formatPeriodLabel(p.periodStart, p.periodEnd),
   }))
@@ -131,26 +135,36 @@ const rakeHealth = computed(() => {
 })
 
 const gameProfile = computed(() => {
+  const acquiredAtByPlayer = new Map(
+    cohortMembers.value.map((m) => [m.playerId, m.acquiredAt]),
+  )
   const tables = tableDetailsLoaded.value
-    ? store.tableDetailsCache.filter(
-        (t) =>
-          t.agentId === props.campaign.agentId &&
-          (!gameProfilePeriod.value || t.periodStart === gameProfilePeriod.value) &&
-          agentPeriods.value.some((p) => p.periodStart === t.periodStart),
-      )
+    ? store.tableDetailsCache.filter((t) => {
+        const acquiredAt = acquiredAtByPlayer.get(t.playerId)
+        if (!acquiredAt || t.periodStart < acquiredAt) return false
+        if (gameProfilePeriod.value && t.periodStart !== gameProfilePeriod.value) {
+          return false
+        }
+        return true
+      })
     : []
   return store.gameProfileFor(props.campaign, tables, gameProfilePeriod.value)
 })
 
 const tableDetails = computed(() => {
   if (!tableDetailsLoaded.value) return []
+  const acquiredAtByPlayer = new Map(
+    cohortMembers.value.map((m) => [m.playerId, m.acquiredAt]),
+  )
   return store.tableDetailsCache
-    .filter(
-      (t) =>
-        t.agentId === props.campaign.agentId &&
-        (!tableDetailsPeriod.value || t.periodStart === tableDetailsPeriod.value) &&
-        agentPeriods.value.some((p) => p.periodStart === t.periodStart),
-    )
+    .filter((t) => {
+      const acquiredAt = acquiredAtByPlayer.get(t.playerId)
+      if (!acquiredAt || t.periodStart < acquiredAt) return false
+      if (tableDetailsPeriod.value && t.periodStart !== tableDetailsPeriod.value) {
+        return false
+      }
+      return true
+    })
     .sort((a, b) => b.rake - a.rake)
 })
 
@@ -232,8 +246,13 @@ const selectedPlayerDetail = computed(() => {
   })
   const deposits = store.playerDepositStats(
     selectedPlayerId.value,
-    props.campaign.agentId,
-    props.campaign,
+    null,
+    {
+      startDate:
+        cohortMembers.value.find((m) => m.playerId === selectedPlayerId.value)
+          ?.acquiredAt ?? props.campaign.startDate,
+      endDate: null,
+    },
   )
   return { player, series, deposits }
 })
@@ -512,7 +531,7 @@ const depositWeeklyMax = computed(() => {
 
 const evolutionRows = computed(() => {
   let acc = 0
-  const sorted = agentPeriods.value
+  const sorted = cohortWeeklyPeriods.value
     .slice()
     .sort((a, b) => a.periodStart.localeCompare(b.periodStart))
   const maxRake = Math.max(1, ...sorted.map((p) => p.weeklyRake))
@@ -526,16 +545,19 @@ const evolutionRows = computed(() => {
       weeklyRake: p.weeklyRake,
       accumulated: acc,
       recovery: recoveryRate,
-      uniquePlayers: p.uniquePlayers,
+      uniquePlayers: p.uniquePlayers ?? 0,
       weekWidth: (p.weeklyRake / maxRake) * 100,
     }
   })
 })
 
 const hasAgent = computed(() => !!props.campaign.agentId)
-const hasWeeks = computed(() => metrics.value.weeksTracked > 0)
+const hasCohort = computed(() => cohortMembers.value.length > 0)
+const hasWeeks = computed(
+  () => metrics.value.weeksTracked > 0 || cohortWeeklyPeriods.value.length > 0,
+)
 const weeklySnapshotWarning = computed(() =>
-  campaignUsesWeeklySnapshot(props.campaign, agentPeriods.value),
+  campaignUsesWeeklySnapshot(props.campaign, cohortWeeklyPeriods.value),
 )
 const natureLabel = computed(
   () =>
@@ -594,23 +616,29 @@ function closePlayerDetail() {
 watch(activeTab, async (tab) => {
   if (tab === 'game-profile' && !tableDetailsLoaded.value) {
     tableDetailsLoaded.value = true
-    await store.loadTableDetails(props.campaign.agentId!, gameProfilePeriod.value ?? undefined)
+    await store.loadCampaignTableDetails(
+      props.campaign,
+      gameProfilePeriod.value ?? undefined,
+    )
   }
   if (tab === 'table-details' && !tableDetailsLoaded.value) {
     tableDetailsLoaded.value = true
-    await store.loadTableDetails(props.campaign.agentId!, tableDetailsPeriod.value ?? undefined)
+    await store.loadCampaignTableDetails(
+      props.campaign,
+      tableDetailsPeriod.value ?? undefined,
+    )
   }
 })
 
 watch(gameProfilePeriod, async (period) => {
   if (activeTab.value === 'game-profile') {
-    await store.loadTableDetails(props.campaign.agentId!, period ?? undefined)
+    await store.loadCampaignTableDetails(props.campaign, period ?? undefined)
   }
 })
 
 watch(tableDetailsPeriod, async (period) => {
   if (activeTab.value === 'table-details') {
-    await store.loadTableDetails(props.campaign.agentId!, period ?? undefined)
+    await store.loadCampaignTableDetails(props.campaign, period ?? undefined)
   }
 })
 </script>
@@ -1535,9 +1563,13 @@ watch(tableDetailsPeriod, async (period) => {
           </div>
 
           <div v-else-if="activeTab === 'players'">
-            <template v-if="!hasAgent || !hasWeeks">
+            <template v-if="!hasAgent || !hasCohort">
               <p class="text-sm text-text-muted">
-                {{ !hasAgent ? 'Nenhum agente vinculado.' : 'Nenhuma semana importada ainda.' }}
+                {{
+                  !hasAgent
+                    ? 'Nenhum agente vinculado.'
+                    : 'Nenhum jogador adquirido na janela desta campanha.'
+                }}
               </p>
             </template>
             <template v-else>
@@ -1556,7 +1588,7 @@ watch(tableDetailsPeriod, async (period) => {
               <CollapsiblePanel
                 v-if="filteredPlayers.length"
                 title="Jogadores"
-                :hint="`${filteredPlayers.length} na agência`"
+                :hint="`${filteredPlayers.length} na coorte`"
                 :default-open="true"
               >
                 <div class="overflow-x-auto px-3 pb-3">

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
-import { X } from '@lucide/vue'
+import { Info, X } from '@lucide/vue'
 import { useEscapeKey } from '../../composables/useEscapeKey'
 import { useCampaignsStore } from '../../stores/campaigns'
 import type {
@@ -323,27 +323,27 @@ function parseOptionalCount(raw: string | number | null | undefined) {
   return parseCountInput(raw)
 }
 
-const accumulatedRakePreview = computed(() => {
-  if (!draft.agentId) return 0
+const cohortPreview = computed(() => {
+  if (!draft.agentId) return { playerCount: 0, accumulatedRake: 0 }
+  return store.previewCohort({
+    agentId: draft.agentId,
+    startDate: draft.startDate || null,
+    endDate: draft.endDate || null,
+  })
+})
+
+const accumulatedRakePreview = computed(() => cohortPreview.value.accumulatedRake)
+
+const historicalAgentRake = computed(() => {
+  if (!draft.agentId || !draft.startDate) return 0
   return store
-    .agentPeriodsInWindow(draft.agentId, {
-      startDate: draft.startDate || null,
-      endDate: draft.endDate || null,
-    })
+    .agentPeriodsFor(draft.agentId)
+    .filter((p) => p.periodEnd < draft.startDate)
     .reduce((sum, p) => sum + (Number(p.weeklyRake) || 0), 0)
 })
 
-const agentLifetimeRake = computed(() => {
-  if (!draft.agentId) return 0
-  return store.findAgent(draft.agentId)?.accumulatedRake ?? 0
-})
-
-const excludedAgentRake = computed(() =>
-  Math.max(0, agentLifetimeRake.value - accumulatedRakePreview.value),
-)
-
 const selectedAgentNoWindowRake = computed(
-  () => Boolean(draft.agentId) && accumulatedRakePreview.value <= 0.009,
+  () => Boolean(draft.agentId) && cohortPreview.value.playerCount === 0,
 )
 
 function buildPayload(): CampaignCreateInput | null {
@@ -577,6 +577,23 @@ async function save() {
               </label>
             </div>
 
+            <label class="block text-xs text-text-muted">
+              <span class="inline-flex items-center gap-1">
+                Fim do período de aquisição
+                <span
+                  class="inline-flex text-text-muted"
+                  aria-label="Após esta data, novos jogadores não serão atribuídos à campanha. Jogadores já adquiridos continuam gerando rake normalmente."
+                  title="Após esta data, novos jogadores não serão atribuídos à campanha. Jogadores já adquiridos continuam gerando rake normalmente."
+                >
+                  <Info :size="13" />
+                </span>
+              </span>
+              <input v-model="draft.endDate" type="date" :class="fieldClass" />
+              <span class="mt-1 block text-[11px] text-text-muted">
+                Opcional. Vazio = a campanha continua aceitando novos jogadores no Agent ID.
+              </span>
+            </label>
+
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label class="block text-xs text-text-muted">
                 Investimento da Campanha (R$)
@@ -632,21 +649,24 @@ async function save() {
                 </select>
                 <p v-if="selectedAgentLabel" class="text-xs text-accent">
                   Selecionado: {{ selectedAgentLabel }}
-                  · Rake na janela {{ formatCurrency(accumulatedRakePreview) }}
+                  · {{ cohortPreview.playerCount }}
+                  {{ cohortPreview.playerCount === 1 ? 'jogador' : 'jogadores' }}
+                  na coorte
+                  · rake {{ formatCurrency(accumulatedRakePreview) }}
                 </p>
                 <p
                   v-if="selectedAgentLabel && selectedAgentNoWindowRake"
                   class="text-[11px] text-amber-200"
                 >
-                  Nenhuma semana com rake entre início e fim — importe o relatório
-                  desse período ou confira o Agent ID.
+                  Nenhum Player ID deste Agent ID na janela de aquisição — importe o
+                  relatório desse período ou confira o Agent ID.
                 </p>
                 <p
-                  v-if="selectedAgentLabel && excludedAgentRake > 0.009"
+                  v-if="selectedAgentLabel && historicalAgentRake > 0.009"
                   class="text-[11px] text-text-muted"
                 >
-                  O agente tem {{ formatCurrency(excludedAgentRake) }} de rake fora da
-                  data de início/fim desta campanha — não entra no acumulado.
+                  O Agent ID tem {{ formatCurrency(historicalAgentRake) }} de rake
+                  antes do início — esse histórico não entra na campanha.
                 </p>
               </template>
             </div>
@@ -773,13 +793,6 @@ async function save() {
             <h4 class="text-xs font-semibold uppercase tracking-wide text-accent/90">
               Opcionais
             </h4>
-
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label class="block text-xs text-text-muted">
-                Data de encerramento
-                <input v-model="draft.endDate" type="date" :class="fieldClass" />
-              </label>
-            </div>
 
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label class="block text-xs text-text-muted">
