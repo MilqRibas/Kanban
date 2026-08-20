@@ -130,7 +130,6 @@ describe('deposit vs bonus classification', () => {
           isBonus: true,
         },
       ],
-      agentId: 'A',
       activePlayerIds: new Set(['1']),
       accumulatedRake: 10,
     })
@@ -138,6 +137,39 @@ describe('deposit vs bonus classification', () => {
     expect(metrics.depositCount).toBe(1)
     expect(metrics.activationInvestment).toBe(50)
     expect(metrics.bonusCount).toBe(1)
+  })
+
+  it('separates cohort deposits from agent-window bonuses', () => {
+    const metrics = buildPurchasePowerMetrics({
+      rows: [
+        {
+          receiverPlayerId: '1',
+          agentId: 'B',
+          amount: 300,
+          periodStart: '2026-08-17',
+          periodEnd: '2026-08-23',
+          occurredAt: '2026-08-18T10:00:00.000Z',
+          isDeposit: true,
+          isBonus: false,
+        },
+      ],
+      bonusRows: [
+        {
+          receiverPlayerId: '1',
+          agentId: 'A',
+          amount: 25,
+          periodStart: '2026-08-03',
+          periodEnd: '2026-08-09',
+          occurredAt: '2026-08-03T11:00:00.000Z',
+          isDeposit: false,
+          isBonus: true,
+        },
+      ],
+      activePlayerIds: new Set(['1']),
+      accumulatedRake: 10,
+    })
+    expect(metrics.depositedVolume).toBe(300)
+    expect(metrics.activationInvestment).toBe(25)
   })
 })
 

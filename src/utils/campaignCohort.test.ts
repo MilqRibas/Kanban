@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   aggregateCohortWeeklyRake,
+  attributedCohortTransactions,
   attributedPlayerPeriods,
   discoverCampaignCohort,
   periodCountsTowardCohortRake,
@@ -196,6 +197,83 @@ describe('campaign cohort acquisition', () => {
     ])
     const weekly = aggregateCohortWeeklyRake(attributed)
     expect(weekly.map((w) => w.weeklyRake)).toEqual([8, 9])
+  })
+
+  it('weekly actives count only players who raked that week, matching overview', () => {
+    const weekly = aggregateCohortWeeklyRake([
+      {
+        playerId: 'raked',
+        periodStart: '2026-07-06',
+        periodEnd: '2026-07-12',
+        weeklyRake: 10,
+      },
+      {
+        playerId: 'zero-1',
+        periodStart: '2026-07-06',
+        periodEnd: '2026-07-12',
+        weeklyRake: 0,
+      },
+      {
+        playerId: 'zero-2',
+        periodStart: '2026-07-06',
+        periodEnd: '2026-07-12',
+        weeklyRake: 0,
+      },
+      {
+        playerId: 'raked',
+        periodStart: '2026-07-13',
+        periodEnd: '2026-07-19',
+        weeklyRake: 5,
+      },
+    ])
+    expect(weekly.map((w) => w.uniquePlayers)).toEqual([1, 1])
+    expect(weekly.map((w) => w.weeklyRake)).toEqual([10, 5])
+  })
+
+  it('attributes transactions to cohort players since acquisition across agents', () => {
+    const members = [
+      {
+        playerId: 'dan',
+        acquiredAt: '2026-07-06',
+      },
+    ]
+    const transactions = [
+      {
+        receiverPlayerId: 'dan',
+        agentId: '1730032',
+        occurredAt: '2026-07-01T10:00:00.000Z',
+        periodStart: '2026-06-29',
+        periodEnd: '2026-07-05',
+        amount: 100,
+      },
+      {
+        receiverPlayerId: 'dan',
+        agentId: '1730032',
+        occurredAt: '2026-07-08T10:00:00.000Z',
+        periodStart: '2026-07-06',
+        periodEnd: '2026-07-12',
+        amount: 200,
+      },
+      {
+        // Depois do fim da aquisição e sob outro agente: continua contando
+        receiverPlayerId: 'dan',
+        agentId: '999',
+        occurredAt: '2026-08-10T10:00:00.000Z',
+        periodStart: '2026-08-10',
+        periodEnd: '2026-08-16',
+        amount: 300,
+      },
+      {
+        receiverPlayerId: 'fora-da-coorte',
+        agentId: '1730032',
+        occurredAt: '2026-07-08T10:00:00.000Z',
+        periodStart: '2026-07-06',
+        periodEnd: '2026-07-12',
+        amount: 999,
+      },
+    ]
+    const attributed = attributedCohortTransactions(members, transactions)
+    expect(attributed.map((t) => t.amount)).toEqual([200, 300])
   })
 
   it('evaluates activation on attributed cohort rake, not agent totals', () => {

@@ -1,6 +1,7 @@
 import type { Campaign, CampaignPlayerPeriod } from '../types/campaigns'
 import {
   campaignDateWindow,
+  eventInCampaignWindow,
   periodOverlapsCampaignWindow,
   sortPeriodsChronologically,
   sumWeeklyRake,
@@ -163,7 +164,9 @@ export function aggregateCohortWeeklyRake(
     }
     bucket.weeklyRake += Number(period.weeklyRake) || 0
     if (end > bucket.periodEnd) bucket.periodEnd = end
-    bucket.players.add(period.playerId)
+    // "Ativos" da semana = gerou rake na semana; linhas com R$ 0 não contam
+    // (mesma régua da Visão Geral, que só conta quem tem rake acumulado > 0).
+    if ((Number(period.weeklyRake) || 0) > 0) bucket.players.add(period.playerId)
     byWeek.set(start, bucket)
   }
   return sortPeriodsChronologically(
@@ -181,4 +184,35 @@ export function sumCohortRake(
   playerPeriods: CohortPlayerPeriod[],
 ): number {
   return sumWeeklyRake(attributedPlayerPeriods(members, playerPeriods))
+}
+
+export type CohortTransaction = {
+  receiverPlayerId: string
+  occurredAt: string | null
+  periodStart: string
+  periodEnd?: string | null
+}
+
+/**
+ * Transações atribuídas à campanha: seguem o jogador da coorte a partir da
+ * aquisição (qualquer agente, sem data final) — mesma régua do rake e do
+ * detalhe individual do jogador.
+ */
+export function attributedCohortTransactions<T extends CohortTransaction>(
+  members: Pick<CampaignCohortMember, 'playerId' | 'acquiredAt'>[],
+  transactions: T[],
+): T[] {
+  if (members.length === 0) return []
+  const acquiredAtByPlayer = new Map(
+    members.map((m) => [m.playerId, m.acquiredAt]),
+  )
+  return transactions.filter((t) => {
+    const acquiredAt = acquiredAtByPlayer.get(t.receiverPlayerId)
+    if (!acquiredAt) return false
+    return eventInCampaignWindow(
+      t.occurredAt,
+      { start: acquiredAt, end: null },
+      { periodStart: t.periodStart, periodEnd: t.periodEnd },
+    )
+  })
 }

@@ -177,7 +177,7 @@ const uniquePlayers = computed(() => {
       name: string
       nickname: string
       rake: number
-      weeks: number
+      weekStarts: Set<string>
       firstStart: string
       lastStart: string
     }
@@ -186,7 +186,7 @@ const uniquePlayers = computed(() => {
     const prev = map.get(p.playerId)
     if (prev) {
       prev.rake += p.weeklyRake
-      prev.weeks += 1
+      prev.weekStarts.add(p.periodStart)
       if (p.periodStart < prev.firstStart) prev.firstStart = p.periodStart
       if (p.periodStart > prev.lastStart) prev.lastStart = p.periodStart
     } else {
@@ -195,13 +195,17 @@ const uniquePlayers = computed(() => {
         name: p.playerName,
         nickname: p.nickname,
         rake: p.weeklyRake,
-        weeks: 1,
+        weekStarts: new Set([p.periodStart]),
         firstStart: p.periodStart,
         lastStart: p.periodStart,
       })
     }
   }
-  return [...map.values()]
+  // Semanas distintas: o jogador pode ter 2 linhas na mesma semana (trocou de agente)
+  return [...map.values()].map(({ weekStarts, ...player }) => ({
+    ...player,
+    weeks: weekStarts.size,
+  }))
 })
 
 const filteredPlayers = computed(() => {
@@ -232,9 +236,28 @@ const selectedPlayerDetail = computed(() => {
   if (!selectedPlayerId.value) return null
   const player = uniquePlayers.value.find((p) => p.playerId === selectedPlayerId.value)
   if (!player) return null
-  const periods = playerPeriods.value
-    .filter((p) => p.playerId === selectedPlayerId.value)
-    .sort((a, b) => a.periodStart.localeCompare(b.periodStart))
+  // Agrega por semana: duas linhas na mesma semana (troca de agente) viram uma só
+  const byWeek = new Map<
+    string,
+    { periodStart: string; periodEnd: string; weeklyRake: number }
+  >()
+  for (const p of playerPeriods.value) {
+    if (p.playerId !== selectedPlayerId.value) continue
+    const prev = byWeek.get(p.periodStart)
+    if (prev) {
+      prev.weeklyRake += p.weeklyRake
+      if (p.periodEnd > prev.periodEnd) prev.periodEnd = p.periodEnd
+    } else {
+      byWeek.set(p.periodStart, {
+        periodStart: p.periodStart,
+        periodEnd: p.periodEnd,
+        weeklyRake: p.weeklyRake,
+      })
+    }
+  }
+  const periods = [...byWeek.values()].sort((a, b) =>
+    a.periodStart.localeCompare(b.periodStart),
+  )
   let acc = 0
   const series = periods.map((p) => {
     acc += p.weeklyRake

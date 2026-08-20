@@ -117,18 +117,17 @@ export function sumActivationInvestment(
 }
 
 export function buildPurchasePowerMetrics(params: {
+  /** Transações já atribuídas à campanha (coorte de jogadores adquiridos). */
   rows: DepositTxn[]
-  agentId: string | null | undefined
+  /** Bônus do Agent ID na janela de aquisição (investimento em ativação). */
+  bonusRows?: DepositTxn[]
   activePlayerIds: Set<string>
   accumulatedRake: number
 }): PurchasePowerMetrics {
-  const { agentId, activePlayerIds, accumulatedRake } = params
-  const scoped = agentId
-    ? params.rows.filter((r) => r.agentId === agentId)
-    : []
+  const { activePlayerIds, accumulatedRake } = params
 
-  const deposits = scoped.filter((r) => r.isDeposit)
-  const bonuses = scoped.filter((r) => r.isBonus)
+  const deposits = params.rows.filter((r) => r.isDeposit)
+  const bonuses = (params.bonusRows ?? params.rows).filter((r) => r.isBonus)
 
   const depositedVolume = deposits.reduce(
     (s, r) => s + Math.abs(Number(r.amount) || 0),

@@ -70,6 +70,7 @@ import {
 import { applicableAcquisitionCost } from '../utils/campaignEconomics'
 import {
   aggregateCohortWeeklyRake,
+  attributedCohortTransactions,
   attributedPlayerPeriods,
   discoverCampaignCohort,
   type CampaignCohortMember,
@@ -708,6 +709,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     }
   }
 
+  /** Transações do Agent ID dentro da janela de aquisição (só para ativação/bônus). */
   function transactionsForCampaign(campaign: Pick<Campaign, 'agentId' | 'startDate' | 'endDate'>) {
     if (!campaign.agentId) return []
     const window = campaignDateWindow(campaign)
@@ -716,6 +718,16 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         periodStart: t.periodStart,
         periodEnd: t.periodEnd,
       }),
+    )
+  }
+
+  /** Transações da coorte: seguem cada jogador a partir da aquisição, em qualquer agente. */
+  function cohortTransactionsFor(
+    campaign: Pick<Campaign, 'id' | 'agentId' | 'startDate' | 'endDate'>,
+  ) {
+    return attributedCohortTransactions(
+      cohortMembersFor(campaign),
+      transactions.value,
     )
   }
 
@@ -790,10 +802,9 @@ export const useCampaignsStore = defineStore('campaigns', () => {
 
   function purchasePowerFor(campaign: Campaign): PurchasePowerMetrics {
     const m = metricsFor(campaign)
-    const agentId = campaign.agentId
     return buildPurchasePowerMetrics({
-      rows: agentId ? transactionsForCampaign(campaign) : [],
-      agentId,
+      rows: cohortTransactionsFor(campaign),
+      bonusRows: transactionsForCampaign(campaign),
       activePlayerIds: activePlayerIdSet(campaign),
       accumulatedRake: m.accumulatedRake,
     })
