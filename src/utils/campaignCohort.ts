@@ -3,6 +3,7 @@ import {
   campaignDateWindow,
   eventInCampaignWindow,
   periodOverlapsCampaignWindow,
+  playerMeetsActivation,
   sortPeriodsChronologically,
   sumWeeklyRake,
   type WeeklyPeriodPoint,
@@ -126,20 +127,39 @@ export function discoverCampaignCohort(
     .sort((a, b) => a.playerId.localeCompare(b.playerId))
 }
 
+/**
+ * Rake atribuído à campanha: coorte identifica a origem do jogador, mas o
+ * resultado pertence à agência onde a movimentação aconteceu. Só entram
+ * semanas em que o jogador estava no Agent ID da campanha (a partir da
+ * aquisição). Rake gerado em outra agência pertence à campanha daquela
+ * agência — nunca a duas ao mesmo tempo.
+ *
+ * Granularidade: o vínculo jogador↔agente vem do fechamento semanal do
+ * relatório; migração no meio da semana fica com o(s) agente(s) listados
+ * naquela semana.
+ */
 export function attributedPlayerPeriods<T extends CohortPlayerPeriod>(
   members: Pick<CampaignCohortMember, 'playerId' | 'acquiredAt'>[],
   playerPeriods: T[],
+  agentId: string | null | undefined,
 ): T[] {
-  if (members.length === 0) return []
+  if (!agentId || members.length === 0) return []
   const acquiredAtByPlayer = new Map(
     members.map((m) => [m.playerId, m.acquiredAt]),
   )
   return playerPeriods.filter((period) => {
+    if (period.agentId !== agentId) return false
     const acquiredAt = acquiredAtByPlayer.get(period.playerId)
     return Boolean(acquiredAt && periodCountsTowardCohortRake(period, acquiredAt))
   })
 }
 
+/**
+ * Agrega o rake atribuído por semana. "Ativos" da semana = jogadores cujo
+ * rake daquela semana cumpre o critério de ativação configurado na campanha
+ * (`activationThreshold` via activationRakeThreshold; `null` = regra manual,
+ * conta todo jogador presente na semana).
+ */
 export function aggregateCohortWeeklyRake(
   periods: Array<{
     periodStart: string
@@ -147,10 +167,16 @@ export function aggregateCohortWeeklyRake(
     weeklyRake: number
     playerId: string
   }>,
+  activationThreshold: number | null,
 ): WeeklyPeriodPoint[] {
   const byWeek = new Map<
     string,
-    { periodStart: string; periodEnd: string; weeklyRake: number; players: Set<string> }
+    {
+      periodStart: string
+      periodEnd: string
+      weeklyRake: number
+      rakeByPlayer: Map<string, number>
+    }
   >()
   for (const period of periods) {
     const start = isoDay(period.periodStart)
@@ -160,13 +186,15 @@ export function aggregateCohortWeeklyRake(
       periodStart: start,
       periodEnd: end,
       weeklyRake: 0,
-      players: new Set<string>(),
+      rakeByPlayer: new Map<string, number>(),
     }
-    bucket.weeklyRake += Number(period.weeklyRake) || 0
+    const rake = Number(period.weeklyRake) || 0
+    bucket.weeklyRake += rake
     if (end > bucket.periodEnd) bucket.periodEnd = end
-    // "Ativos" da semana = gerou rake na semana; linhas com R$ 0 não contam
-    // (mesma régua da Visão Geral, que só conta quem tem rake acumulado > 0).
-    if ((Number(period.weeklyRake) || 0) > 0) bucket.players.add(period.playerId)
+    bucket.rakeByPlayer.set(
+      period.playerId,
+      (bucket.rakeByPlayer.get(period.playerId) ?? 0) + rake,
+    )
     byWeek.set(start, bucket)
   }
   return sortPeriodsChronologically(
@@ -174,7 +202,9 @@ export function aggregateCohortWeeklyRake(
       periodStart: bucket.periodStart,
       periodEnd: bucket.periodEnd,
       weeklyRake: bucket.weeklyRake,
-      uniquePlayers: bucket.players.size,
+      uniquePlayers: [...bucket.rakeByPlayer.values()].filter((rake) =>
+        playerMeetsActivation(rake, activationThreshold),
+      ).length,
     })),
   )
 }
@@ -182,31 +212,36 @@ export function aggregateCohortWeeklyRake(
 export function sumCohortRake(
   members: Pick<CampaignCohortMember, 'playerId' | 'acquiredAt'>[],
   playerPeriods: CohortPlayerPeriod[],
+  agentId: string | null | undefined,
 ): number {
-  return sumWeeklyRake(attributedPlayerPeriods(members, playerPeriods))
+  return sumWeeklyRake(attributedPlayerPeriods(members, playerPeriods, agentId))
 }
 
 export type CohortTransaction = {
   receiverPlayerId: string
+  agentId: string | null
   occurredAt: string | null
   periodStart: string
   periodEnd?: string | null
 }
 
 /**
- * Transações atribuídas à campanha: seguem o jogador da coorte a partir da
- * aquisição (qualquer agente, sem data final) — mesma régua do rake e do
- * detalhe individual do jogador.
+ * Transações atribuídas à campanha: jogador da coorte, a partir da aquisição,
+ * e somente enquanto a movimentação aconteceu no Agent ID da campanha
+ * (`t.agentId` é o agente histórico do evento, resolvido na importação).
+ * Depósito feito em outra agência pertence à campanha daquela agência.
  */
 export function attributedCohortTransactions<T extends CohortTransaction>(
   members: Pick<CampaignCohortMember, 'playerId' | 'acquiredAt'>[],
   transactions: T[],
+  agentId: string | null | undefined,
 ): T[] {
-  if (members.length === 0) return []
+  if (!agentId || members.length === 0) return []
   const acquiredAtByPlayer = new Map(
     members.map((m) => [m.playerId, m.acquiredAt]),
   )
   return transactions.filter((t) => {
+    if (t.agentId !== agentId) return false
     const acquiredAt = acquiredAtByPlayer.get(t.receiverPlayerId)
     if (!acquiredAt) return false
     return eventInCampaignWindow(

@@ -679,13 +679,25 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     return attributedPlayerPeriods(
       cohortMembersFor(campaign),
       playerPeriods.value,
+      campaign.agentId,
     )
   }
 
   function cohortWeeklyPeriodsFor(
-    campaign: Pick<Campaign, 'id' | 'agentId' | 'startDate' | 'endDate'>,
+    campaign: Pick<
+      Campaign,
+      | 'id'
+      | 'agentId'
+      | 'startDate'
+      | 'endDate'
+      | 'activationRuleType'
+      | 'activationMinimumRake'
+    >,
   ) {
-    return aggregateCohortWeeklyRake(playerPeriodsForCampaign(campaign))
+    return aggregateCohortWeeklyRake(
+      playerPeriodsForCampaign(campaign),
+      activationRakeThreshold(campaign),
+    )
   }
 
   function previewCohort(params: {
@@ -702,7 +714,11 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       },
       playerPeriods.value,
     )
-    const attributed = attributedPlayerPeriods(members, playerPeriods.value)
+    const attributed = attributedPlayerPeriods(
+      members,
+      playerPeriods.value,
+      params.agentId,
+    )
     return {
       playerCount: members.length,
       accumulatedRake: sumWeeklyRake(attributed),
@@ -721,13 +737,18 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     )
   }
 
-  /** Transações da coorte: seguem cada jogador a partir da aquisição, em qualquer agente. */
+  /**
+   * Transações atribuídas à campanha: jogador da coorte, a partir da
+   * aquisição, somente enquanto a movimentação aconteceu no Agent ID da
+   * campanha (agência histórica do evento).
+   */
   function cohortTransactionsFor(
     campaign: Pick<Campaign, 'id' | 'agentId' | 'startDate' | 'endDate'>,
   ) {
     return attributedCohortTransactions(
       cohortMembersFor(campaign),
       transactions.value,
+      campaign.agentId,
     )
   }
 
@@ -922,6 +943,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       cohortMembersFor(campaign).map((m) => [m.playerId, m.acquiredAt]),
     )
     const filtered = tableRows.filter((r) => {
+      if (r.agentId !== campaign.agentId) return false
       const acquiredAt = acquiredAtByPlayer.get(r.playerId)
       if (!acquiredAt || r.periodStart < acquiredAt) return false
       if (periodStart && r.periodStart !== periodStart) return false

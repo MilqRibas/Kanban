@@ -569,12 +569,27 @@ export function activationRakeThreshold(
   }
 }
 
+/**
+ * Fonte única de verdade de "jogador ativo": avalia o critério de ativação
+ * configurado na campanha (via activationRakeThreshold) sobre o rake do
+ * escopo em questão (acumulado ou semanal). `null` = regra manual, todo
+ * jogador presente conta.
+ */
+export function playerMeetsActivation(
+  rake: number,
+  threshold: number | null,
+): boolean {
+  if (threshold === null) return true
+  return rake > threshold
+}
+
 export function countActivePlayers(
   periods: Array<{ playerId: string; weeklyRake: number }>,
   threshold: number | null,
 ): number {
-  if (threshold === null) return uniquePlayerIds(periods).length
-  return accumulatePlayerRake(periods).filter((p) => p.rake > threshold).length
+  return accumulatePlayerRake(periods).filter((p) =>
+    playerMeetsActivation(p.rake, threshold),
+  ).length
 }
 
 export function formatPeriodLabel(start: string, end: string): string {

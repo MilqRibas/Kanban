@@ -25,7 +25,6 @@ export type PurchasePowerMetrics = {
   top1Share: number | null
   top3Share: number | null
   top10Share: number | null
-  bands: Array<{ label: string; min: number; max: number | null; count: number; volume: number }>
   weekly: Array<{
     periodStart: string
     periodEnd: string
@@ -43,14 +42,6 @@ export type PurchasePowerMetrics = {
   activationInvestment: number
   bonusCount: number
 }
-
-const DEFAULT_BANDS = [
-  { label: 'Até R$ 50', min: 0, max: 50 },
-  { label: 'R$ 50–200', min: 50, max: 200 },
-  { label: 'R$ 200–500', min: 200, max: 500 },
-  { label: 'R$ 500–1.000', min: 500, max: 1000 },
-  { label: 'Acima de R$ 1.000', min: 1000, max: null },
-]
 
 function median(values: number[]): number | null {
   if (values.length === 0) return null
@@ -200,19 +191,6 @@ export function buildPurchasePowerMetrics(params: {
     else activeWithoutDeposit += 1
   }
 
-  const bands = DEFAULT_BANDS.map((b) => {
-    const matching = perDepositor.filter((v) =>
-      b.max == null ? v >= b.min : v >= b.min && v < b.max,
-    )
-    return {
-      label: b.label,
-      min: b.min,
-      max: b.max,
-      count: matching.length,
-      volume: matching.reduce((s, v) => s + v, 0),
-    }
-  })
-
   return {
     depositedVolume,
     uniqueDepositors,
@@ -228,7 +206,6 @@ export function buildPurchasePowerMetrics(params: {
     top1Share: topShare(sortedDesc, depositedVolume, 1),
     top3Share: topShare(sortedDesc, depositedVolume, 3),
     top10Share: topShare(sortedDesc, depositedVolume, 10),
-    bands,
     weekly: [...weekMap.values()]
       .sort((a, b) => a.periodStart.localeCompare(b.periodStart))
       .map((w) => ({

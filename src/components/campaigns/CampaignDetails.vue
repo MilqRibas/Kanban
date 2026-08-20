@@ -140,6 +140,7 @@ const gameProfile = computed(() => {
   )
   const tables = tableDetailsLoaded.value
     ? store.tableDetailsCache.filter((t) => {
+        if (t.agentId !== props.campaign.agentId) return false
         const acquiredAt = acquiredAtByPlayer.get(t.playerId)
         if (!acquiredAt || t.periodStart < acquiredAt) return false
         if (gameProfilePeriod.value && t.periodStart !== gameProfilePeriod.value) {
@@ -158,6 +159,7 @@ const tableDetails = computed(() => {
   )
   return store.tableDetailsCache
     .filter((t) => {
+      if (t.agentId !== props.campaign.agentId) return false
       const acquiredAt = acquiredAtByPlayer.get(t.playerId)
       if (!acquiredAt || t.periodStart < acquiredAt) return false
       if (tableDetailsPeriod.value && t.periodStart !== tableDetailsPeriod.value) {
@@ -267,9 +269,11 @@ const selectedPlayerDetail = computed(() => {
       accumulated: acc,
     }
   })
+  // Escopo da campanha: só depósitos feitos nesta agência desde a aquisição,
+  // para que a soma dos individuais bata com o total da campanha.
   const deposits = store.playerDepositStats(
     selectedPlayerId.value,
-    null,
+    props.campaign.agentId,
     {
       startDate:
         cohortMembers.value.find((m) => m.playerId === selectedPlayerId.value)
@@ -1222,7 +1226,7 @@ watch(tableDetailsPeriod, async (period) => {
                 <h4 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
                   Distribuição
                 </h4>
-                <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
                   <div
                     v-for="card in purchasePowerDistribution"
                     :key="card.label"
@@ -1232,19 +1236,6 @@ watch(tableDetailsPeriod, async (period) => {
                     <p class="mt-1 text-sm font-semibold tabular-nums text-text-primary">
                       {{ card.value }}
                     </p>
-                  </div>
-                </div>
-                <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  <div
-                    v-for="band in purchasePower.bands"
-                    :key="band.label"
-                    class="rounded-lg bg-surface/40 px-3 py-2 text-xs"
-                  >
-                    <p class="text-text-muted">{{ band.label }}</p>
-                    <p class="mt-0.5 text-base font-semibold text-text-primary">
-                      {{ band.count }}
-                    </p>
-                    <p class="text-text-secondary">{{ formatCurrency(band.volume) }}</p>
                   </div>
                 </div>
               </section>
