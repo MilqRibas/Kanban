@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   aggregateCohortWeeklyRake,
+  attributedActivationBonuses,
   attributedCohortTransactions,
   attributedPlayerPeriods,
   discoverCampaignCohort,
   periodCountsTowardCohortRake,
   playerAppearedInAcquisitionWindow,
+  sumActivationBonuses,
   sumCohortRake,
 } from './campaignCohort'
 import {
@@ -409,5 +411,217 @@ describe('campaign cohort acquisition', () => {
         activationMinimumRake: null,
       }),
     ).toBe(0.5)
+  })
+})
+
+describe('activation bonuses from transaction reports', () => {
+  const members = [{ playerId: 'p1' }, { playerId: 'p2' }]
+  const campaignAgentId = '1730032'
+
+  function bonus(partial: {
+    receiverPlayerId: string
+    amount: number
+    agentId?: string | null
+    occurredAt?: string
+    isBonus?: boolean
+    id?: string
+  }) {
+    return {
+      id: partial.id ?? `tx-${partial.amount}`,
+      receiverPlayerId: partial.receiverPlayerId,
+      agentId: partial.agentId ?? campaignAgentId,
+      occurredAt: partial.occurredAt ?? '2026-07-03T12:00:00Z',
+      periodStart: '2026-06-29',
+      periodEnd: '2026-07-05',
+      isBonus: partial.isBonus ?? true,
+      amount: partial.amount,
+    }
+  }
+
+  it('counts a single bonus for one player', () => {
+    const rows = attributedActivationBonuses({
+      members,
+      campaignAgentId,
+      transactions: [bonus({ receiverPlayerId: 'p1', amount: 100 })],
+      competing: [],
+    })
+    expect(sumActivationBonuses(rows)).toBe(100)
+  })
+
+  it('sums multiple bonuses for the same player', () => {
+    const rows = attributedActivationBonuses({
+      members,
+      campaignAgentId,
+      transactions: [
+        bonus({ receiverPlayerId: 'p1', amount: 100, id: 'a' }),
+        bonus({ receiverPlayerId: 'p1', amount: 150, id: 'b' }),
+        bonus({ receiverPlayerId: 'p1', amount: 80, id: 'c' }),
+      ],
+      competing: [],
+    })
+    expect(sumActivationBonuses(rows)).toBe(330)
+  })
+
+  it('sums bonuses across several players of the same campaign', () => {
+    const rows = attributedActivationBonuses({
+      members,
+      campaignAgentId,
+      transactions: [
+        bonus({ receiverPlayerId: 'p1', amount: 100 }),
+        bonus({ receiverPlayerId: 'p2', amount: 50 }),
+      ],
+      competing: [],
+    })
+    expect(sumActivationBonuses(rows)).toBe(150)
+  })
+
+  it('accumulates bonuses from different imported reports', () => {
+    const reportA = [bonus({ receiverPlayerId: 'p1', amount: 300, id: 'ra' })]
+    const reportB = [bonus({ receiverPlayerId: 'p1', amount: 250, id: 'rb' })]
+    const reportC = [bonus({ receiverPlayerId: 'p2', amount: 100, id: 'rc' })]
+    const rows = attributedActivationBonuses({
+      members,
+      campaignAgentId,
+      transactions: [...reportA, ...reportB, ...reportC],
+      competing: [],
+    })
+    expect(sumActivationBonuses(rows)).toBe(650)
+  })
+
+  it('counts a bonus sent during the campaign window', () => {
+    const rows = attributedActivationBonuses({
+      members,
+      campaignAgentId,
+      transactions: [
+        bonus({
+          receiverPlayerId: 'p1',
+          amount: 40,
+          occurredAt: '2026-07-03T10:00:00Z',
+        }),
+      ],
+      competing: [],
+    })
+    expect(sumActivationBonuses(rows)).toBe(40)
+  })
+
+  it('still counts a bonus sent after the campaign end date', () => {
+    const rows = attributedActivationBonuses({
+      members,
+      campaignAgentId,
+      transactions: [
+        bonus({
+          receiverPlayerId: 'p1',
+          amount: 50,
+          occurredAt: '2026-08-15T10:00:00Z',
+        }),
+      ],
+      competing: [],
+    })
+    expect(sumActivationBonuses(rows)).toBe(50)
+  })
+
+  it('keeps a later bonus on the acquisition campaign after the player migrates', () => {
+    const rows = attributedActivationBonuses({
+      members,
+      campaignAgentId,
+      transactions: [
+        bonus({
+          receiverPlayerId: 'p1',
+          amount: 70,
+          agentId: '9999999',
+          occurredAt: '2026-08-20T10:00:00Z',
+        }),
+      ],
+      competing: [],
+    })
+    expect(sumActivationBonuses(rows)).toBe(70)
+  })
+
+  it('does not assign the same bonus to two campaigns after migration', () => {
+    const tx = bonus({
+      receiverPlayerId: 'p1',
+      amount: 90,
+      agentId: 'AG-B',
+      id: 'shared',
+    })
+    const forA = attributedActivationBonuses({
+      members,
+      campaignAgentId: 'AG-A',
+      transactions: [tx],
+      competing: [{ agentId: 'AG-B', playerIds: ['p1'] }],
+    })
+    const forB = attributedActivationBonuses({
+      members: [{ playerId: 'p1' }],
+      campaignAgentId: 'AG-B',
+      transactions: [tx],
+      competing: [{ agentId: 'AG-A', playerIds: ['p1'] }],
+    })
+    expect(sumActivationBonuses(forA)).toBe(0)
+    expect(sumActivationBonuses(forB)).toBe(90)
+  })
+
+  it('ignores a reimported identical transaction row (same id)', () => {
+    const once = [
+      bonus({ receiverPlayerId: 'p1', amount: 100, id: 'ext-1' }),
+    ]
+    const reimported = [
+      bonus({ receiverPlayerId: 'p1', amount: 100, id: 'ext-1' }),
+    ]
+    const unique = new Map(
+      [...once, ...reimported].map((row) => [row.id, row]),
+    )
+    const rows = attributedActivationBonuses({
+      members,
+      campaignAgentId,
+      transactions: [...unique.values()],
+      competing: [],
+    })
+    expect(sumActivationBonuses(rows)).toBe(100)
+  })
+
+  it('does not treat Receiver Player ID as a dedupe key', () => {
+    const rows = attributedActivationBonuses({
+      members,
+      campaignAgentId,
+      transactions: [
+        bonus({ receiverPlayerId: 'p1', amount: 100, id: '1' }),
+        bonus({ receiverPlayerId: 'p1', amount: 25, id: '2' }),
+      ],
+      competing: [],
+    })
+    expect(rows).toHaveLength(2)
+    expect(sumActivationBonuses(rows)).toBe(125)
+  })
+
+  it('builds ATIVAÇÃO and INVESTIMENTO TOTAL from campaign + bonuses', () => {
+    const bonuses = attributedActivationBonuses({
+      members,
+      campaignAgentId,
+      transactions: [
+        bonus({ receiverPlayerId: 'p1', amount: 100 }),
+        bonus({ receiverPlayerId: 'p2', amount: 505 }),
+      ],
+      competing: [],
+    })
+    const activation = sumActivationBonuses(bonuses)
+    expect(activation).toBe(605)
+    expect(2779.96 + activation).toBeCloseTo(3384.96)
+  })
+
+  it('ignores deposits and players outside the cohort', () => {
+    const rows = attributedActivationBonuses({
+      members,
+      campaignAgentId,
+      transactions: [
+        bonus({ receiverPlayerId: 'p1', amount: 40 }),
+        {
+          ...bonus({ receiverPlayerId: 'p1', amount: 999, id: 'dep' }),
+          isBonus: false,
+        },
+        bonus({ receiverPlayerId: 'outsider', amount: 80, id: 'out' }),
+      ],
+      competing: [],
+    })
+    expect(sumActivationBonuses(rows)).toBe(40)
   })
 })

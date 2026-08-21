@@ -251,3 +251,47 @@ export function attributedCohortTransactions<T extends CohortTransaction>(
     )
   })
 }
+
+export type ActivationBonusRow = CohortTransaction & {
+  isBonus: boolean
+  amount?: number
+}
+
+/**
+ * Bônus de ativação: transação classificada como Bônus → Receiver Player ID
+ * pertence à coorte de aquisição da campanha. Não usa início/fim da campanha.
+ * Se o jogador também foi adquirido por outra campanha e o bônus foi enviado
+ * no Agent ID dela, aquela campanha fica com o valor (sem duplicar).
+ */
+export function attributedActivationBonuses<T extends ActivationBonusRow>(params: {
+  members: Pick<CampaignCohortMember, 'playerId'>[]
+  campaignAgentId: string | null | undefined
+  transactions: T[]
+  competing: Array<{ agentId: string | null; playerIds: string[] }>
+}): T[] {
+  const memberIds = new Set(params.members.map((m) => m.playerId))
+  if (memberIds.size === 0) return []
+
+  const claimedElsewhere = (playerId: string, agentId: string | null) =>
+    params.competing.some(
+      (campaign) =>
+        Boolean(campaign.agentId) &&
+        campaign.agentId === agentId &&
+        campaign.playerIds.includes(playerId),
+    )
+
+  return params.transactions.filter((row) => {
+    if (!row.isBonus) return false
+    if (!memberIds.has(row.receiverPlayerId)) return false
+    if (claimedElsewhere(row.receiverPlayerId, row.agentId)) return false
+    return true
+  })
+}
+
+export function sumActivationBonuses(
+  rows: Array<{ isBonus?: boolean; amount?: number }>,
+): number {
+  return rows
+    .filter((row) => row.isBonus)
+    .reduce((sum, row) => sum + Math.abs(Number(row.amount) || 0), 0)
+}

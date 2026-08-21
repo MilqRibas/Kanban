@@ -54,7 +54,6 @@ import {
 import {
   buildPurchasePowerMetrics,
   resolveHistoricalAgentId,
-  sumActivationInvestment,
   type PurchasePowerMetrics,
 } from '../utils/campaignDepositMetrics'
 import {
@@ -70,9 +69,11 @@ import {
 import { applicableAcquisitionCost } from '../utils/campaignEconomics'
 import {
   aggregateCohortWeeklyRake,
+  attributedActivationBonuses,
   attributedCohortTransactions,
   attributedPlayerPeriods,
   discoverCampaignCohort,
+  sumActivationBonuses,
   type CampaignCohortMember,
 } from '../utils/campaignCohort'
 import { coerceBrazilianCount } from '../utils/campaignFormat'
@@ -725,18 +726,6 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     }
   }
 
-  /** Transações do Agent ID dentro da janela de aquisição (só para ativação/bônus). */
-  function transactionsForCampaign(campaign: Pick<Campaign, 'agentId' | 'startDate' | 'endDate'>) {
-    if (!campaign.agentId) return []
-    const window = campaignDateWindow(campaign)
-    return (transactionsByAgent.value.get(campaign.agentId) ?? []).filter((t) =>
-      eventInCampaignWindow(t.occurredAt, window, {
-        periodStart: t.periodStart,
-        periodEnd: t.periodEnd,
-      }),
-    )
-  }
-
   /**
    * Transações atribuídas à campanha: jogador da coorte, a partir da
    * aquisição, somente enquanto a movimentação aconteceu no Agent ID da
@@ -796,9 +785,30 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     return metricsByCampaignId.value.get(campaign.id) ?? buildMetrics(campaign)
   }
 
-  function activationInvestmentFor(campaign: Pick<Campaign, 'agentId' | 'startDate' | 'endDate'>) {
-    if (!campaign.agentId) return 0
-    return sumActivationInvestment(transactionsForCampaign(campaign), campaign.agentId)
+  function competingActivationCampaigns(campaignId: string) {
+    return campaigns.value
+      .filter((c) => c.id !== campaignId && c.agentId)
+      .map((c) => ({
+        agentId: c.agentId,
+        playerIds: cohortMembersFor(c).map((m) => m.playerId),
+      }))
+  }
+
+  function activationBonusesFor(
+    campaign: Pick<Campaign, 'id' | 'agentId' | 'startDate' | 'endDate'>,
+  ) {
+    return attributedActivationBonuses({
+      members: cohortMembersFor(campaign),
+      campaignAgentId: campaign.agentId,
+      transactions: transactions.value,
+      competing: competingActivationCampaigns(campaign.id),
+    })
+  }
+
+  function activationInvestmentFor(
+    campaign: Pick<Campaign, 'id' | 'agentId' | 'startDate' | 'endDate'>,
+  ) {
+    return sumActivationBonuses(activationBonusesFor(campaign))
   }
 
   function activePlayerIdSet(campaign: Campaign): Set<string> {
@@ -825,7 +835,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     const m = metricsFor(campaign)
     return buildPurchasePowerMetrics({
       rows: cohortTransactionsFor(campaign),
-      bonusRows: transactionsForCampaign(campaign),
+      bonusRows: activationBonusesFor(campaign),
       activePlayerIds: activePlayerIdSet(campaign),
       accumulatedRake: m.accumulatedRake,
     })
@@ -2858,6 +2868,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     canDeleteCampaign,
     metricsFor,
     activationInvestmentFor,
+    activationBonusesFor,
     purchasePowerFor,
     funnelFor,
     playerDepositStats,

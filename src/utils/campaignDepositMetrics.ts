@@ -110,7 +110,7 @@ export function sumActivationInvestment(
 export function buildPurchasePowerMetrics(params: {
   /** Transações já atribuídas à campanha (coorte de jogadores adquiridos). */
   rows: DepositTxn[]
-  /** Bônus do Agent ID na janela de aquisição (investimento em ativação). */
+  /** Bônus atribuídos à coorte de aquisição (sem recorte da janela da campanha). */
   bonusRows?: DepositTxn[]
   activePlayerIds: Set<string>
   accumulatedRake: number

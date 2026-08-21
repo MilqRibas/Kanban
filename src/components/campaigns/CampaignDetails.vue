@@ -33,6 +33,7 @@ import {
   formatCurrency,
   formatPercent,
   formatNumber,
+  formatDateTime,
 } from '../../utils/campaignFormat'
 import { campaignUsesWeeklySnapshot } from '../../utils/campaignWeeklyMetrics'
 import {
@@ -520,6 +521,32 @@ const purchasePowerSummary = computed(() => {
     { label: 'Ticket médio', value: formatCurrency(pp.avgTicket) },
     { label: 'Média / depositante', value: formatCurrency(pp.avgPerDepositor) },
   ]
+})
+
+const activationBonusRows = computed(() => {
+  if (activeTab.value !== 'transactions') return []
+  const importsById = new Map(
+    store.transactionImports.map((item) => [item.id, item.originalFilename]),
+  )
+  const agentsById = new Map(
+    store.agents.map((agent) => [agent.agentId, agent.name]),
+  )
+  return [...store.activationBonusesFor(props.campaign)].sort((a, b) => {
+    const da = a.occurredAt || a.periodStart
+    const db = b.occurredAt || b.periodStart
+    return db.localeCompare(da)
+  }).map((row) => ({
+    id: row.id,
+    occurredAt: row.occurredAt || row.periodStart,
+    playerId: row.receiverPlayerId,
+    agentId: row.agentId,
+    agency: row.agentId
+      ? agentsById.get(row.agentId) || row.agentNickname || row.agentId
+      : '—',
+    campaignName: props.campaign.name,
+    amount: Math.abs(Number(row.amount) || 0),
+    importName: importsById.get(row.importId) || row.importId,
+  }))
 })
 
 const purchasePowerDistribution = computed(() => {
@@ -1368,6 +1395,56 @@ watch(tableDetailsPeriod, async (period) => {
                     </p>
                   </div>
                 </div>
+              </section>
+
+              <section class="space-y-2">
+                <h4 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                  Transações de ativação
+                </h4>
+                <p class="text-[11px] text-text-muted">
+                  Bônus que formam o card ATIVAÇÃO desta campanha
+                  ({{ formatCurrency(metrics.activationInvestment) }}).
+                </p>
+                <div v-if="activationBonusRows.length" class="overflow-x-auto">
+                  <table class="w-full text-left text-xs">
+                    <thead class="border-b border-border-subtle text-[10px] uppercase text-text-muted">
+                      <tr>
+                        <th class="pb-2 pr-2">Data</th>
+                        <th class="pb-2 pr-2">Receiver Player ID</th>
+                        <th class="pb-2 pr-2">Agência</th>
+                        <th class="pb-2 pr-2">Campanha</th>
+                        <th class="pb-2 pr-2 text-right">Bônus</th>
+                        <th class="pb-2">Importação</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border-subtle/50">
+                      <tr
+                        v-for="row in activationBonusRows"
+                        :key="row.id"
+                        class="text-text-secondary"
+                      >
+                        <td class="py-1.5 pr-2 whitespace-nowrap">
+                          {{ formatDateTime(row.occurredAt) }}
+                        </td>
+                        <td class="py-1.5 pr-2 font-mono">{{ row.playerId }}</td>
+                        <td class="py-1.5 pr-2">
+                          {{ row.agency }}
+                          <span v-if="row.agentId" class="block font-mono text-[10px] text-text-muted">
+                            {{ row.agentId }}
+                          </span>
+                        </td>
+                        <td class="py-1.5 pr-2">{{ row.campaignName }}</td>
+                        <td class="py-1.5 pr-2 text-right tabular-nums text-text-primary">
+                          {{ formatCurrency(row.amount) }}
+                        </td>
+                        <td class="py-1.5 text-text-muted">{{ row.importName }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p v-else class="text-sm text-text-muted">
+                  Nenhum bônus atribuído a jogadores desta campanha.
+                </p>
               </section>
             </template>
           </div>

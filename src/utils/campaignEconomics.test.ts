@@ -175,4 +175,22 @@ describe('weekly metrics integration', () => {
     expect(m.status).toBe('recovering')
     expect(m.costPerPlayerFunnel).toBeCloseTo(5800 / 40, 5)
   })
+
+  it('adds ATIVAÇÃO on top of campaign investment, not into it', () => {
+    expect(
+      resolveTotalInvestment({
+        acquisitionNature: 'PAID',
+        campaignInvestment: 2779.96,
+        activationInvestment: 833,
+      }),
+    ).toBeCloseTo(3612.96)
+    expect(
+      calculateRecoveryRate({
+        acquisitionNature: 'PAID',
+        campaignInvestment: 2779.96,
+        activationInvestment: 833,
+        accumulatedRake: 1800,
+      }),
+    ).toBeCloseTo((1800 / 3612.96) * 100, 5)
+  })
 })
