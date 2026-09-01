@@ -1,13 +1,8 @@
-import type { WorkBook, WorkSheet } from 'xlsx'
 import { RECONCILIATION } from './campaignThresholds'
-
-type XlsxModule = typeof import('xlsx')
-let xlsxRuntime: XlsxModule | null = null
-
-async function loadXlsx(): Promise<XlsxModule> {
-  if (!xlsxRuntime) xlsxRuntime = await import('xlsx')
-  return xlsxRuntime
-}
+import {
+  readWorkbookFromBuffer,
+  type WorkbookSheets,
+} from './excelWorkbook'
 
 export type GameTypeCode = 'RG' | 'MTT' | 'SNG' | 'RODEO' | string
 
@@ -220,22 +215,16 @@ export function aggregatePlayersById(players: ParsedPlayerRow[]): ParsedPlayerRo
   return [...map.values()]
 }
 
-function findSheet(wb: WorkBook, candidates: string[]): WorkSheet | null {
-  const names = wb.SheetNames
+function findSheet(
+  sheets: WorkbookSheets,
+  candidates: string[],
+): unknown[][] | null {
   for (const wanted of candidates) {
-    const found = names.find((n) => normalizeHeader(n) === normalizeHeader(wanted))
-    if (found) return wb.Sheets[found]
+    for (const [name, matrix] of sheets) {
+      if (normalizeHeader(name) === normalizeHeader(wanted)) return matrix
+    }
   }
   return null
-}
-
-function sheetToMatrix(ws: WorkSheet): unknown[][] {
-  if (!xlsxRuntime) throw new Error('Parser de planilha não inicializado.')
-  return xlsxRuntime.utils.sheet_to_json<unknown[]>(ws, {
-    header: 1,
-    defval: null,
-    raw: true,
-  })
 }
 
 function headerIndexMap(row: unknown[]): Map<string, number> {
@@ -305,12 +294,11 @@ export function buildAgentReconciliations(
   })
 }
 
-function parseAgentsSheet(ws: WorkSheet): {
+function parseAgentsSheet(matrix: unknown[][]): {
   agents: ParsedAgentRow[]
   period: ParsedPeriod | null
   error: string | null
 } {
-  const matrix = sheetToMatrix(ws)
   if (matrix.length < 2) {
     return { agents: [], period: null, error: 'Aba Agentes está vazia.' }
   }
@@ -374,7 +362,7 @@ function parseAgentsSheet(ws: WorkSheet): {
 }
 
 function parseBlockedSheet(
-  ws: WorkSheet,
+  matrix: unknown[][],
   mode: 'players' | 'tables',
   fallbackPeriod: ParsedPeriod | null,
 ): {
@@ -383,7 +371,6 @@ function parseBlockedSheet(
   warnings: ParseWarning[]
   error: string | null
 } {
-  const matrix = sheetToMatrix(ws)
   const players: ParsedPlayerRow[] = []
   const tables: ParsedTableRow[] = []
   const warnings: ParseWarning[] = []
@@ -516,10 +503,14 @@ function parseBlockedSheet(
   }
 }
 
-export function parseAgentReportWorkbook(wb: WorkBook): ParsedReport {
-  const agentsSheet = findSheet(wb, ['Agentes', 'Agents'])
-  const playersSheet = findSheet(wb, ['Jogadores', 'Players'])
-  const tablesSheet = findSheet(wb, ['Detalhes de mesa', 'Detalhes da mesa', 'Table details'])
+export function parseAgentReportWorkbook(sheets: WorkbookSheets): ParsedReport {
+  const agentsSheet = findSheet(sheets, ['Agentes', 'Agents'])
+  const playersSheet = findSheet(sheets, ['Jogadores', 'Players'])
+  const tablesSheet = findSheet(sheets, [
+    'Detalhes de mesa',
+    'Detalhes da mesa',
+    'Table details',
+  ])
 
   if (!agentsSheet) {
     throw new Error('Aba obrigatória "Agentes" não encontrada no arquivo.')
@@ -584,7 +575,6 @@ export function parseAgentReportWorkbook(wb: WorkBook): ParsedReport {
 export async function parseAgentReportFile(file: File | ArrayBuffer): Promise<ParsedReport> {
   const buffer =
     file instanceof ArrayBuffer ? file : await file.arrayBuffer()
-  const XLSX = await loadXlsx()
-  const wb = XLSX.read(buffer, { type: 'array' })
-  return parseAgentReportWorkbook(wb)
+  const sheets = await readWorkbookFromBuffer(buffer)
+  return parseAgentReportWorkbook(sheets)
 }

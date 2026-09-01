@@ -537,12 +537,14 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   const loading = ref(false)
   const importing = ref(false)
   const ready = ref(false)
+  const transactionsLoaded = ref(false)
   const error = ref<string | null>(null)
   const showArchived = ref(false)
 
   let channel: RealtimeChannel | null = null
   let suppressRealtimeUntil = 0
   let reloadTimer: ReturnType<typeof setTimeout> | null = null
+  let transactionsLoadPromise: Promise<void> | null = null
 
   const selectedCampaign = computed(
     () =>
@@ -1068,10 +1070,13 @@ export const useCampaignsStore = defineStore('campaigns', () => {
 
   function applyTransactionImports(
     rows: Record<string, unknown>[],
-    txRows: Record<string, unknown>[],
+    txRows: Record<string, unknown>[] | null,
   ) {
     transactionImports.value = rows.map(mapTransactionImport)
-    transactions.value = txRows.map(mapTransaction)
+    if (txRows) {
+      transactions.value = txRows.map(mapTransaction)
+      transactionsLoaded.value = true
+    }
   }
 
   async function loadTransactionsAndImports() {
@@ -1158,7 +1163,18 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     ]
   }
 
-  async function load() {
+  async function ensureTransactionsLoaded() {
+    if (transactionsLoaded.value) return
+    if (!transactionsLoadPromise) {
+      transactionsLoadPromise = loadTransactionsAndImports().finally(() => {
+        transactionsLoadPromise = null
+      })
+    }
+    await transactionsLoadPromise
+  }
+
+  async function load(options: { includeTransactions?: boolean } = {}) {
+    const includeTransactions = options.includeTransactions !== false
     loading.value = true
     error.value = null
 
@@ -1205,7 +1221,9 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         .select('*')
         .eq('board_id', BOARD_ID)
         .order('period_start', { ascending: false }),
-      pagedBoardSelect('campaign_transactions', TRANSACTION_LIST_COLUMNS),
+      includeTransactions
+        ? pagedBoardSelect('campaign_transactions', TRANSACTION_LIST_COLUMNS)
+        : Promise.resolve({ data: null, error: null }),
       pagedBoardSelect('campaign_agent_periods'),
       pagedBoardSelect('campaign_player_periods'),
       pagedBoardSelect('campaign_cohort_players'),
@@ -1218,7 +1236,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       agentsRes.error ||
       importsRes.error ||
       txImportsRes.error ||
-      transactionsRes.error ||
+      (includeTransactions ? transactionsRes.error : null) ||
       agentPeriodsRes.error ||
       playerPeriodsRes.error ||
       cohortRes.error
@@ -1248,7 +1266,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     )
     applyTransactionImports(
       (txImportsRes.data ?? []) as Record<string, unknown>[],
-      transactionsRes.data,
+      includeTransactions && transactionsRes.data ? transactionsRes.data : null,
     )
     agentPeriods.value = agentPeriodsRes.data.map(mapAgentPeriod)
     playerPeriods.value = playerPeriodsRes.data.map(mapPlayerPeriod)
@@ -1350,9 +1368,10 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   }
 
   async function init() {
-    await load()
+    await load({ includeTransactions: false })
     subscribeRealtime()
     ready.value = true
+    void ensureTransactionsLoaded()
     // Imports antigos com AGENTES=0 são irrecuperáveis (IDs trocados) — limpa para reimport.
     const broken = transactionImports.value.filter(
       (i) =>
@@ -1375,6 +1394,8 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     imports.value = []
     transactionImports.value = []
     transactions.value = []
+    transactionsLoaded.value = false
+    transactionsLoadPromise = null
     agentPeriods.value = []
     playerPeriods.value = []
     cohortPlayers.value = []
@@ -2837,11 +2858,13 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     loading,
     importing,
     ready,
+    transactionsLoaded,
     error,
     showArchived,
     init,
     reset,
     load,
+    ensureTransactionsLoaded,
     open,
     close,
     setShowArchived,

@@ -16,6 +16,8 @@ import { BOARD_ID, supabase } from '../lib/supabase'
 import { useAuthStore } from './auth'
 import type { Json } from '../lib/database.types'
 import { buildSearchHaystack, matchesSearch } from '../utils/search'
+import { initialsFromName } from '../utils/initials'
+import { useToastStore } from './toast'
 
 function createId(prefix: string) {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`
@@ -196,14 +198,9 @@ export const useBoardStore = defineStore('board', () => {
     'bg-indigo-600',
   ]
 
-  function initialsFromName(name: string) {
-    return name
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0] ?? '')
-      .join('')
-      .toUpperCase()
+  function reportWriteError(message: string) {
+    error.value = message
+    useToastStore().error(message)
   }
 
   function quietRealtime(ms = 800) {
@@ -664,7 +661,7 @@ export const useBoardStore = defineStore('board', () => {
     const member: Member = {
       id: createId('m'),
       name: trimmed,
-      initials: initialsFromName(trimmed) || '??',
+      initials: initialsFromName(trimmed, '??'),
       avatarColor: avatarColors[members.value.length % avatarColors.length],
     }
     members.value.push(member)
@@ -797,6 +794,7 @@ export const useBoardStore = defineStore('board', () => {
   }
 
   async function setColumnCards(columnId: string, nextCards: Card[]) {
+    const previousCards = cards.value
     const column = columns.value.find((item) => item.id === columnId)
     const previousInColumn = cards.value.filter(
       (card) => card.columnId === columnId,
@@ -838,7 +836,7 @@ export const useBoardStore = defineStore('board', () => {
     }
 
     quietRealtime(1200)
-    await Promise.all(
+    const results = await Promise.all(
       normalized.map((card) =>
         supabase
           .from('cards')
@@ -851,15 +849,21 @@ export const useBoardStore = defineStore('board', () => {
           .eq('id', card.id),
       ),
     )
+    const writeError = results.find((result) => result.error)?.error
+    if (writeError) {
+      cards.value = previousCards
+      reportWriteError(writeError.message)
+    }
   }
 
   async function reorderColumns(nextColumns: Column[]) {
+    const previousColumns = columns.value
     columns.value = nextColumns.map((column, index) => ({
       ...column,
       position: index,
     }))
     quietRealtime()
-    await Promise.all(
+    const results = await Promise.all(
       columns.value.map((column) =>
         supabase
           .from('columns')
@@ -867,6 +871,11 @@ export const useBoardStore = defineStore('board', () => {
           .eq('id', column.id),
       ),
     )
+    const writeError = results.find((result) => result.error)?.error
+    if (writeError) {
+      columns.value = previousColumns
+      reportWriteError(writeError.message)
+    }
   }
 
   async function addColumn(titleText: string) {
@@ -1002,29 +1011,67 @@ export const useBoardStore = defineStore('board', () => {
       dbPatch.checklists = patch.checklists as unknown as Json
     }
 
-    await supabase.from('cards').update(dbPatch).eq('id', cardId)
+    const { error: cardError } = await supabase
+      .from('cards')
+      .update(dbPatch)
+      .eq('id', cardId)
+
+    if (cardError) {
+      cards.value[index] = previous
+      reportWriteError(cardError.message)
+      return
+    }
 
     if (patch.labelIds) {
-      await supabase.from('card_labels').delete().eq('card_id', cardId)
+      const { error: deleteLabelsError } = await supabase
+        .from('card_labels')
+        .delete()
+        .eq('card_id', cardId)
+      if (deleteLabelsError) {
+        cards.value[index] = previous
+        reportWriteError(deleteLabelsError.message)
+        return
+      }
       if (patch.labelIds.length) {
-        await supabase.from('card_labels').insert(
-          patch.labelIds.map((labelId) => ({
-            card_id: cardId,
-            label_id: labelId,
-          })),
-        )
+        const { error: insertLabelsError } = await supabase
+          .from('card_labels')
+          .insert(
+            patch.labelIds.map((labelId) => ({
+              card_id: cardId,
+              label_id: labelId,
+            })),
+          )
+        if (insertLabelsError) {
+          cards.value[index] = previous
+          reportWriteError(insertLabelsError.message)
+          return
+        }
       }
     }
 
     if (patch.memberIds) {
-      await supabase.from('card_members').delete().eq('card_id', cardId)
+      const { error: deleteMembersError } = await supabase
+        .from('card_members')
+        .delete()
+        .eq('card_id', cardId)
+      if (deleteMembersError) {
+        cards.value[index] = previous
+        reportWriteError(deleteMembersError.message)
+        return
+      }
       if (patch.memberIds.length) {
-        await supabase.from('card_members').insert(
-          patch.memberIds.map((memberId) => ({
-            card_id: cardId,
-            member_id: memberId,
-          })),
-        )
+        const { error: insertMembersError } = await supabase
+          .from('card_members')
+          .insert(
+            patch.memberIds.map((memberId) => ({
+              card_id: cardId,
+              member_id: memberId,
+            })),
+          )
+        if (insertMembersError) {
+          cards.value[index] = previous
+          reportWriteError(insertMembersError.message)
+        }
       }
     }
   }

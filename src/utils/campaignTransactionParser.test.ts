@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import * as XLSX from 'xlsx'
+import writeXlsxFile from 'write-excel-file/node'
 import {
   classifyTransactionFlags,
   resolveHistoricalAgentId,
@@ -18,11 +18,10 @@ import {
 } from './campaignFunnelMetrics'
 import { calculateRecoveryRate } from './campaignEconomics'
 
-function buildWorkbookBuffer(headers: string[], rows: unknown[][]): ArrayBuffer {
-  const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows])
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, sheet, 'Transações')
-  return XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+async function buildWorkbookBuffer(headers: string[], rows: unknown[][]): Promise<ArrayBuffer> {
+  const result = await writeXlsxFile([headers, ...rows] as (string | number)[][])
+  const buf = await result.toBuffer()
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
 }
 
 const REAL_HEADERS = [
@@ -40,7 +39,7 @@ const REAL_HEADERS = [
 
 describe('transaction parser — real Suprema headers', () => {
   it('recognizes Agente player ID and does not swap with Receiver', async () => {
-    const buffer = buildWorkbookBuffer(REAL_HEADERS, [
+    const buffer = await buildWorkbookBuffer(REAL_HEADERS, [
       [1001, 555001, 'nickA', 1730032, '03/08/2026', '10:15:00', 'SX 24 Horas', '-', 150, 'Completed'],
       [1002, 555002, 'nickB', 1730032, '03/08/2026', '11:00:00', '-', 'Bônus', 50, 'Completed'],
       [1003, 555001, 'nickA', 999888, '12/08/2026', '09:00:00', 'SX 24 Horas', '', 200, 'Completed'],
@@ -65,7 +64,7 @@ describe('transaction parser — real Suprema headers', () => {
   })
 
   it('uses Dia/Hora for occurredAt, not batch period', async () => {
-    const buffer = buildWorkbookBuffer(REAL_HEADERS, [
+    const buffer = await buildWorkbookBuffer(REAL_HEADERS, [
       [1, 10, 'n', 20, '03/08/2026', '14:30:00', 'SX 24 Horas', '-', 100, 'Completed'],
     ])
     const parsed = await parseTransactionReportBuffer(buffer, 'file.xlsx')

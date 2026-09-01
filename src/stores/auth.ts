@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import type { Session, User } from '@supabase/supabase-js'
 import { BOARD_ID, supabase } from '../lib/supabase'
+import { initialsFromName } from '../utils/initials'
 
 export const useAuthStore = defineStore('auth', () => {
   const session = ref<Session | null>(null)
@@ -146,18 +147,6 @@ export const useAuthStore = defineStore('auth', () => {
     avatarUrl.value = data?.avatar_url ?? null
     isAdmin.value = Boolean(data?.is_admin)
     await syncMemberRecord({ silent })
-  }
-
-  function initialsFromName(name: string) {
-    return (
-      name
-        .split(/\s+/)
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((part) => part[0] ?? '')
-        .join('')
-        .toUpperCase() || '?'
-    )
   }
 
   /** Garante um member real vinculado ao usuário autenticado. */

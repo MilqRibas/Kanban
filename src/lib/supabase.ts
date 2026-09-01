@@ -15,11 +15,25 @@ export const supabase = createClient(url, anonKey, {
     autoRefreshToken: true,
     detectSessionInUrl: true,
     /**
-     * Evita deadlock do navigator.locks (AbortError / "Failed to fetch")
-     * quando writes (ex.: notas) competem com refresh de sessão / realtime.
+     * Usa navigator.locks quando disponível; em timeout/abort executa sem lock
+     * para evitar deadlock (AbortError) sem desabilitar o lock em todas as abas.
      * Ver: supabase-js#2013, #2111
      */
-    lock: async (_name, _acquireTimeout, fn) => fn(),
+    lock: async (name, acquireTimeout, fn) => {
+      if (typeof navigator === 'undefined' || !navigator.locks?.request) {
+        return fn()
+      }
+      const timeout = acquireTimeout ?? 5000
+      try {
+        return await navigator.locks.request(
+          name,
+          { signal: AbortSignal.timeout(timeout) },
+          async () => fn(),
+        )
+      } catch {
+        return fn()
+      }
+    },
   },
 })
 

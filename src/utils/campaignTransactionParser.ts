@@ -1,12 +1,8 @@
 import { classifyTransactionFlags } from './campaignDepositMetrics'
-
-type XlsxModule = typeof import('xlsx')
-let xlsxRuntime: XlsxModule | null = null
-
-async function loadXlsx(): Promise<XlsxModule> {
-  if (!xlsxRuntime) xlsxRuntime = await import('xlsx')
-  return xlsxRuntime
-}
+import {
+  excelSerialToParts,
+  readFirstSheetFromBuffer,
+} from './excelWorkbook'
 
 export type ParsedTransactionPeriod = {
   start: string
@@ -283,25 +279,6 @@ function findHeaderRow(rows: unknown[][]): {
   return null
 }
 
-function excelSerialToParts(value: number): {
-  y: number
-  m: number
-  d: number
-  H: number
-  M: number
-  S: number
-} | null {
-  const parsed = xlsxRuntime?.SSF.parse_date_code(value)
-  if (!parsed) return null
-  return {
-    y: parsed.y,
-    m: parsed.m,
-    d: parsed.d,
-    H: parsed.H || 0,
-    M: parsed.M || 0,
-    S: parsed.S || 0,
-  }
-}
 
 function combineDayAndTime(day: unknown, time: unknown): string | null {
   let y: number | null = null
@@ -453,18 +430,9 @@ export async function parseTransactionReportBuffer(
   buffer: ArrayBuffer,
   filename = 'transactions.xlsx',
 ): Promise<ParsedTransactionReport> {
-  const XLSX = await loadXlsx()
-  const workbook = XLSX.read(buffer, { type: 'array', cellDates: true })
+  const rows = await readFirstSheetFromBuffer(buffer)
   const warnings: ParsedTransactionReport['warnings'] = []
-  const sheetName = workbook.SheetNames[0]
-  if (!sheetName) throw new Error('Planilha de transações vazia.')
-
-  const sheet = workbook.Sheets[sheetName]
-  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-    header: 1,
-    raw: true,
-    defval: '',
-  })
+  if (rows.length === 0) throw new Error('Planilha de transações vazia.')
 
   const header = findHeaderRow(rows)
   if (!header) {

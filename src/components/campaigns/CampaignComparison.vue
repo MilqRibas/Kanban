@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import type { Campaign } from '../../types/campaigns'
 import { ACQUISITION_NATURE_LABELS } from '../../types/campaigns'
 import { useCampaignsStore } from '../../stores/campaigns'
@@ -17,6 +17,9 @@ const props = defineProps<{
 }>()
 
 const store = useCampaignsStore()
+onMounted(() => {
+  void store.ensureTransactionsLoaded()
+})
 const selectedIds = ref<string[]>([])
 
 watch(
