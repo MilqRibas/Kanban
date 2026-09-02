@@ -357,6 +357,21 @@ function buildPayload(): CampaignCreateInput | null {
     setFormError('Data de início é obrigatória.')
     return null
   }
+  if (draft.endDate && draft.endDate < draft.startDate) {
+    setFormError('A data de fim não pode ser anterior à data de início.')
+    return null
+  }
+  const startYear = Number(draft.startDate.slice(0, 4))
+  const endYear = draft.endDate ? Number(draft.endDate.slice(0, 4)) : null
+  if (
+    !Number.isFinite(startYear) ||
+    startYear < 2000 ||
+    startYear > 2100 ||
+    (endYear != null && (endYear < 2000 || endYear > 2100))
+  ) {
+    setFormError('Datas da campanha fora do intervalo válido (2000–2100).')
+    return null
+  }
 
   let investmentValue: number | null = null
   if (draft.acquisitionNature === 'PAID') {
@@ -582,15 +597,17 @@ async function save() {
                 Fim do período de aquisição
                 <span
                   class="inline-flex text-text-muted"
-                  aria-label="Após esta data, novos jogadores não serão atribuídos à campanha. Jogadores já adquiridos continuam gerando rake normalmente."
-                  title="Após esta data, novos jogadores não serão atribuídos à campanha. Jogadores já adquiridos continuam gerando rake normalmente."
+                  aria-label="Após esta data, novos jogadores não entram na coorte. Rake e depósitos dos já adquiridos continuam acumulando (LTV) no Agent ID da campanha."
+                  title="Após esta data, novos jogadores não entram na coorte. Rake e depósitos dos já adquiridos continuam acumulando (LTV) no Agent ID da campanha."
                 >
                   <Info :size="13" />
                 </span>
               </span>
               <input v-model="draft.endDate" type="date" :class="fieldClass" />
               <span class="mt-1 block text-[11px] text-text-muted">
-                Opcional. Vazio = a campanha continua aceitando novos jogadores no Agent ID.
+                Opcional. Define só quem entra na coorte. Rake e depósitos dos
+                jogadores adquiridos continuam acumulando depois desta data
+                (LTV), enquanto permanecerem no Agent ID.
               </span>
             </label>
 

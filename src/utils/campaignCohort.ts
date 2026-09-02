@@ -2,6 +2,7 @@ import type { Campaign, CampaignPlayerPeriod } from '../types/campaigns'
 import {
   campaignDateWindow,
   eventInCampaignWindow,
+  lifetimeFromAcquisition,
   periodOverlapsCampaignWindow,
   playerMeetsActivation,
   sortPeriodsChronologically,
@@ -52,7 +53,7 @@ export function playerAppearedInAcquisitionWindow(
   return periodOverlapsCampaignWindow(period, acquisitionWindow(campaign))
 }
 
-/** Semana do jogador conta no rake da campanha a partir da entrada na coorte. */
+/** Semana do jogador conta no rake da campanha a partir da entrada na coorte (LTV). */
 export function periodCountsTowardCohortRake(
   period: { periodStart: string },
   acquiredAt: string,
@@ -60,6 +61,7 @@ export function periodCountsTowardCohortRake(
   const start = isoDay(period.periodStart)
   const acquired = isoDay(acquiredAt)
   if (!start || !acquired) return false
+  // Regra de negócio: rake acumulado não é cortado pelo endDate da campanha.
   return start >= acquired
 }
 
@@ -128,11 +130,12 @@ export function discoverCampaignCohort(
 }
 
 /**
- * Rake atribuído à campanha: coorte identifica a origem do jogador, mas o
- * resultado pertence à agência onde a movimentação aconteceu. Só entram
- * semanas em que o jogador estava no Agent ID da campanha (a partir da
- * aquisição). Rake gerado em outra agência pertence à campanha daquela
- * agência — nunca a duas ao mesmo tempo.
+ * Rake atribuído à campanha (regra de negócio LTV):
+ * - Coorte = Player IDs que apareceram no Agent ID durante a janela de aquisição
+ *   (`startDate`…`endDate`; fim vazio = continua aceitando novos).
+ * - Rake acumulado = todas as semanas desse jogador no Agent ID da campanha
+ *   a partir de `acquiredAt`, inclusive depois do fim da aquisição.
+ * - Rake gerado em outra agência pertence à campanha daquela agência.
  *
  * Granularidade: o vínculo jogador↔agente vem do fechamento semanal do
  * relatório; migração no meio da semana fica com o(s) agente(s) listados
@@ -226,10 +229,9 @@ export type CohortTransaction = {
 }
 
 /**
- * Transações atribuídas à campanha: jogador da coorte, a partir da aquisição,
- * e somente enquanto a movimentação aconteceu no Agent ID da campanha
- * (`t.agentId` é o agente histórico do evento, resolvido na importação).
- * Depósito feito em outra agência pertence à campanha daquela agência.
+ * Transações atribuídas à campanha (mesma regra LTV do rake): jogador da
+ * coorte, a partir da aquisição, sem corte pelo endDate, somente enquanto a
+ * movimentação aconteceu no Agent ID da campanha.
  */
 export function attributedCohortTransactions<T extends CohortTransaction>(
   members: Pick<CampaignCohortMember, 'playerId' | 'acquiredAt'>[],
@@ -246,7 +248,7 @@ export function attributedCohortTransactions<T extends CohortTransaction>(
     if (!acquiredAt) return false
     return eventInCampaignWindow(
       t.occurredAt,
-      { start: acquiredAt, end: null },
+      lifetimeFromAcquisition(acquiredAt),
       { periodStart: t.periodStart, periodEnd: t.periodEnd },
     )
   })

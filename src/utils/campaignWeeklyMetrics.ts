@@ -49,14 +49,53 @@ function isoDay(value: string | null | undefined): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null
 }
 
-/** Janela de aquisição: identifica Player IDs no Agent ID, não o rake da campanha. */
+/** Anos absurdos (ex.: 0226) ou fim < início não podem invalidar a janela. */
+export function sanitizeCampaignEndDate(
+  startDate: string | null | undefined,
+  endDate: string | null | undefined,
+): string | null {
+  const start = isoDay(startDate)
+  let end = isoDay(endDate)
+  if (!end) return null
+
+  let year = Number(end.slice(0, 4))
+  // Typo comum: 0226-07-05 com início em 2026 → 2026-07-05
+  if (Number.isFinite(year) && year < 1000 && start) {
+    const startYear = Number(start.slice(0, 4))
+    if (startYear >= 2000 && startYear <= 2100) {
+      end = `${start.slice(0, 2)}${end.slice(2)}`
+      year = Number(end.slice(0, 4))
+    }
+  }
+
+  if (!Number.isFinite(year) || year < 2000 || year > 2100) return null
+  if (start && end < start) return null
+  return end
+}
+
+/**
+ * Janela de aquisição: só identifica quais Player IDs entram na coorte.
+ * NÃO limita rake, depósitos nem payback — esses seguem LTV a partir de
+ * `acquiredAt` enquanto o jogador permanecer no Agent ID da campanha.
+ */
 export function campaignDateWindow(campaign: {
   startDate?: string | null
   endDate?: string | null
 }): CampaignDateWindow {
+  const start = isoDay(campaign.startDate)
   return {
-    start: isoDay(campaign.startDate),
-    end: isoDay(campaign.endDate),
+    start,
+    end: sanitizeCampaignEndDate(start, campaign.endDate),
+  }
+}
+
+/** Janela aberta a partir da aquisição (regra de negócio LTV). */
+export function lifetimeFromAcquisition(
+  acquiredAt: string | null | undefined,
+): CampaignDateWindow {
+  return {
+    start: isoDay(acquiredAt),
+    end: null,
   }
 }
 

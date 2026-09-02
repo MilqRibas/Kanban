@@ -43,6 +43,8 @@ import {
   eventInCampaignWindow,
   filterPeriodsForCampaign,
   formatPeriodLabel,
+  lifetimeFromAcquisition,
+  sanitizeCampaignEndDate,
   sumWeeklyRake,
   uniquePlayerIds,
   type CampaignWeeklyMetrics,
@@ -202,7 +204,10 @@ function mapCampaign(row: Record<string, unknown>): Campaign {
     acquisitionMonth: toNumber(row.acquisition_month, 1),
     acquisitionYear: toNumber(row.acquisition_year, new Date().getFullYear()),
     startDate: (row.start_date as string | null) ?? null,
-    endDate: (row.end_date as string | null) ?? null,
+    endDate: sanitizeCampaignEndDate(
+      (row.start_date as string | null) ?? null,
+      (row.end_date as string | null) ?? null,
+    ),
     agency: (row.agency as string | null) ?? null,
     agentId: (row.agent_id as string | null) ?? null,
     acquisitionNature,
@@ -873,7 +878,13 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     const pool = agentId
       ? (transactionsByAgent.value.get(agentId) ?? [])
       : transactions.value
-    const window = campaign ? campaignDateWindow(campaign) : null
+    // Quando recebemos startDate = acquiredAt e endDate = null (LTV),
+    // lifetimeFromAcquisition deixa a janela aberta após a aquisição.
+    const window = campaign
+      ? campaign.endDate == null && campaign.startDate
+        ? lifetimeFromAcquisition(campaign.startDate)
+        : campaignDateWindow(campaign)
+      : null
     const scoped = pool.filter((t) => {
       if (t.receiverPlayerId !== playerId || !t.isDeposit) return false
       if (!window) return true
@@ -1445,7 +1456,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       acquisition_month: input.acquisitionMonth,
       acquisition_year: input.acquisitionYear,
       start_date: input.startDate,
-      end_date: input.endDate ?? null,
+      end_date: sanitizeCampaignEndDate(input.startDate, input.endDate ?? null),
       agency: agencyName,
       agent_id: agentId,
       acquisition_nature: nature,
@@ -1547,7 +1558,13 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       dbPatch.acquisition_year = patch.acquisitionYear
     }
     if (patch.startDate !== undefined) dbPatch.start_date = patch.startDate
-    if (patch.endDate !== undefined) dbPatch.end_date = patch.endDate
+    if (patch.endDate !== undefined || patch.startDate !== undefined) {
+      const nextStart =
+        patch.startDate !== undefined ? patch.startDate : campaign.startDate
+      const nextEnd =
+        patch.endDate !== undefined ? patch.endDate : campaign.endDate
+      dbPatch.end_date = sanitizeCampaignEndDate(nextStart, nextEnd)
+    }
     if (patch.agency !== undefined) {
       dbPatch.agency = patch.agency?.trim() || null
     } else if (patch.agentId !== undefined && agent) {

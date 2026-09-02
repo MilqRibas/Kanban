@@ -9,7 +9,9 @@ import {
   eventInCampaignWindow,
   filterPeriodsForCampaign,
   periodOverlapsCampaignWindow,
+  campaignDateWindow,
   campaignUsesWeeklySnapshot,
+  sanitizeCampaignEndDate,
   sumWeeklyRake,
 } from './campaignWeeklyMetrics'
 
@@ -218,5 +220,18 @@ describe('campaign acquisition window', () => {
         [{ periodStart: '2026-06-01', periodEnd: '2026-06-07' }],
       ),
     ).toBe(false)
+  })
+
+  it('sanitizes acquisition endDate typos and rejects inverted ranges', () => {
+    expect(sanitizeCampaignEndDate('2026-06-01', '0226-07-05')).toBe(
+      '2026-07-05',
+    )
+    expect(sanitizeCampaignEndDate('2026-06-01', '2026-05-01')).toBeNull()
+    expect(
+      campaignDateWindow({
+        startDate: '2026-06-01',
+        endDate: '0226-07-05',
+      }),
+    ).toEqual({ start: '2026-06-01', end: '2026-07-05' })
   })
 })
