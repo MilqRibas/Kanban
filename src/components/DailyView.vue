@@ -463,16 +463,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
               <button
                 type="button"
                 class="flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border-subtle/60 px-2 py-3 text-center transition-colors hover:border-accent/40 hover:bg-white/5"
-                :title="
-                  day.entries.length
-                    ? 'Adicionar rotina de outro membro'
-                    : 'Adicionar tarefa'
-                "
+                title="Adicionar tarefa"
                 @click.stop="startAddForDay(day.dateKey)"
               >
                 <Plus :size="14" class="text-text-muted" />
                 <span class="text-[11px] font-medium text-text-muted">
-                  {{ day.entries.length ? 'Outro membro' : 'Adicionar tarefa' }}
+                  Adicionar tarefa
                 </span>
               </button>
 
