@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleDashed,
+  Copy,
   ListTodo,
   ListTree,
   Plus,
@@ -15,8 +16,9 @@ import {
   X,
 } from '@lucide/vue'
 import { useBoardStore } from '../stores/board'
-import { entryProgress, toDateKey, useDailyStore } from '../stores/dailyTodos'
+import { entryProgress, toDateKey, useDailyStore, type DailyDuplicateMode } from '../stores/dailyTodos'
 import type { DailyEntry, DailyStatus, DailyTodoItem } from '../types/daily'
+import { sameMemberId } from '../utils/dailyEntries'
 import MemberAvatar from './MemberAvatar.vue'
 
 const board = useBoardStore()
@@ -30,6 +32,7 @@ const celebratePin = ref(false)
 const addMenuDateKey = ref<string | null>(null)
 const memberPickerOpen = ref(false)
 const addBlockMenuOpen = ref(false)
+const duplicateMenuOpen = ref(false)
 
 const weekDaysHeader = ['dom.', 'seg.', 'ter.', 'qua.', 'qui.', 'sex.', 'sáb.']
 
@@ -39,13 +42,9 @@ const statusMeta: Record<DailyStatus, { label: string; className: string }> = {
   done: { label: 'Concluído', className: 'bg-success/25 text-success' },
 }
 
-/** Membro focado no detalhe: filtro do header ou último selecionado */
+/** Membro focado no detalhe: filtro do header, último selecionado, ou sem responsável */
 const focusMemberId = computed(
-  () =>
-    board.memberFilterId ??
-    daily.detailMemberId ??
-    board.members[0]?.id ??
-    null,
+  () => board.memberFilterId ?? daily.detailMemberId,
 )
 
 const selectedMember = computed(
@@ -64,17 +63,13 @@ watch(
   [focusMemberId, () => daily.selectedDateKey, () => daily.ready],
   () => {
     if (!daily.ready || daily.loading) return
-    if (focusMemberId.value) {
-      daily.ensureEntry(focusMemberId.value, daily.selectedDateKey)
-    }
+    daily.ensureEntry(focusMemberId.value, daily.selectedDateKey)
   },
   { immediate: true },
 )
 
 function openDay(dateKey: string) {
-  const memberId = focusMemberId.value ?? board.members[0]?.id
-  if (!memberId) return
-  daily.openEntry(memberId, dateKey)
+  daily.openEntry(focusMemberId.value, dateKey)
 }
 
 function membersAvailableForDate(_dateKey: string) {
@@ -82,51 +77,38 @@ function membersAvailableForDate(_dateKey: string) {
 }
 
 function startAddForDay(dateKey: string) {
-  // Com filtro ativo: abre direto para o membro filtrado
   if (board.memberFilterId) {
     daily.openEntry(board.memberFilterId, dateKey)
     addMenuDateKey.value = null
     return
   }
-  // Dia vazio: abre para o membro em foco (sem exigir seletor)
   const dayEntries = daily.entries.filter(
     (entry) => entry.dateKey === dateKey && entry.todos.length > 0,
   )
   if (dayEntries.length === 0) {
-    const preferred = focusMemberId.value ?? board.members[0]?.id
-    if (preferred) {
-      daily.openEntry(preferred, dateKey)
-      addMenuDateKey.value = null
-      return
-    }
-  }
-  // Já há rotinas no dia: escolher outro membro
-  if (board.members.length <= 1) {
-    const only = board.members[0]?.id
-    if (only) daily.openEntry(only, dateKey)
+    daily.openEntry(null, dateKey)
     addMenuDateKey.value = null
     return
   }
   addMenuDateKey.value = addMenuDateKey.value === dateKey ? null : dateKey
 }
 
-function pickMemberForDay(memberId: string, dateKey: string) {
+function pickMemberForDay(memberId: string | null, dateKey: string) {
   addMenuDateKey.value = null
   daily.openEntry(memberId, dateKey)
 }
 
-function setResponsible(memberId: string) {
+function setResponsible(memberId: string | null) {
   memberPickerOpen.value = false
   daily.openEntry(memberId, daily.selectedDateKey)
 }
 
 const focusedEntry = computed(() => {
-  const memberId = focusMemberId.value
-  if (!memberId) return null
   return (
     daily.entries.find(
       (entry) =>
-        entry.memberId === memberId && entry.dateKey === daily.selectedDateKey,
+        sameMemberId(entry.memberId, focusMemberId.value) &&
+        entry.dateKey === daily.selectedDateKey,
     ) ?? null
   )
 })
@@ -167,7 +149,11 @@ const isViewingToday = computed(
 )
 
 function memberOf(entry: DailyEntry) {
-  return board.getMemberById(entry.memberId)
+  return entry.memberId ? board.getMemberById(entry.memberId) : null
+}
+
+function memberLabel(entry: DailyEntry) {
+  return memberOf(entry)?.name ?? 'Sem responsável'
 }
 
 function statusOf(entry: DailyEntry) {
@@ -184,24 +170,13 @@ function onDateChange(event: Event) {
   const value = (event.target as HTMLInputElement).value
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return
   if (value === daily.selectedDateKey) return
-  const memberId = focusMemberId.value ?? board.members[0]?.id
-  if (!memberId) {
-    daily.setDateKey(value)
-    return
-  }
-  daily.openEntry(memberId, value)
+  daily.openEntry(focusMemberId.value, value)
 }
 
 function shiftDay(delta: number) {
   const date = new Date(`${daily.selectedDateKey}T12:00:00`)
   date.setDate(date.getDate() + delta)
-  const nextKey = toDateKey(date)
-  const memberId = focusMemberId.value ?? board.members[0]?.id
-  if (!memberId) {
-    daily.setDateKey(nextKey)
-    return
-  }
-  daily.openEntry(memberId, nextKey)
+  daily.openEntry(focusMemberId.value, toDateKey(date))
 }
 
 function isToggle(todo: DailyTodoItem) {
@@ -281,6 +256,11 @@ function addTaskFromMenu() {
   nextTick(() => inputRef.value?.focus())
 }
 
+function duplicateDay(mode: DailyDuplicateMode) {
+  duplicateMenuOpen.value = false
+  daily.duplicateEntry(mode)
+}
+
 function isTabActive(mode: 'day' | 'week' | 'month') {
   if (mode === 'day') return daily.dayDetailOpen
   if (mode === 'week') {
@@ -303,6 +283,7 @@ function closeDayDetail() {
   memberPickerOpen.value = false
   addBlockMenuOpen.value = false
   addMenuDateKey.value = null
+  duplicateMenuOpen.value = false
   daily.closeDayDetail()
 }
 
@@ -462,7 +443,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
                   size="sm"
                 />
                 <span class="truncate text-xs font-semibold text-text-primary">
-                  {{ memberOf(entry)?.name }}
+                  {{ memberLabel(entry) }}
                 </span>
               </div>
               <p class="mb-2 line-clamp-2 text-[11px] leading-snug text-text-muted">
@@ -502,6 +483,16 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
                 <p class="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
                   Criar para
                 </p>
+                <button
+                  type="button"
+                  class="flex w-full items-center gap-2 px-2.5 py-2 text-left text-xs text-text-secondary hover:bg-white/10 hover:text-text-primary"
+                  @click.stop="pickMemberForDay(null, day.dateKey)"
+                >
+                  <span class="flex size-6 items-center justify-center rounded-full bg-white/10 text-[10px] font-semibold text-text-muted">
+                    —
+                  </span>
+                  <span class="truncate">Sem responsável</span>
+                </button>
                 <button
                   v-for="member in membersAvailableForDate(day.dateKey)"
                   :key="member.id"
@@ -581,7 +572,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
                 aria-hidden="true"
               />
               <p class="min-w-0 flex-1 truncate text-[10px] font-medium text-text-primary">
-                {{ memberOf(entry)?.name }}
+                {{ memberLabel(entry) }}
               </p>
             </button>
             <button
@@ -607,7 +598,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
           class="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6"
           role="dialog"
           aria-modal="true"
-          :aria-label="`Afazeres de ${selectedMember?.name ?? 'membro'}`"
+          :aria-label="`Afazeres de ${selectedMember?.name ?? 'sem responsável'}`"
         >
           <button
             type="button"
@@ -639,9 +630,46 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
         <header class="mb-6">
           <div class="mb-2 flex items-start justify-between gap-3">
             <h2 class="text-3xl font-bold tracking-tight text-text-primary">
-              {{ selectedMember?.name ?? 'Usuário' }}
+              {{ selectedMember?.name ?? 'Sem responsável' }}
             </h2>
             <div class="flex items-center gap-2 pr-1">
+              <div class="relative">
+                <button
+                  type="button"
+                  class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-text-secondary hover:bg-white/10 hover:text-text-primary"
+                  :aria-expanded="duplicateMenuOpen"
+                  title="Duplicar tarefas"
+                  @click="duplicateMenuOpen = !duplicateMenuOpen"
+                >
+                  <Copy :size="14" />
+                  Duplicar
+                </button>
+                <div
+                  v-if="duplicateMenuOpen"
+                  class="absolute right-0 top-full z-20 mt-1 min-w-[16rem] overflow-hidden rounded-xl border border-white/10 bg-board-elevated py-1 shadow-xl"
+                >
+                  <button
+                    type="button"
+                    class="flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left hover:bg-white/10"
+                    @click="duplicateDay('next-day')"
+                  >
+                    <span class="text-sm text-text-primary">Próximo dia</span>
+                    <span class="text-[11px] text-text-muted">
+                      Copia as tarefas para amanhã
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    class="flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left hover:bg-white/10"
+                    @click="duplicateDay('continuous')"
+                  >
+                    <span class="text-sm text-text-primary">Rotina contínua</span>
+                    <span class="text-[11px] text-text-muted">
+                      Repete todos os dias restantes da semana
+                    </span>
+                  </button>
+                </div>
+              </div>
               <div
                 v-if="focusedProgress.complete"
                 class="flex size-9 items-center justify-center rounded-full bg-success text-board shadow-md"
@@ -706,12 +734,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
                   :member="selectedMember"
                   size="sm"
                 />
-                {{ selectedMember?.name ?? 'Escolher' }}
+                {{ selectedMember?.name ?? 'Sem responsável' }}
               </button>
               <div
                 v-if="memberPickerOpen"
                 class="absolute left-0 top-full z-20 mt-1 min-w-[12rem] overflow-hidden rounded-xl border border-white/10 bg-board-elevated py-1 shadow-xl"
               >
+                <button
+                  type="button"
+                  class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-white/10 hover:text-text-primary"
+                  @click="setResponsible(null)"
+                >
+                  <span class="flex size-6 items-center justify-center rounded-full bg-white/10 text-[10px] font-semibold text-text-muted">
+                    —
+                  </span>
+                  Sem responsável
+                </button>
                 <button
                   v-for="member in board.members"
                   :key="member.id"
@@ -813,6 +851,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
                 />
                 <button
                   type="button"
+                  class="rounded-md p-1 text-text-muted opacity-0 transition-opacity hover:bg-white/10 hover:text-text-primary group-hover:opacity-100"
+                  aria-label="Duplicar lista"
+                  title="Duplicar neste dia"
+                  @click="daily.duplicateTodo(todo.id, 'same-day')"
+                >
+                  <Copy :size="14" />
+                </button>
+                <button
+                  type="button"
                   class="rounded-md p-1 text-text-muted opacity-0 transition-opacity hover:bg-danger/15 hover:text-danger group-hover:opacity-100"
                   aria-label="Remover lista"
                   @click="daily.removeTodo(todo.id)"
@@ -859,6 +906,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
                       onChildItemEnter(todo.id, child, $event)
                     "
                   />
+                  <button
+                    type="button"
+                    class="rounded-md p-1 text-text-muted opacity-0 transition-opacity hover:bg-white/10 hover:text-text-primary group-hover:opacity-100"
+                    aria-label="Duplicar tarefa"
+                    title="Duplicar neste dia"
+                    @click="daily.duplicateTodo(child.id, 'same-day')"
+                  >
+                    <Copy :size="14" />
+                  </button>
                   <button
                     type="button"
                     class="rounded-md p-1 text-text-muted opacity-0 transition-opacity hover:bg-danger/15 hover:text-danger group-hover:opacity-100"
@@ -917,6 +973,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
                   )
                 "
               />
+              <button
+                type="button"
+                class="rounded-md p-1 text-text-muted opacity-0 transition-opacity hover:bg-white/10 hover:text-text-primary group-hover:opacity-100"
+                aria-label="Duplicar tarefa"
+                title="Duplicar neste dia"
+                @click="daily.duplicateTodo(todo.id, 'same-day')"
+              >
+                <Copy :size="14" />
+              </button>
               <button
                 type="button"
                 class="rounded-md p-1 text-text-muted opacity-0 transition-opacity hover:bg-danger/15 hover:text-danger group-hover:opacity-100"

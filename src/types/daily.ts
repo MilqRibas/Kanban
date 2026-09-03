@@ -17,7 +17,8 @@ export interface DailyTodoItem {
 
 export interface DailyEntry {
   id: string
-  memberId: string
+  /** null = sem responsável */
+  memberId: string | null
   /** YYYY-MM-DD */
   dateKey: string
   status: DailyStatus

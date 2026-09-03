@@ -1,4 +1,4 @@
-# B2C TEAM — Kanban
+# TIME B2C — Kanban
 
 Quadro interno do time **B2C SX Poker** para organizar demandas, rotinas diárias, atas/notas, conteúdos de comunidade e campanhas de aquisição — em um único app autenticado, sincronizado em tempo real.
 

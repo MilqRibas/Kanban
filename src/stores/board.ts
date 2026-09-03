@@ -153,7 +153,7 @@ function createNotificationId() {
 }
 
 export const useBoardStore = defineStore('board', () => {
-  const title = ref('B2C TEAM')
+  const title = ref('TIME B2C')
   const columns = ref<Column[]>([])
   const cards = ref<Card[]>([])
   const labels = ref<Label[]>([])
@@ -613,7 +613,7 @@ export const useBoardStore = defineStore('board', () => {
 
   function reset() {
     unsubscribeRealtime()
-    title.value = 'B2C TEAM'
+    title.value = 'TIME B2C'
     columns.value = []
     cards.value = []
     labels.value = []

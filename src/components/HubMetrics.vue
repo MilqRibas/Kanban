@@ -380,14 +380,16 @@ const completedTasks = computed(() => {
 
   for (const entry of daily.entries) {
     if (entry.dateKey < from || entry.dateKey > to) continue
-    const member = board.getMemberById(entry.memberId)
+    const member = entry.memberId
+      ? board.getMemberById(entry.memberId)
+      : null
     for (const todo of leafTodos(entry.todos)) {
       if (!todo.completed || !todo.text.trim()) continue
       items.push({
         id: `${entry.id}-${todo.id}`,
         text: todo.text.trim(),
         dateKey: entry.dateKey,
-        memberName: member?.name ?? 'Membro',
+        memberName: member?.name ?? 'Sem responsável',
       })
     }
   }

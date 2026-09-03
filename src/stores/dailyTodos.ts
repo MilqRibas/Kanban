@@ -6,30 +6,29 @@ import { BOARD_ID, supabase } from '../lib/supabase'
 import { useBoardStore } from './board'
 import { useToastStore } from './toast'
 import type { Json } from '../lib/database.types'
+import {
+  cloneTodo,
+  cloneTodos,
+  continuousDateKeys,
+  entryLookupKey,
+  insertTodoAfter,
+  nextDateKey,
+  parseDateKey,
+  sameMemberId,
+  startOfWeek,
+  toDateKey,
+} from '../utils/dailyEntries'
 
 const STORAGE_KEY = 'kanban-daily-ui-v1'
 
 export type DailyViewMode = 'day' | 'week' | 'month'
 export type DailyCalendarMode = 'week' | 'month'
+export type DailyDuplicateMode = 'next-day' | 'continuous'
+
+export { parseDateKey, startOfWeek, toDateKey }
 
 function createId(prefix: string) {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`
-}
-
-export function toDateKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
-
-export function parseDateKey(dateKey: string) {
-  const [y, m, d] = dateKey.split('-').map(Number)
-  return new Date(y, m - 1, d)
-}
-
-export function startOfWeek(date: Date) {
-  const copy = new Date(date)
-  copy.setHours(0, 0, 0, 0)
-  copy.setDate(copy.getDate() - copy.getDay())
-  return copy
 }
 
 function normalizeTodo(raw: unknown): DailyTodoItem | null {
@@ -99,7 +98,7 @@ function removeTodoById(
     )
 }
 
-function emptyEntry(memberId: string, dateKey: string): DailyEntry {
+function emptyEntry(memberId: string | null, dateKey: string): DailyEntry {
   return {
     id: createId('day'),
     memberId,
@@ -198,7 +197,7 @@ export const useDailyStore = defineStore('daily', () => {
       detailMemberId.value &&
       !board.members.some((member) => member.id === detailMemberId.value)
     ) {
-      detailMemberId.value = board.members[0]?.id ?? null
+      detailMemberId.value = null
       persistUi()
     }
   }
@@ -206,14 +205,16 @@ export const useDailyStore = defineStore('daily', () => {
   async function persistEntry(entry: DailyEntry) {
     quietRealtime()
 
-    // Reusa o id remoto se já existir linha para member+date (evita conflito de PK)
-    const { data: existingRow } = await supabase
+    let existingQuery = supabase
       .from('daily_entries')
       .select('id')
       .eq('board_id', BOARD_ID)
-      .eq('member_id', entry.memberId)
       .eq('date_key', entry.dateKey)
-      .maybeSingle()
+    existingQuery = entry.memberId
+      ? existingQuery.eq('member_id', entry.memberId)
+      : existingQuery.is('member_id', null)
+
+    const { data: existingRow } = await existingQuery.maybeSingle()
 
     if (existingRow?.id && existingRow.id !== entry.id) {
       const oldId = entry.id
@@ -236,7 +237,7 @@ export const useDailyStore = defineStore('daily', () => {
         todos: entry.todos as unknown as Json,
         updated_at: entry.updatedAt,
       },
-      { onConflict: 'member_id,date_key' },
+      { onConflict: 'id' },
     )
     if (upsertError) {
       error.value = upsertError.message
@@ -260,12 +261,15 @@ export const useDailyStore = defineStore('daily', () => {
     }
 
     const localByKey = new Map(
-      entries.value.map((entry) => [`${entry.memberId}:${entry.dateKey}`, entry]),
+      entries.value.map((entry) => [
+        entryLookupKey(entry.memberId, entry.dateKey),
+        entry,
+      ]),
     )
     const remote = (data ?? []).map((row) => ({
       id: row.id,
-      memberId: row.member_id,
-      dateKey: row.date_key,
+      memberId: row.member_id ?? null,
+      dateKey: String(row.date_key).slice(0, 10),
       status: row.status as DailyStatus,
       campaign: row.campaign,
       todos: asTodos(row.todos),
@@ -273,7 +277,7 @@ export const useDailyStore = defineStore('daily', () => {
     }))
 
     const merged = remote.map((row) => {
-      const local = localByKey.get(`${row.memberId}:${row.dateKey}`)
+      const local = localByKey.get(entryLookupKey(row.memberId, row.dateKey))
       // Mantém edição local ainda não persistida
       if (local && persistTimers.has(local.id)) return local
       return row
@@ -283,7 +287,7 @@ export const useDailyStore = defineStore('daily', () => {
       if (
         persistTimers.has(local.id) &&
         !merged.some(
-          (entry) => `${entry.memberId}:${entry.dateKey}` === key,
+          (entry) => entryLookupKey(entry.memberId, entry.dateKey) === key,
         )
       ) {
         merged.push(local)
@@ -353,20 +357,15 @@ export const useDailyStore = defineStore('daily', () => {
   }
 
   const activeMemberId = computed(
-    () =>
-      board.memberFilterId ??
-      detailMemberId.value ??
-      board.members[0]?.id ??
-      null,
+    () => board.memberFilterId ?? detailMemberId.value,
   )
 
   const currentEntry = computed(() => {
     const memberId = activeMemberId.value
-    if (!memberId) return null
     return (
       entries.value.find(
         (entry) =>
-          entry.memberId === memberId &&
+          sameMemberId(entry.memberId, memberId) &&
           entry.dateKey === selectedDateKey.value,
       ) ?? null
     )
@@ -445,12 +444,12 @@ export const useDailyStore = defineStore('daily', () => {
   })
 
   function ensureEntry(
-    memberId = activeMemberId.value,
+    memberId: string | null = activeMemberId.value,
     dateKey = selectedDateKey.value,
     options?: { persistEmpty?: boolean },
   ) {
-    if (!memberId) return null
     if (
+      memberId &&
       board.members.length &&
       !board.members.some((member) => member.id === memberId)
     ) {
@@ -459,7 +458,8 @@ export const useDailyStore = defineStore('daily', () => {
       return null
     }
     let entry = entries.value.find(
-      (item) => item.memberId === memberId && item.dateKey === dateKey,
+      (item) =>
+        sameMemberId(item.memberId, memberId) && item.dateKey === dateKey,
     )
     if (!entry) {
       entry = emptyEntry(memberId, dateKey)
@@ -490,10 +490,12 @@ export const useDailyStore = defineStore('daily', () => {
     persistUi()
   }
 
-  function openEntry(memberId: string, dateKey: string) {
+  function openEntry(memberId: string | null, dateKey: string) {
     detailMemberId.value = memberId
-    if (board.memberFilterId) {
+    if (memberId && board.memberFilterId) {
       board.setMemberFilter(memberId)
+    } else if (!memberId && board.memberFilterId) {
+      board.setMemberFilter(null)
     }
     selectedDateKey.value = dateKey
     dayDetailOpen.value = true
@@ -647,6 +649,92 @@ export const useDailyStore = defineStore('daily', () => {
     schedulePersist(entry)
   }
 
+  function appendClonedTodos(
+    memberId: string | null,
+    dateKey: string,
+    todos: DailyTodoItem[],
+  ) {
+    if (todos.length === 0) return false
+    const target = ensureEntry(memberId, dateKey)
+    if (!target) return false
+    target.todos.push(...todos)
+    if (target.status === 'done') target.status = 'in_progress'
+    target.updatedAt = new Date().toISOString()
+    schedulePersist(target)
+    return true
+  }
+
+  function targetDateKeys(fromDateKey: string, mode: DailyDuplicateMode) {
+    return mode === 'next-day'
+      ? [nextDateKey(fromDateKey)]
+      : continuousDateKeys(fromDateKey)
+  }
+
+  function duplicateEntry(mode: DailyDuplicateMode) {
+    const source = currentEntry.value ?? ensureEntry()
+    if (!source || source.todos.length === 0) {
+      useToastStore().error('Não há tarefas para duplicar.')
+      return
+    }
+    const dates = targetDateKeys(source.dateKey, mode)
+    let copied = 0
+    for (const dateKey of dates) {
+      if (
+        appendClonedTodos(
+          source.memberId,
+          dateKey,
+          cloneTodos(source.todos, createId),
+        )
+      ) {
+        copied += 1
+      }
+    }
+    if (copied === 0) {
+      useToastStore().error('Não foi possível duplicar as tarefas.')
+      return
+    }
+    useToastStore().success(
+      mode === 'continuous'
+        ? `Rotina copiada para ${copied} dia${copied === 1 ? '' : 's'}.`
+        : 'Tarefas copiadas para o próximo dia.',
+    )
+  }
+
+  function duplicateTodo(todoId: string, mode: 'same-day' | DailyDuplicateMode) {
+    const source = ensureEntry()
+    if (!source) return
+    const todo = findTodo(source.todos, todoId)
+    if (!todo) return
+
+    if (mode === 'same-day') {
+      const copy = cloneTodo(todo, createId)
+      if (!insertTodoAfter(source.todos, todoId, copy)) {
+        source.todos.push(copy)
+      }
+      if (source.status === 'done') source.status = 'in_progress'
+      source.updatedAt = new Date().toISOString()
+      schedulePersist(source)
+      return
+    }
+
+    const dates = targetDateKeys(source.dateKey, mode)
+    let copied = 0
+    for (const dateKey of dates) {
+      if (appendClonedTodos(source.memberId, dateKey, [cloneTodo(todo, createId)])) {
+        copied += 1
+      }
+    }
+    if (copied === 0) {
+      useToastStore().error('Não foi possível duplicar a tarefa.')
+      return
+    }
+    useToastStore().success(
+      mode === 'continuous'
+        ? `Tarefa copiada para ${copied} dia${copied === 1 ? '' : 's'}.`
+        : 'Tarefa copiada para o próximo dia.',
+    )
+  }
+
   const progress = computed(() => entryProgress(currentEntry.value))
 
   return {
@@ -682,6 +770,8 @@ export const useDailyStore = defineStore('daily', () => {
     toggleTodo,
     updateTodoText,
     removeTodo,
+    duplicateEntry,
+    duplicateTodo,
     ensureEntry,
     entryProgress,
   }

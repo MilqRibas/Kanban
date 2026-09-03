@@ -10,7 +10,7 @@ const iso = (daysFromNow: number, hour = 12) => {
 
 export const mockBoard: Board = {
   id: 'board-1',
-  title: 'B2C TEAM',
+  title: 'TIME B2C',
   members: [
     { id: 'm1', name: 'Thiago Malafaia', initials: 'TM', avatarColor: 'bg-sky-600' },
     { id: 'm2', name: 'Ana Luiza', initials: 'AL', avatarColor: 'bg-pink-600' },
