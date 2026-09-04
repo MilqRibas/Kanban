@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import {
   Bold,
   FileText,
   Italic,
+  Loader2,
   NotebookPen,
   Search,
   Trash2,
@@ -25,6 +26,17 @@ import EmojiPicker from './EmojiPicker.vue'
 const notesStore = useNotesStore()
 const board = useBoardStore()
 const auth = useAuthStore()
+const notesBootstrapping = ref(false)
+
+onMounted(async () => {
+  if (notesStore.notes.length > 0) return
+  notesBootstrapping.value = true
+  try {
+    await notesStore.init()
+  } finally {
+    notesBootstrapping.value = false
+  }
+})
 
 const search = ref('')
 const searchQuery = useDebouncedValue(() => search.value, 150)
@@ -214,6 +226,18 @@ function confirmDelete() {
 <template>
   <div class="flex min-h-0 flex-1 flex-col overflow-hidden pt-2">
     <div
+      v-if="notesBootstrapping || notesStore.loading"
+      class="flex min-h-0 flex-1 items-center justify-center"
+    >
+      <Loader2
+        class="animate-spin text-accent"
+        :size="28"
+        :stroke-width="2"
+        aria-label="Carregando notas"
+      />
+    </div>
+    <div
+      v-else
       class="page-shell flex min-h-0 flex-1 flex-col gap-2 overflow-hidden md:flex-row md:gap-2"
     >
     <aside

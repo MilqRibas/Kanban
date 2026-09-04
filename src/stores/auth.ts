@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { Session, User } from '@supabase/supabase-js'
 import { BOARD_ID, supabase } from '../lib/supabase'
 import { initialsFromName } from '../utils/initials'
+import { getAuthRedirectUrl } from '../utils/authRedirect'
 
 export const useAuthStore = defineStore('auth', () => {
   const session = ref<Session | null>(null)
@@ -89,9 +90,6 @@ export const useAuthStore = defineStore('auth', () => {
 
     session.value = data.session
     user.value = data.session?.user ?? null
-    if (user.value) {
-      await loadProfile({ silent: true })
-    }
 
     if (!authListenerBound) {
       authListenerBound = true
@@ -123,7 +121,11 @@ export const useAuthStore = defineStore('auth', () => {
       })
     }
 
+    // Libera a UI assim que a sessão existe; perfil segue em paralelo com o quadro.
     loading.value = false
+    if (user.value) {
+      void loadProfile({ silent: true })
+    }
   }
 
   async function loadProfile(options?: { silent?: boolean }) {
@@ -242,7 +244,7 @@ export const useAuthStore = defineStore('auth', () => {
 
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(
       trimmed,
-      { redirectTo: `${window.location.origin}/` },
+      { redirectTo: getAuthRedirectUrl() },
     )
 
     if (resetError) {

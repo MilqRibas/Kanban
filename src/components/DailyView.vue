@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   Calendar,
   Check,
@@ -10,6 +10,7 @@ import {
   Copy,
   ListTodo,
   ListTree,
+  Loader2,
   Plus,
   Trash2,
   UserRound,
@@ -23,6 +24,18 @@ import MemberAvatar from './MemberAvatar.vue'
 
 const board = useBoardStore()
 const daily = useDailyStore()
+const dailyBootstrapping = ref(false)
+
+onMounted(async () => {
+  if (daily.ready) return
+  dailyBootstrapping.value = true
+  try {
+    await daily.init()
+    daily.sanitizeDetailMember()
+  } finally {
+    dailyBootstrapping.value = false
+  }
+})
 
 const newTodoText = ref('')
 const childDrafts = ref<Record<string, string>>({})
@@ -305,7 +318,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col pt-2 sm:pt-3">
-    <div class="page-shell flex min-h-0 flex-1 flex-col gap-2 sm:gap-3">
+    <div
+      v-if="dailyBootstrapping || (daily.loading && !daily.ready)"
+      class="flex min-h-0 flex-1 items-center justify-center"
+    >
+      <Loader2
+        class="animate-spin text-accent"
+        :size="28"
+        :stroke-width="2"
+        aria-label="Carregando tarefas"
+      />
+    </div>
+    <div v-else class="page-shell flex min-h-0 flex-1 flex-col gap-2 sm:gap-3">
     <p v-if="daily.error" class="rounded-lg border border-red-400/30 bg-red-950/50 px-3 py-2 text-xs text-red-200">
       {{ daily.error }}
       <button type="button" class="ml-2 underline" @click="daily.error = null">fechar</button>

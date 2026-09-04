@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  computed,
   defineAsyncComponent,
   markRaw,
   onMounted,
@@ -48,7 +49,7 @@ function readStoredTab(): NavTab {
   return 'board'
 }
 
-const asyncOpts = { delay: 320 }
+const asyncOpts = { delay: 200 }
 
 const AgendaView = defineAsyncComponent({
   loader: () => import('./components/AgendaView.vue'),
@@ -90,12 +91,23 @@ const community = useCommunityStore()
 const hubSections = useHubSectionsStore()
 const campaigns = useCampaignsStore()
 const activeTab = ref<NavTab>(readStoredTab())
-const bootstrapping = ref(false)
+const boardBootstrapping = ref(false)
 const notesReady = ref(false)
 const dailyReady = ref(false)
 const campaignsReady = ref(false)
 const hubReady = ref(false)
 const chunksPrefetched = ref(false)
+
+const showAuth = computed(
+  () => !auth.loading && (!auth.isAuthenticated || auth.passwordRecovery),
+)
+const showAppShell = computed(
+  () =>
+    !auth.loading && auth.isAuthenticated && !auth.passwordRecovery,
+)
+const contentLoading = computed(
+  () => boardBootstrapping.value || !board.ready,
+)
 
 function goToTab(tab: NavTab) {
   activeTab.value = tab
@@ -103,8 +115,8 @@ function goToTab(tab: NavTab) {
 
 provide('setActiveTab', goToTab)
 
-onMounted(async () => {
-  await auth.init()
+onMounted(() => {
+  void auth.init()
 })
 
 function prefetchTabChunks() {
@@ -158,15 +170,17 @@ watch(
       dailyReady.value = false
       campaignsReady.value = false
       hubReady.value = false
+      boardBootstrapping.value = false
       return
     }
-    bootstrapping.value = true
+    boardBootstrapping.value = true
     try {
       await board.init()
       prefetchTabChunks()
-      await ensureTabData(activeTab.value)
+      // Dados da aba ativa em paralelo — não seguram o shell do app.
+      void ensureTabData(activeTab.value)
     } finally {
-      bootstrapping.value = false
+      boardBootstrapping.value = false
     }
   },
   { immediate: true },
@@ -196,12 +210,10 @@ watch(activeTab, async (tab) => {
 </script>
 
 <template>
-  <AuthView
-    v-if="!auth.loading && (!auth.isAuthenticated || auth.passwordRecovery)"
-  />
+  <AuthView v-if="showAuth" />
 
   <div
-    v-else-if="auth.loading || bootstrapping || !board.ready"
+    v-else-if="auth.loading"
     class="app-bg flex h-full min-h-0 items-center justify-center"
   >
     <Loader2
@@ -213,7 +225,7 @@ watch(activeTab, async (tab) => {
   </div>
 
   <div
-    v-else
+    v-else-if="showAppShell"
     class="app-bg relative flex h-full min-h-0 flex-col"
   >
     <div class="relative z-10 flex h-full min-h-0 flex-col">
@@ -221,7 +233,18 @@ watch(activeTab, async (tab) => {
       <main
         class="tab-stage relative flex min-h-0 flex-1 flex-col overflow-hidden pb-[var(--footer-clearance)]"
       >
-        <Transition name="tab-fade">
+        <div
+          v-if="contentLoading"
+          class="flex min-h-0 flex-1 items-center justify-center"
+        >
+          <Loader2
+            class="animate-spin text-accent"
+            :size="28"
+            :stroke-width="2"
+            aria-label="Carregando quadro"
+          />
+        </div>
+        <Transition v-else name="tab-fade">
           <KeepAlive :max="8">
             <component
               :is="tabViews[activeTab]"

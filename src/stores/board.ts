@@ -18,6 +18,7 @@ import type { Json } from '../lib/database.types'
 import { buildSearchHaystack, matchesSearch } from '../utils/search'
 import { initialsFromName } from '../utils/initials'
 import { useToastStore } from './toast'
+import { getAuthRedirectUrl } from '../utils/authRedirect'
 
 function createId(prefix: string) {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`
@@ -424,27 +425,6 @@ export const useBoardStore = defineStore('board', () => {
           isAdmin: false,
         }))
 
-        const userIds = mappedMembers
-          .map((member) => member.userId)
-          .filter((id): id is string => Boolean(id))
-
-        if (userIds.length) {
-          const { data: profiles } = await supabase
-            .from('profiles')
-            .select('id, is_admin')
-            .in('id', userIds)
-          const adminIds = new Set(
-            (profiles ?? [])
-              .filter((profile) => profile.is_admin)
-              .map((profile) => profile.id),
-          )
-          for (const member of mappedMembers) {
-            if (member.userId && adminIds.has(member.userId)) {
-              member.isAdmin = true
-            }
-          }
-        }
-
         members.value = mappedMembers
         labels.value = (snapshot.labels ?? []).map((row) => ({
           id: row.id,
@@ -520,8 +500,32 @@ export const useBoardStore = defineStore('board', () => {
         }))
 
         ready.value = true
-        // Evita eco imediato do realtime após o próprio load/sync
         quietRealtime(1200)
+        loading.value = false
+
+        // Flags de admin não bloqueiam a UI do quadro.
+        const userIds = mappedMembers
+          .map((member) => member.userId)
+          .filter((id): id is string => Boolean(id))
+        if (userIds.length) {
+          void supabase
+            .from('profiles')
+            .select('id, is_admin')
+            .in('id', userIds)
+            .then(({ data: profiles }) => {
+              const adminIds = new Set(
+                (profiles ?? [])
+                  .filter((profile) => profile.is_admin)
+                  .map((profile) => profile.id),
+              )
+              if (!adminIds.size) return
+              members.value = members.value.map((member) =>
+                member.userId && adminIds.has(member.userId)
+                  ? { ...member, isAdmin: true }
+                  : member,
+              )
+            })
+        }
       } catch (err) {
         error.value =
           err instanceof Error ? err.message : 'Falha ao carregar o quadro'
@@ -1673,7 +1677,7 @@ export const useBoardStore = defineStore('board', () => {
         body: {
           email: trimmedEmail,
           name: name?.trim() || undefined,
-          redirectTo: window.location.origin,
+          redirectTo: getAuthRedirectUrl(),
         },
       },
     )
