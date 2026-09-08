@@ -298,7 +298,8 @@ const overviewCards = computed(() => {
     },
     { label: 'Ativação', value: formatCurrency(m.activationInvestment) },
     { label: 'Investimento Total', value: formatCurrency(m.totalInvestment) },
-    { label: 'Jogadores', value: formatNumber(m.agencyPlayers) },
+    { label: 'Coorte', value: formatNumber(cohortMembers.value.length) },
+    { label: 'Jogadores (funil)', value: formatNumber(m.agencyPlayers) },
     { label: 'Ativos', value: formatNumber(m.uniqueActivePlayers) },
     { label: 'Ativação %', value: formatPercent(m.activationRate) },
     { label: 'Custo / jogador (funil)', value: formatCurrency(m.costPerPlayerFunnel) },
@@ -1178,7 +1179,13 @@ watch(tableDetailsPeriod, async (period) => {
           <div v-else-if="activeTab === 'evolution'">
             <template v-if="!hasAgent || !hasWeeks">
               <p class="text-sm text-text-muted">
-                {{ !hasAgent ? 'Nenhum agente vinculado.' : 'Nenhuma semana importada ainda.' }}
+                {{
+                  !hasAgent
+                    ? 'Nenhum agente vinculado.'
+                    : !hasCohort
+                      ? 'Nenhum jogador na coorte nesta janela de aquisição.'
+                      : 'Nenhuma semana atribuída à coorte ainda.'
+                }}
               </p>
             </template>
             <template v-else>
@@ -1455,7 +1462,13 @@ watch(tableDetailsPeriod, async (period) => {
           <div v-else-if="activeTab === 'rake-health'">
             <template v-if="!hasAgent || !hasWeeks">
               <p class="text-sm text-text-muted">
-                {{ !hasAgent ? 'Nenhum agente vinculado.' : 'Nenhuma semana importada ainda.' }}
+                {{
+                  !hasAgent
+                    ? 'Nenhum agente vinculado.'
+                    : !hasCohort
+                      ? 'Nenhum jogador na coorte nesta janela de aquisição.'
+                      : 'Nenhuma semana atribuída à coorte ainda.'
+                }}
               </p>
             </template>
             <template v-else>
@@ -1596,7 +1609,13 @@ watch(tableDetailsPeriod, async (period) => {
           <div v-else-if="activeTab === 'game-profile'">
             <template v-if="!hasAgent || !hasWeeks">
               <p class="text-sm text-text-muted">
-                {{ !hasAgent ? 'Nenhum agente vinculado.' : 'Nenhuma semana importada ainda.' }}
+                {{
+                  !hasAgent
+                    ? 'Nenhum agente vinculado.'
+                    : !hasCohort
+                      ? 'Nenhum jogador na coorte nesta janela de aquisição.'
+                      : 'Nenhuma semana atribuída à coorte ainda.'
+                }}
               </p>
             </template>
             <template v-else>
@@ -1772,7 +1791,13 @@ watch(tableDetailsPeriod, async (period) => {
           <div v-else-if="activeTab === 'table-details'">
             <template v-if="!hasAgent || !hasWeeks">
               <p class="text-sm text-text-muted">
-                {{ !hasAgent ? 'Nenhum agente vinculado.' : 'Nenhuma semana importada ainda.' }}
+                {{
+                  !hasAgent
+                    ? 'Nenhum agente vinculado.'
+                    : !hasCohort
+                      ? 'Nenhum jogador na coorte nesta janela de aquisição.'
+                      : 'Nenhuma semana atribuída à coorte ainda.'
+                }}
               </p>
             </template>
             <template v-else>

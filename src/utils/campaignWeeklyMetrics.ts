@@ -484,12 +484,14 @@ export function buildCampaignWeeklyMetrics(params: {
   const activationInvestment = Number(params.activationInvestment) || 0
   const agencyPlayers = campaign.capturedPlayers
   const accumulatedRake = sumWeeklyRake(agentPeriods)
-  const weeksWithRake = agentPeriods.filter((p) => Number(p.weeklyRake) > 0)
   const sorted = sortPeriodsChronologically(agentPeriods)
   const last = sorted[sorted.length - 1] ?? null
   const nature = campaign.acquisitionNature ?? 'PAID'
   const organicFixedPayback =
     nature === 'ORGANIC' && !hasCampaignInvestment(campaign.investment)
+  // Semanas atribuídas à coorte contam como dado — mesmo com rake 0.
+  // Antes, rake 0 marcava "Sem dados importados" (ex.: VIP Junho).
+  const hasImportedPeriods = agentPeriods.length > 0
 
   const totalInvestment = resolveTotalInvestment({
     acquisitionNature: nature,
@@ -549,11 +551,11 @@ export function buildCampaignWeeklyMetrics(params: {
       isArchived: campaign.isArchived,
       investment: campaign.investment,
       accumulatedRake,
-      hasImportedPeriods: weeksWithRake.length > 0,
+      hasImportedPeriods,
       acquisitionNature: nature,
       activationInvestment,
     }),
-    weeksTracked: weeksWithRake.length,
+    weeksTracked: agentPeriods.length,
     lastPeriodStart: last?.periodStart ?? null,
     lastPeriodEnd: last?.periodEnd ?? null,
     organicFixedPayback,

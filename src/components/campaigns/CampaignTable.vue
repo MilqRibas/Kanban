@@ -87,7 +87,8 @@ const rows = computed(() => {
     const metrics = store.metricsFor(campaign)
     const health = store.rakeHealthFor(campaign)
     const agent = store.findAgent(campaign.agentId)
-    return { campaign, metrics, health, agent }
+    const cohortSize = store.cohortMembersFor(campaign).length
+    return { campaign, metrics, health, agent, cohortSize }
   })
   const key = sortKey.value
   const dir = sortAsc.value ? 1 : -1
@@ -99,8 +100,7 @@ const rows = computed(() => {
     else if (key === 'agency') cmp = compareText(agencyA, agencyB)
     else if (key === 'agentId')
       cmp = compareText(a.campaign.agentId || '', b.campaign.agentId || '')
-    else if (key === 'players')
-      cmp = compareNum(a.metrics.agencyPlayers, b.metrics.agencyPlayers)
+    else if (key === 'players') cmp = compareNum(a.cohortSize, b.cohortSize)
     else if (key === 'uniqueActives')
       cmp = compareNum(a.metrics.uniqueActivePlayers, b.metrics.uniqueActivePlayers)
     else if (key === 'activation')
@@ -206,7 +206,7 @@ function typeLabel(campaign: Campaign) {
             </th>
             <th class="px-3 py-3 font-medium text-right" :aria-sort="sortAria('players')">
               <button type="button" class="inline-flex w-full items-center justify-end gap-1 hover:text-text-primary" @click="toggleSort('players')">
-                Jogadores
+                Coorte
                 <ChevronDown v-if="sortKey === 'players'" :size="13" :class="{ 'rotate-180': sortAsc }" />
               </button>
             </th>
@@ -291,7 +291,14 @@ function typeLabel(campaign: Campaign) {
               {{ row.campaign.agentId || '—' }}
             </td>
             <td class="px-3 py-3 text-right tabular-nums">
-              {{ row.metrics.agencyPlayers }}
+              <span>{{ row.cohortSize }}</span>
+              <span
+                v-if="row.cohortSize !== row.metrics.agencyPlayers"
+                class="ml-1 text-[11px] text-text-muted"
+                :title="`Cadastro funil: ${row.metrics.agencyPlayers}`"
+              >
+                ({{ row.metrics.agencyPlayers }})
+              </span>
             </td>
             <td class="px-3 py-3 text-right tabular-nums">
               {{ row.metrics.uniqueActivePlayers }}

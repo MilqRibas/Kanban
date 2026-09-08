@@ -175,8 +175,9 @@ describe('campaign acquisition window', () => {
       activationInvestment: 0,
     })
     expect(metrics.accumulatedRake).toBe(0)
-    expect(metrics.weeksTracked).toBe(0)
-    expect(metrics.status).toBe('no_data')
+    expect(metrics.weeksTracked).toBe(1)
+    // Semana presente com rake 0 = dado importado, sem retorno (não "sem dados").
+    expect(metrics.status).toBe('no_return')
   })
 
   it('keeps full agent history when the campaign has no dates', () => {

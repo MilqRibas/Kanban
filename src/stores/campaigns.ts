@@ -1284,6 +1284,20 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     cohortPlayers.value = cohortRes.data.map(mapCohortPlayer)
 
     loading.value = false
+    void reconcilePersistedCohorts()
+  }
+
+  /** Regrava coortes persistidas quando divergem da descoberta ao vivo. */
+  async function reconcilePersistedCohorts() {
+    const drifted = campaigns.value.filter((campaign) => {
+      const live = discoverCampaignCohort(campaign, playerPeriods.value).length
+      const stored = cohortPlayers.value.filter(
+        (row) => row.campaignId === campaign.id,
+      ).length
+      return live !== stored
+    })
+    if (drifted.length === 0) return
+    await persistCohorts(drifted)
   }
 
   let pendingReload: ReloadKind = 'full'

@@ -48,7 +48,7 @@ export const CAMPAIGN_STATUS_LABELS: Record<CampaignComputedStatus, string> = {
   payback: 'Payback',
   recovering: 'Em recuperação',
   no_return: 'Sem retorno',
-  no_data: 'Sem dados importados',
+  no_data: 'Sem semanas na coorte',
   archived: 'Arquivada',
 }
 
