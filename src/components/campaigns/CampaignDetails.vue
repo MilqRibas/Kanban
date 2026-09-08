@@ -1183,7 +1183,7 @@ watch(tableDetailsPeriod, async (period) => {
                   !hasAgent
                     ? 'Nenhum agente vinculado.'
                     : !hasCohort
-                      ? 'Nenhum jogador na coorte nesta janela de aquisição.'
+                      ? 'Nenhum jogador na coorte deste Agent ID a partir do início da campanha.'
                       : 'Nenhuma semana atribuída à coorte ainda.'
                 }}
               </p>
@@ -1466,7 +1466,7 @@ watch(tableDetailsPeriod, async (period) => {
                   !hasAgent
                     ? 'Nenhum agente vinculado.'
                     : !hasCohort
-                      ? 'Nenhum jogador na coorte nesta janela de aquisição.'
+                      ? 'Nenhum jogador na coorte deste Agent ID a partir do início da campanha.'
                       : 'Nenhuma semana atribuída à coorte ainda.'
                 }}
               </p>
@@ -1613,7 +1613,7 @@ watch(tableDetailsPeriod, async (period) => {
                   !hasAgent
                     ? 'Nenhum agente vinculado.'
                     : !hasCohort
-                      ? 'Nenhum jogador na coorte nesta janela de aquisição.'
+                      ? 'Nenhum jogador na coorte deste Agent ID a partir do início da campanha.'
                       : 'Nenhuma semana atribuída à coorte ainda.'
                 }}
               </p>
@@ -1795,7 +1795,7 @@ watch(tableDetailsPeriod, async (period) => {
                   !hasAgent
                     ? 'Nenhum agente vinculado.'
                     : !hasCohort
-                      ? 'Nenhum jogador na coorte nesta janela de aquisição.'
+                      ? 'Nenhum jogador na coorte deste Agent ID a partir do início da campanha.'
                       : 'Nenhuma semana atribuída à coorte ainda.'
                 }}
               </p>

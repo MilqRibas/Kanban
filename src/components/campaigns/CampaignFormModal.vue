@@ -594,20 +594,20 @@ async function save() {
 
             <label class="block text-xs text-text-muted">
               <span class="inline-flex items-center gap-1">
-                Fim do período de aquisição
+                Fim do período da campanha
                 <span
                   class="inline-flex text-text-muted"
-                  aria-label="Após esta data, novos jogadores não entram na coorte. Rake e depósitos dos já adquiridos continuam acumulando (LTV) no Agent ID da campanha."
-                  title="Após esta data, novos jogadores não entram na coorte. Rake e depósitos dos já adquiridos continuam acumulando (LTV) no Agent ID da campanha."
+                  aria-label="Registro de quando a campanha rodou. Não fecha a coorte: jogadores e rake posteriores no Agent ID continuam sendo atribuídos."
+                  title="Registro de quando a campanha rodou. Não fecha a coorte: jogadores e rake posteriores no Agent ID continuam sendo atribuídos."
                 >
                   <Info :size="13" />
                 </span>
               </span>
               <input v-model="draft.endDate" type="date" :class="fieldClass" />
               <span class="mt-1 block text-[11px] text-text-muted">
-                Opcional. Define só quem entra na coorte. Rake e depósitos dos
-                jogadores adquiridos continuam acumulando depois desta data
-                (LTV), enquanto permanecerem no Agent ID.
+                Opcional — só registra até quando a campanha rodou. Novos
+                jogadores e rake depois desta data no Agent ID continuam
+                contando (LTV).
               </span>
             </label>
 
@@ -675,8 +675,8 @@ async function save() {
                   v-if="selectedAgentLabel && selectedAgentNoWindowRake"
                   class="text-[11px] text-amber-200"
                 >
-                  Nenhum Player ID deste Agent ID na janela de aquisição — importe o
-                  relatório desse período ou confira o Agent ID.
+                  Nenhum Player ID deste Agent ID a partir da data de início —
+                  importe relatórios ou confira o Agent ID.
                 </p>
                 <p
                   v-if="selectedAgentLabel && historicalAgentRake > 0.009"

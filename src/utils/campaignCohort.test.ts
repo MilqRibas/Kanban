@@ -115,19 +115,17 @@ describe('campaign cohort acquisition', () => {
       },
     ]
     const members = discoverCampaignCohort(campaign, periods)
-    expect(members).toHaveLength(1)
-    expect(members[0].playerId).toBe('p1')
+    expect(members.map((m) => m.playerId).sort()).toEqual(['late', 'p1'])
+    const p1 = members.find((m) => m.playerId === 'p1')
     // Coorte continua acompanhando a trajetória do jogador
-    expect(members[0].currentAgentId).toBe('9999999')
-    expect(members[0].lastSeenWeek).toBe('2026-08-17')
-    // Mas o rake gerado na agência 9999999 pertence à campanha daquela agência
-    expect(sumCohortRake(members, periods, campaign.agentId)).toBe(10)
-    expect(
-      playerAppearedInAcquisitionWindow(periods[2], campaign),
-    ).toBe(false)
+    expect(p1?.currentAgentId).toBe('9999999')
+    expect(p1?.lastSeenWeek).toBe('2026-08-17')
+    // Rake na agência 9999999 não conta; late após o fim cadastrado ainda conta
+    expect(sumCohortRake(members, periods, campaign.agentId)).toBe(110)
+    expect(playerAppearedInAcquisitionWindow(periods[2], campaign)).toBe(true)
   })
 
-  it('keeps accepting new players when end_date is null', () => {
+  it('keeps accepting new players after the documented campaign end date', () => {
     const periods = [
       {
         playerId: 'a',
@@ -203,7 +201,7 @@ describe('campaign cohort acquisition', () => {
     expect(attributedToOther.map((p) => p.periodStart)).toEqual(['2026-08-17'])
   })
 
-  it('business rule LTV: rake after acquisition endDate still counts on same agency', () => {
+  it('business rule LTV: endDate is documentary; late players and post-run rake count', () => {
     const campaign = {
       id: 'c-ltv',
       agentId: '1722690',
@@ -239,7 +237,7 @@ describe('campaign cohort acquisition', () => {
         nickname: 'p',
       },
       {
-        // Fora da janela de aquisição: não entra na coorte
+        // Depois do fim cadastrado: ainda entra na coorte
         playerId: 'late',
         agentId: '1722690',
         periodStart: '2026-07-13',
@@ -250,11 +248,11 @@ describe('campaign cohort acquisition', () => {
       },
     ]
     const members = discoverCampaignCohort(campaign, periods)
-    expect(members.map((m) => m.playerId)).toEqual(['p1'])
-    expect(sumCohortRake(members, periods, campaign.agentId)).toBe(580)
+    expect(members.map((m) => m.playerId).sort()).toEqual(['late', 'p1'])
+    expect(sumCohortRake(members, periods, campaign.agentId)).toBe(1579)
   })
 
-  it('ignores absurd endDate years so acquisition window still works', () => {
+  it('ignores absurd endDate years because endDate does not close the cohort', () => {
     const campaign = {
       id: 'c-bad-end',
       agentId: '1722690',
@@ -281,7 +279,6 @@ describe('campaign cohort acquisition', () => {
         nickname: 'p',
       },
       {
-        // Depois do fim corrigido (2026-07-05): não entra na coorte
         playerId: 'late',
         agentId: '1722690',
         periodStart: '2026-07-13',
@@ -292,8 +289,8 @@ describe('campaign cohort acquisition', () => {
       },
     ]
     const members = discoverCampaignCohort(campaign, periods)
-    expect(members.map((m) => m.playerId)).toEqual(['p1'])
-    expect(sumCohortRake(members, periods, campaign.agentId)).toBe(50)
+    expect(members.map((m) => m.playerId).sort()).toEqual(['late', 'p1'])
+    expect(sumCohortRake(members, periods, campaign.agentId)).toBe(1049)
   })
 
   it('weekly actives follow the campaign activation rule, not a hardcoded rake > 0', () => {

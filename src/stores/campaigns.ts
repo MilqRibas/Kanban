@@ -672,7 +672,11 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   }
 
   function agentPeriodsForCampaign(campaign: Pick<Campaign, 'agentId' | 'startDate' | 'endDate'>) {
-    return agentPeriodsInWindow(campaign.agentId, campaign)
+    // endDate é só registro do período da campanha; não corta semanas/rake.
+    return agentPeriodsInWindow(campaign.agentId, {
+      startDate: campaign.startDate,
+      endDate: null,
+    })
   }
 
   function cohortMembersFor(

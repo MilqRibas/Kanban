@@ -1,6 +1,5 @@
 import type { Campaign, CampaignPlayerPeriod } from '../types/campaigns'
 import {
-  campaignDateWindow,
   eventInCampaignWindow,
   lifetimeFromAcquisition,
   periodOverlapsCampaignWindow,
@@ -37,12 +36,21 @@ function isoDay(value: string | null | undefined): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null
 }
 
-/** Janela usada só para descobrir Player IDs no Agent ID da campanha. */
+/**
+ * Janela de elegibilidade da coorte no Agent ID.
+ * `startDate` marca o início da campanha; `endDate` é só registro do período
+ * em que a campanha rodou e NÃO fecha a coorte — jogadores e rake posteriores
+ * continuam atribuídos enquanto estiverem no Agent ID.
+ */
 export function acquisitionWindow(campaign: {
   startDate?: string | null
   endDate?: string | null
 }) {
-  return campaignDateWindow(campaign)
+  void campaign.endDate
+  return {
+    start: isoDay(campaign.startDate),
+    end: null,
+  }
 }
 
 export function playerAppearedInAcquisitionWindow(
@@ -66,8 +74,8 @@ export function periodCountsTowardCohortRake(
 }
 
 /**
- * Player IDs que apareceram no Agent ID da campanha durante a janela de aquisição.
- * `end_date` nulo continua aceitando novos jogadores.
+ * Player IDs no Agent ID da campanha a partir do início (`startDate`).
+ * O fim cadastrado não limita novos jogadores nem o rake posterior.
  */
 export function discoverCampaignCohort(
   campaign: Pick<Campaign, 'id' | 'agentId' | 'startDate' | 'endDate'>,
@@ -131,10 +139,9 @@ export function discoverCampaignCohort(
 
 /**
  * Rake atribuído à campanha (regra de negócio LTV):
- * - Coorte = Player IDs que apareceram no Agent ID durante a janela de aquisição
- *   (`startDate`…`endDate`; fim vazio = continua aceitando novos).
+ * - Coorte = Player IDs no Agent ID a partir de `startDate` (sem corte por `endDate`).
  * - Rake acumulado = todas as semanas desse jogador no Agent ID da campanha
- *   a partir de `acquiredAt`, inclusive depois do fim da aquisição.
+ *   a partir de `acquiredAt`, inclusive depois do período cadastrado da campanha.
  * - Rake gerado em outra agência pertence à campanha daquela agência.
  *
  * Granularidade: o vínculo jogador↔agente vem do fechamento semanal do
