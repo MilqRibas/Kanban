@@ -41,7 +41,7 @@ const subtitle = computed(() => {
   if (mode.value === 'signup') {
     return 'Se você recebeu um convite, prefira abrir o link do e-mail.'
   }
-  return 'Entre para sincronizar o quadro com o time'
+  return 'Entre com usuário ou e-mail do time'
 })
 
 const submitLabel = computed(() => {
@@ -138,14 +138,16 @@ async function submit() {
           v-if="mode !== 'update-password'"
           class="block text-sm text-text-secondary"
         >
-          E-mail
+          {{ mode === 'login' ? 'Usuário ou e-mail' : 'E-mail' }}
           <input
             v-model="email"
-            type="email"
+            :type="mode === 'login' ? 'text' : 'email'"
             required
-            autocomplete="email"
+            :autocomplete="mode === 'login' ? 'username' : 'email'"
             class="mt-1 w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-text-primary outline-none focus:border-accent"
-            placeholder="voce@empresa.com"
+            :placeholder="
+              mode === 'login' ? 'Usuário ou voce@empresa.com' : 'voce@empresa.com'
+            "
           />
         </label>
 

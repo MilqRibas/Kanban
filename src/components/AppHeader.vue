@@ -98,9 +98,10 @@ onBeforeUnmount(() => {
       />
       <div class="h-6 w-px bg-white/15" />
       <h1 class="truncate text-base font-semibold tracking-tight text-text-primary">
-        {{ board.title }}
+        {{ auth.isCampaignsOnly ? 'Campanhas' : board.title }}
       </h1>
       <button
+        v-if="!auth.isCampaignsOnly"
         type="button"
         class="flex size-8 shrink-0 items-center justify-center rounded-xl border border-dashed border-white/25 text-text-secondary transition-colors hover:border-accent hover:bg-accent/15 hover:text-accent"
         title="Cadastrar ou remover usuários"
@@ -111,19 +112,23 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
-    <!-- Desktop: filtro -->
-    <div class="hidden min-w-0 flex-1 items-center justify-center gap-2 px-2 md:flex">
+    <!-- Desktop: filtro (só quadro completo) -->
+    <div
+      v-if="!auth.isCampaignsOnly"
+      class="hidden min-w-0 flex-1 items-center justify-center gap-2 px-2 md:flex"
+    >
       <MemberFilterSelect compact />
       <LabelFilterSelect compact />
       <DateFilterSelect compact />
     </div>
+    <div v-else class="hidden min-w-0 flex-1 md:block" />
 
     <!-- Direita: busca + filtro mini (mobile) + notificações + avatar -->
     <div class="relative z-20 ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
-      <HeaderSearch />
+      <HeaderSearch v-if="!auth.isCampaignsOnly" />
 
       <button
-        v-if="auth.isAdmin"
+        v-if="auth.isAdmin && !auth.isCampaignsOnly"
         type="button"
         class="relative inline-flex size-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
         title="Cartões arquivados"
@@ -139,13 +144,13 @@ onBeforeUnmount(() => {
         </span>
       </button>
 
-      <div class="flex items-center gap-1 md:hidden">
+      <div v-if="!auth.isCampaignsOnly" class="flex items-center gap-1 md:hidden">
         <MemberFilterSelect mini />
         <LabelFilterSelect mini />
         <DateFilterSelect mini />
       </div>
 
-      <NotificationCenter />
+      <NotificationCenter v-if="!auth.isCampaignsOnly" />
 
       <label
         class="group relative flex size-8 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 text-[10px] font-semibold text-white transition-colors hover:border-accent"
@@ -230,9 +235,11 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="border-b border-white/10 px-4 py-3">
-            <p class="text-xs text-text-muted">Quadro</p>
+            <p class="text-xs text-text-muted">
+              {{ auth.isCampaignsOnly ? 'Acesso' : 'Quadro' }}
+            </p>
             <p class="truncate text-sm font-semibold text-text-primary">
-              {{ board.title }}
+              {{ auth.isCampaignsOnly ? 'Campanhas' : board.title }}
             </p>
           </div>
 
@@ -252,15 +259,18 @@ onBeforeUnmount(() => {
               <p class="truncate text-sm text-text-primary">
                 {{ auth.displayName ?? 'Usuário' }}
               </p>
-              <p class="truncate text-xs text-text-muted">
-                {{ auth.user?.email }}
+              <p
+                v-if="!auth.isCampaignsOnly && auth.user?.email"
+                class="truncate text-xs text-text-muted"
+              >
+                {{ auth.user.email }}
               </p>
             </div>
           </div>
 
           <nav class="flex flex-1 flex-col gap-1 p-2">
             <button
-              v-if="auth.isAdmin"
+              v-if="auth.isAdmin && !auth.isCampaignsOnly"
               type="button"
               class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-text-secondary hover:bg-white/10 hover:text-text-primary"
               @click="openArchived"
@@ -275,6 +285,7 @@ onBeforeUnmount(() => {
               </span>
             </button>
             <button
+              v-if="!auth.isCampaignsOnly"
               type="button"
               class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-text-secondary hover:bg-white/10 hover:text-text-primary"
               @click="openMembers"
@@ -308,7 +319,7 @@ onBeforeUnmount(() => {
       </div>
     </Teleport>
 
-    <MembersManager ref="membersManager" />
-    <ArchivedCardsModal ref="archivedModal" />
+    <MembersManager v-if="!auth.isCampaignsOnly" ref="membersManager" />
+    <ArchivedCardsModal v-if="!auth.isCampaignsOnly" ref="archivedModal" />
   </header>
 </template>

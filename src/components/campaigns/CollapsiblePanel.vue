@@ -15,7 +15,7 @@ const open = ref(props.defaultOpen)
 </script>
 
 <template>
-  <section class="panel-glass overflow-hidden rounded-2xl">
+  <section class="panel-glass min-w-0 overflow-hidden rounded-2xl">
     <button
       type="button"
       class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[0.03]"
@@ -36,7 +36,7 @@ const open = ref(props.defaultOpen)
         :class="open ? 'rotate-180' : ''"
       />
     </button>
-    <div v-show="open">
+    <div v-show="open" class="min-w-0">
       <slot />
     </div>
   </section>

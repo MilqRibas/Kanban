@@ -15,12 +15,30 @@ export const useAuthStore = defineStore('auth', () => {
   const displayName = ref<string | null>(null)
   const avatarUrl = ref<string | null>(null)
   const isAdmin = ref(false)
+  /** full = app completo; campaigns = só aba Campanhas */
+  const appRole = ref<'full' | 'campaigns'>('full')
   const uploadingAvatar = ref(false)
   const passwordRecovery = ref(false)
+  /** Perfil já foi buscado ao menos uma vez nesta sessão autenticada */
+  const profileReady = ref(false)
 
   let authListenerBound = false
 
   const isAuthenticated = computed(() => !!session.value)
+  const isCampaignsOnly = computed(() => appRole.value === 'campaigns')
+  const allowedTabs = computed(() =>
+    isCampaignsOnly.value
+      ? (['campaigns'] as const)
+      : ([
+          'agenda',
+          'board',
+          'daily',
+          'notes',
+          'hub',
+          'community',
+          'campaigns',
+        ] as const),
+  )
 
   const initials = computed(() => {
     const name = displayName.value?.trim()
@@ -39,6 +57,8 @@ export const useAuthStore = defineStore('auth', () => {
     displayName.value = null
     avatarUrl.value = null
     isAdmin.value = false
+    appRole.value = 'full'
+    profileReady.value = false
   }
 
   function clearMessages() {
@@ -49,7 +69,7 @@ export const useAuthStore = defineStore('auth', () => {
   function translateAuthMessage(message: string) {
     const lower = message.toLowerCase()
     if (/invalid login credentials|invalid credentials/.test(lower)) {
-      return 'E-mail ou senha incorretos.'
+      return 'Usuário/e-mail ou senha incorretos.'
     }
     if (/email not confirmed/.test(lower)) {
       return 'Confirme seu e-mail antes de entrar. Verifique a caixa de entrada.'
@@ -133,7 +153,7 @@ export const useAuthStore = defineStore('auth', () => {
     const silent = options?.silent ?? false
     const { data, error: profileError } = await supabase
       .from('profiles')
-      .select('display_name, member_id, avatar_url, is_admin')
+      .select('display_name, member_id, avatar_url, is_admin, app_role')
       .eq('id', user.value.id)
       .maybeSingle()
 
@@ -141,6 +161,7 @@ export const useAuthStore = defineStore('auth', () => {
       if (!silent) {
         error.value = formatError(profileError, 'Falha ao carregar perfil.')
       }
+      profileReady.value = true
       return
     }
 
@@ -148,6 +169,10 @@ export const useAuthStore = defineStore('auth', () => {
     memberId.value = data?.member_id ?? null
     avatarUrl.value = data?.avatar_url ?? null
     isAdmin.value = Boolean(data?.is_admin)
+    appRole.value =
+      data?.app_role === 'campaigns' ? 'campaigns' : 'full'
+    profileReady.value = true
+    if (appRole.value === 'campaigns') return
     await syncMemberRecord({ silent })
   }
 
@@ -199,8 +224,29 @@ export const useAuthStore = defineStore('auth', () => {
     memberId.value = nextMemberId
   }
 
-  async function signIn(email: string, password: string) {
+  async function resolveLoginEmail(identifier: string): Promise<string | null> {
+    const trimmed = identifier.trim()
+    if (!trimmed) return null
+    if (trimmed.includes('@')) return trimmed.toLowerCase()
+
+    const { data, error: rpcError } = await supabase.rpc('resolve_login_email', {
+      p_username: trimmed,
+    })
+    if (rpcError) {
+      error.value = formatError(rpcError, 'Falha ao validar usuário.')
+      return null
+    }
+    const email = typeof data === 'string' ? data.trim() : ''
+    return email || null
+  }
+
+  async function signIn(identifier: string, password: string) {
     clearMessages()
+    const email = await resolveLoginEmail(identifier)
+    if (!email) {
+      error.value = 'Usuário/e-mail ou senha incorretos.'
+      return false
+    }
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -410,6 +456,10 @@ export const useAuthStore = defineStore('auth', () => {
     displayName,
     avatarUrl,
     isAdmin,
+    appRole,
+    isCampaignsOnly,
+    allowedTabs,
+    profileReady,
     initials,
     uploadingAvatar,
     passwordRecovery,

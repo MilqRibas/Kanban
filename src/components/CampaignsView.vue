@@ -186,7 +186,7 @@ function onBackFromDetails() {
       v-else
       class="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-footer-pad pt-1.5 sm:pt-2"
     >
-      <div class="page-shell flex flex-col gap-2 sm:gap-3">
+      <div class="page-shell flex min-w-0 flex-col gap-2 sm:gap-3">
         <header class="flex shrink-0 flex-wrap items-center justify-between gap-2">
           <div class="min-w-0">
             <p class="text-[10px] font-semibold uppercase tracking-wide text-accent/90">
@@ -261,7 +261,7 @@ function onBackFromDetails() {
           <CampaignCharts :campaigns="filteredCampaigns" />
         </section>
 
-        <section v-else-if="screen === 'list'" class="space-y-3">
+        <section v-else-if="screen === 'list'" class="min-w-0 space-y-3">
           <CollapsiblePanel
             title="Lista de campanhas"
             :hint="`${filteredCampaigns.length} ${filteredCampaigns.length === 1 ? 'campanha' : 'campanhas'}`"

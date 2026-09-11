@@ -105,9 +105,13 @@ const showAppShell = computed(
   () =>
     !auth.loading && auth.isAuthenticated && !auth.passwordRecovery,
 )
-const contentLoading = computed(
-  () => boardBootstrapping.value || !board.ready,
-)
+const contentLoading = computed(() => {
+  if (!auth.profileReady) return true
+  if (auth.isCampaignsOnly) {
+    return boardBootstrapping.value || !campaignsReady.value
+  }
+  return boardBootstrapping.value || !board.ready
+})
 
 function goToTab(tab: NavTab) {
   activeTab.value = tab
@@ -156,8 +160,14 @@ async function ensureTabData(tab: NavTab) {
 }
 
 watch(
-  () => [auth.isAuthenticated, auth.passwordRecovery] as const,
-  async ([authenticated, recovering]) => {
+  () =>
+    [
+      auth.isAuthenticated,
+      auth.passwordRecovery,
+      auth.profileReady,
+      auth.isCampaignsOnly,
+    ] as const,
+  async ([authenticated, recovering, profileReady, campaignsOnly]) => {
     if (!authenticated || recovering) {
       board.reset()
       notes.reset()
@@ -173,6 +183,24 @@ watch(
       boardBootstrapping.value = false
       return
     }
+
+    // Espera o perfil para saber se é acesso só-campanhas antes de carregar o quadro.
+    if (!profileReady) return
+
+    if (campaignsOnly) {
+      if (activeTab.value !== 'campaigns') {
+        activeTab.value = 'campaigns'
+      }
+      boardBootstrapping.value = true
+      try {
+        await campaigns.init()
+        campaignsReady.value = true
+      } finally {
+        boardBootstrapping.value = false
+      }
+      return
+    }
+
     boardBootstrapping.value = true
     try {
       await board.init()
@@ -189,13 +217,27 @@ watch(
 watch(
   () => auth.memberId,
   (memberId) => {
-    if (memberId && auth.isAuthenticated && !auth.passwordRecovery) {
+    if (
+      memberId &&
+      auth.isAuthenticated &&
+      !auth.passwordRecovery &&
+      !auth.isCampaignsOnly
+    ) {
       void notifications.init()
       return
     }
     notifications.reset()
   },
   { immediate: true },
+)
+
+watch(
+  () => auth.allowedTabs,
+  (allowed) => {
+    if (!(allowed as readonly string[]).includes(activeTab.value)) {
+      activeTab.value = (allowed[0] as NavTab) ?? 'campaigns'
+    }
+  },
 )
 
 watch(activeTab, async (tab) => {
@@ -262,7 +304,7 @@ watch(activeTab, async (tab) => {
         </Transition>
       </main>
       <AppFooter v-model:active-tab="activeTab" />
-      <CardDetailPanel />
+      <CardDetailPanel v-if="!auth.isCampaignsOnly" />
     </div>
   </div>
 

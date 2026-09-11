@@ -10,6 +10,7 @@ import {
   NotebookPen,
   Users,
 } from '@lucide/vue'
+import { useAuthStore } from '../stores/auth'
 
 export type NavTab =
   | 'agenda'
@@ -28,10 +29,12 @@ const emit = defineEmits<{
   'update:activeTab': [tab: NavTab]
 }>()
 
+const auth = useAuthStore()
+
 type TabItem = { id: NavTab; label: string; icon: typeof CalendarDays }
 
 /** Ordem alfabética; as 5 primeiras ficam sempre visíveis no mobile */
-const tabs: TabItem[] = [
+const ALL_TABS: TabItem[] = [
   { id: 'agenda', label: 'Agenda', icon: CalendarDays },
   { id: 'campaigns', label: 'Campanhas', icon: Megaphone },
   { id: 'community', label: 'Comunidade', icon: Users },
@@ -40,6 +43,11 @@ const tabs: TabItem[] = [
   { id: 'board', label: 'Quadro', icon: Columns3 },
   { id: 'daily', label: 'Tarefas', icon: ListChecks },
 ]
+
+const tabs = computed(() => {
+  const allowed = new Set(auth.allowedTabs as readonly string[])
+  return ALL_TABS.filter((tab) => allowed.has(tab.id))
+})
 
 /** Abas principais no mobile (resto vai em "Mais") */
 const PRIMARY_IDS: NavTab[] = ['agenda', 'board', 'daily', 'notes', 'hub']
@@ -50,11 +58,25 @@ const pillRef = ref<HTMLElement | null>(null)
 const moreOpen = ref(false)
 const useMoreMenu = ref(false)
 
-const primaryTabs = computed(() =>
-  useMoreMenu.value ? tabs.filter((tab) => PRIMARY_IDS.includes(tab.id)) : tabs,
+const primaryTabs = computed(() => {
+  const visible = tabs.value
+  if (!useMoreMenu.value) return visible
+  const primary = visible.filter((tab) => PRIMARY_IDS.includes(tab.id))
+  // Papéis com poucas abas (ex.: só Campanhas) — mostra tudo na barra.
+  if (primary.length === 0) return visible
+  return primary
+})
+const moreTabs = computed(() => {
+  if (!useMoreMenu.value) return []
+  const visible = tabs.value
+  const primary = visible.filter((tab) => PRIMARY_IDS.includes(tab.id))
+  if (primary.length === 0) return []
+  return visible.filter((tab) => MORE_IDS.includes(tab.id))
+})
+const moreActive = computed(
+  () => moreTabs.value.some((tab) => tab.id === props.activeTab),
 )
-const moreTabs = computed(() => tabs.filter((tab) => MORE_IDS.includes(tab.id)))
-const moreActive = computed(() => MORE_IDS.includes(props.activeTab))
+const showMoreMenu = computed(() => moreTabs.value.length > 0)
 
 let resizeObserver: ResizeObserver | null = null
 let mediaQuery: MediaQueryList | null = null
@@ -148,7 +170,7 @@ onBeforeUnmount(() => {
         <span class="hidden sm:inline">{{ tab.label }}</span>
       </button>
 
-      <div v-if="useMoreMenu" class="relative">
+      <div v-if="showMoreMenu" class="relative">
         <button
           type="button"
           aria-label="Mais"

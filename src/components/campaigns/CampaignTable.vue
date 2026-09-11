@@ -182,89 +182,244 @@ function typeLabel(campaign: Campaign) {
 </script>
 
 <template>
-  <div class="overflow-x-auto">
-      <table class="min-w-full text-left text-sm">
+  <!-- Mobile: cards (sem scroll horizontal forçado) -->
+  <div class="space-y-2 p-3 md:hidden">
+    <p v-if="rows.length === 0" class="py-8 text-center text-sm text-text-muted">
+      Nenhuma campanha encontrada. Importe um relatório e vincule um Agent ID.
+    </p>
+    <article
+      v-for="row in rows"
+      :key="`m-${row.campaign.id}`"
+      class="rounded-xl border border-border-subtle/60 bg-white/[0.03] p-3"
+    >
+      <div class="flex items-start justify-between gap-2">
+        <button
+          type="button"
+          class="min-w-0 flex-1 text-left"
+          @click="emit('view', row.campaign.id)"
+        >
+          <p class="truncate font-medium text-text-primary">
+            {{ row.campaign.name }}
+          </p>
+          <p class="mt-0.5 truncate text-[11px] text-text-muted">
+            {{ typeLabel(row.campaign) }}
+            ·
+            {{ row.agent?.name || row.campaign.agency || '—' }}
+          </p>
+        </button>
+        <CampaignStatusBadge :status="row.metrics.status" />
+      </div>
+
+      <dl class="mt-3 grid grid-cols-2 gap-2 text-xs">
+        <div>
+          <dt class="text-text-muted">Jogadores</dt>
+          <dd class="tabular-nums text-text-primary">
+            {{ row.cohortSize }}
+            <span
+              v-if="row.cohortSize !== row.metrics.agencyPlayers"
+              class="text-text-muted"
+            >
+              ({{ row.metrics.agencyPlayers }})
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt class="text-text-muted">Ativos</dt>
+          <dd class="tabular-nums text-text-primary">
+            {{ row.metrics.uniqueActivePlayers }}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-text-muted">Investimento</dt>
+          <dd class="tabular-nums text-text-primary">
+            {{ formatCurrency(row.campaign.investment) }}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-text-muted">Rake acum.</dt>
+          <dd class="tabular-nums text-text-primary">
+            {{ formatCurrency(row.metrics.accumulatedRake) }}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-text-muted">Recuperação</dt>
+          <dd class="tabular-nums text-text-primary">
+            {{ formatPercent(row.metrics.recoveryRate) }}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-text-muted">Ativação</dt>
+          <dd class="tabular-nums text-text-primary">
+            {{ formatPercent(row.metrics.activationRate) }}
+          </dd>
+        </div>
+      </dl>
+
+      <div class="relative mt-3 flex items-center justify-end gap-1 border-t border-border-subtle/40 pt-2">
+        <button
+          type="button"
+          class="rounded-lg p-2 text-text-muted hover:bg-white/10 hover:text-text-primary"
+          title="Ver"
+          @click="emit('view', row.campaign.id)"
+        >
+          <Eye :size="16" />
+        </button>
+        <button
+          type="button"
+          class="rounded-lg p-2 text-text-muted hover:bg-white/10 hover:text-text-primary"
+          title="Editar"
+          @click="emit('edit', row.campaign.id)"
+        >
+          <Pencil :size="16" />
+        </button>
+        <button
+          v-if="canDelete(row.campaign)"
+          type="button"
+          class="rounded-lg p-2 text-danger hover:bg-danger/10"
+          title="Excluir"
+          @click="onDelete(row.campaign.id)"
+        >
+          <Trash2 :size="16" />
+        </button>
+        <button
+          type="button"
+          data-ephemeral-menu
+          class="rounded-lg p-2 text-text-muted hover:bg-white/10 hover:text-text-primary"
+          title="Mais"
+          @click.stop="toggleMenu(row.campaign.id)"
+        >
+          <MoreHorizontal :size="16" />
+        </button>
+        <div
+          v-if="menuId === row.campaign.id"
+          data-ephemeral-menu
+          class="absolute bottom-10 right-0 z-20 min-w-[10rem] overflow-hidden rounded-xl border border-border-subtle bg-board-elevated py-1 shadow-xl"
+          @click.stop
+        >
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface"
+            @click="onDuplicate(row.campaign.id)"
+          >
+            <Copy :size="14" /> Duplicar
+          </button>
+          <button
+            v-if="!row.campaign.isArchived && auth.isAdmin"
+            type="button"
+            class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface"
+            @click="onArchive(row.campaign.id)"
+          >
+            <Archive :size="14" /> Arquivar
+          </button>
+          <button
+            v-else-if="row.campaign.isArchived && auth.isAdmin"
+            type="button"
+            class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface"
+            @click="onRestore(row.campaign.id)"
+          >
+            <RotateCcw :size="14" /> Restaurar
+          </button>
+          <button
+            v-if="canDelete(row.campaign)"
+            type="button"
+            class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-danger hover:bg-danger/10"
+            @click="onDelete(row.campaign.id)"
+          >
+            <Trash2 :size="14" /> Excluir
+          </button>
+        </div>
+      </div>
+    </article>
+  </div>
+
+  <!-- Desktop / tablet: tabela com scroll horizontal -->
+  <div class="campaign-table-scroll hidden min-w-0 max-w-full overflow-x-auto overscroll-x-contain pb-1 md:block">
+      <table class="w-full min-w-[72rem] border-collapse text-left text-sm">
         <thead class="border-b border-border-subtle bg-surface/60 text-xs uppercase tracking-wide text-text-muted">
           <tr>
-            <th class="px-3 py-3 font-medium" :aria-sort="sortAria('name')">
+            <th class="whitespace-nowrap px-3 py-3 font-medium" :aria-sort="sortAria('name')">
               <button type="button" class="inline-flex items-center gap-1 hover:text-text-primary" @click="toggleSort('name')">
                 Campanha
                 <ChevronDown v-if="sortKey === 'name'" :size="13" :class="{ 'rotate-180': sortAsc }" />
               </button>
             </th>
-            <th class="px-3 py-3 font-medium" :aria-sort="sortAria('agency')">
+            <th class="whitespace-nowrap px-3 py-3 font-medium" :aria-sort="sortAria('agency')">
               <button type="button" class="inline-flex items-center gap-1 hover:text-text-primary" @click="toggleSort('agency')">
                 Agência
                 <ChevronDown v-if="sortKey === 'agency'" :size="13" :class="{ 'rotate-180': sortAsc }" />
               </button>
             </th>
-            <th class="px-3 py-3 font-medium" :aria-sort="sortAria('agentId')">
+            <th class="whitespace-nowrap px-3 py-3 font-medium" :aria-sort="sortAria('agentId')">
               <button type="button" class="inline-flex items-center gap-1 hover:text-text-primary" @click="toggleSort('agentId')">
                 Agent ID
                 <ChevronDown v-if="sortKey === 'agentId'" :size="13" :class="{ 'rotate-180': sortAsc }" />
               </button>
             </th>
-            <th class="px-3 py-3 font-medium text-right" :aria-sort="sortAria('players')">
+            <th class="whitespace-nowrap px-3 py-3 font-medium text-right" :aria-sort="sortAria('players')">
               <button type="button" class="inline-flex w-full items-center justify-end gap-1 hover:text-text-primary" @click="toggleSort('players')">
                 Jogadores
                 <ChevronDown v-if="sortKey === 'players'" :size="13" :class="{ 'rotate-180': sortAsc }" />
               </button>
             </th>
-            <th class="px-3 py-3 font-medium text-right" :aria-sort="sortAria('uniqueActives')">
+            <th class="whitespace-nowrap px-3 py-3 font-medium text-right" :aria-sort="sortAria('uniqueActives')">
               <button type="button" class="inline-flex w-full items-center justify-end gap-1 hover:text-text-primary" @click="toggleSort('uniqueActives')">
                 Ativos únicos
                 <ChevronDown v-if="sortKey === 'uniqueActives'" :size="13" :class="{ 'rotate-180': sortAsc }" />
               </button>
             </th>
-            <th class="px-3 py-3 font-medium text-right" :aria-sort="sortAria('activation')">
+            <th class="whitespace-nowrap px-3 py-3 font-medium text-right" :aria-sort="sortAria('activation')">
               <button type="button" class="inline-flex w-full items-center justify-end gap-1 hover:text-text-primary" @click="toggleSort('activation')">
                 Ativação
                 <ChevronDown v-if="sortKey === 'activation'" :size="13" :class="{ 'rotate-180': sortAsc }" />
               </button>
             </th>
-            <th class="px-3 py-3 font-medium text-right" :aria-sort="sortAria('investment')">
+            <th class="whitespace-nowrap px-3 py-3 font-medium text-right" :aria-sort="sortAria('investment')">
               <button type="button" class="inline-flex w-full items-center justify-end gap-1 hover:text-text-primary" @click="toggleSort('investment')">
                 Investimento
                 <ChevronDown v-if="sortKey === 'investment'" :size="13" :class="{ 'rotate-180': sortAsc }" />
               </button>
             </th>
-            <th class="px-3 py-3 font-medium text-right" :aria-sort="sortAria('rake')">
+            <th class="whitespace-nowrap px-3 py-3 font-medium text-right" :aria-sort="sortAria('rake')">
               <button type="button" class="inline-flex w-full items-center justify-end gap-1 hover:text-text-primary" @click="toggleSort('rake')">
                 Rake acum.
                 <ChevronDown v-if="sortKey === 'rake'" :size="13" :class="{ 'rotate-180': sortAsc }" />
               </button>
             </th>
-            <th class="px-3 py-3 font-medium text-right" :aria-sort="sortAria('recovery')">
+            <th class="whitespace-nowrap px-3 py-3 font-medium text-right" :aria-sort="sortAria('recovery')">
               <button type="button" class="inline-flex w-full items-center justify-end gap-1 hover:text-text-primary" @click="toggleSort('recovery')">
                 Recuperação
                 <ChevronDown v-if="sortKey === 'recovery'" :size="13" :class="{ 'rotate-180': sortAsc }" />
               </button>
             </th>
-            <th class="px-3 py-3 font-medium" :aria-sort="sortAria('health')">
+            <th class="whitespace-nowrap px-3 py-3 font-medium" :aria-sort="sortAria('health')">
               <button type="button" class="inline-flex items-center gap-1 hover:text-text-primary" @click="toggleSort('health')">
                 Saúde
                 <ChevronDown v-if="sortKey === 'health'" :size="13" :class="{ 'rotate-180': sortAsc }" />
               </button>
             </th>
-            <th class="px-3 py-3 font-medium" :aria-sort="sortAria('status')">
+            <th class="whitespace-nowrap px-3 py-3 font-medium" :aria-sort="sortAria('status')">
               <button type="button" class="inline-flex items-center gap-1 hover:text-text-primary" @click="toggleSort('status')">
                 Status
                 <ChevronDown v-if="sortKey === 'status'" :size="13" :class="{ 'rotate-180': sortAsc }" />
               </button>
             </th>
-            <th class="px-3 py-3 font-medium text-right" :aria-sort="sortAria('weeks')">
+            <th class="whitespace-nowrap px-3 py-3 font-medium text-right" :aria-sort="sortAria('weeks')">
               <button type="button" class="inline-flex w-full items-center justify-end gap-1 hover:text-text-primary" @click="toggleSort('weeks')">
                 Semanas
                 <ChevronDown v-if="sortKey === 'weeks'" :size="13" :class="{ 'rotate-180': sortAsc }" />
               </button>
             </th>
-            <th class="px-3 py-3 font-medium" :aria-sort="sortAria('lastReport')">
+            <th class="whitespace-nowrap px-3 py-3 font-medium" :aria-sort="sortAria('lastReport')">
               <button type="button" class="inline-flex items-center gap-1 hover:text-text-primary" @click="toggleSort('lastReport')">
                 Último relatório
                 <ChevronDown v-if="sortKey === 'lastReport'" :size="13" :class="{ 'rotate-180': sortAsc }" />
               </button>
             </th>
-            <th class="px-3 py-3 font-medium text-right">Ações</th>
+            <th
+              class="sticky right-0 z-20 whitespace-nowrap border-l border-border-subtle/60 bg-column px-3 py-3 text-right font-medium shadow-[-10px_0_12px_-12px_rgba(0,0,0,0.65)]"
+            >
+              Ações
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -274,23 +429,23 @@ function typeLabel(campaign: Campaign) {
             class="border-b border-border-subtle/50 transition-colors hover:bg-white/[0.07]"
             :class="idx % 2 === 1 ? 'bg-white/[0.045]' : 'bg-transparent'"
           >
-            <td class="px-3 py-3">
+            <td class="max-w-[14rem] px-3 py-3">
               <button
                 type="button"
-                class="text-left font-medium text-text-primary hover:text-accent"
+                class="block w-full truncate text-left font-medium text-text-primary hover:text-accent"
                 @click="emit('view', row.campaign.id)"
               >
                 {{ row.campaign.name }}
               </button>
-              <p class="text-[11px] text-text-muted">{{ typeLabel(row.campaign) }}</p>
+              <p class="truncate text-[11px] text-text-muted">{{ typeLabel(row.campaign) }}</p>
             </td>
-            <td class="px-3 py-3 text-text-secondary">
+            <td class="whitespace-nowrap px-3 py-3 text-text-secondary">
               {{ row.agent?.name || row.campaign.agency || '—' }}
             </td>
-            <td class="px-3 py-3 font-mono text-xs text-text-secondary">
+            <td class="whitespace-nowrap px-3 py-3 font-mono text-xs text-text-secondary">
               {{ row.campaign.agentId || '—' }}
             </td>
-            <td class="px-3 py-3 text-right tabular-nums">
+            <td class="whitespace-nowrap px-3 py-3 text-right tabular-nums">
               <span>{{ row.cohortSize }}</span>
               <span
                 v-if="row.cohortSize !== row.metrics.agencyPlayers"
@@ -300,22 +455,22 @@ function typeLabel(campaign: Campaign) {
                 ({{ row.metrics.agencyPlayers }})
               </span>
             </td>
-            <td class="px-3 py-3 text-right tabular-nums">
+            <td class="whitespace-nowrap px-3 py-3 text-right tabular-nums">
               {{ row.metrics.uniqueActivePlayers }}
             </td>
-            <td class="px-3 py-3 text-right tabular-nums">
+            <td class="whitespace-nowrap px-3 py-3 text-right tabular-nums">
               {{ formatPercent(row.metrics.activationRate) }}
             </td>
-            <td class="px-3 py-3 text-right tabular-nums">
+            <td class="whitespace-nowrap px-3 py-3 text-right tabular-nums">
               {{ formatCurrency(row.campaign.investment) }}
             </td>
-            <td class="px-3 py-3 text-right tabular-nums">
+            <td class="whitespace-nowrap px-3 py-3 text-right tabular-nums">
               {{ formatCurrency(row.metrics.accumulatedRake) }}
             </td>
-            <td class="px-3 py-3 text-right tabular-nums">
+            <td class="whitespace-nowrap px-3 py-3 text-right tabular-nums">
               {{ formatPercent(row.metrics.recoveryRate) }}
             </td>
-            <td class="px-3 py-3 text-xs text-text-secondary">
+            <td class="whitespace-nowrap px-3 py-3 text-xs text-text-secondary">
               {{
                 row.metrics.weeksTracked > 0
                   ? row.health.classificationLabel
@@ -325,10 +480,10 @@ function typeLabel(campaign: Campaign) {
             <td class="whitespace-nowrap px-3 py-3">
               <CampaignStatusBadge :status="row.metrics.status" />
             </td>
-            <td class="px-3 py-3 text-right tabular-nums">
+            <td class="whitespace-nowrap px-3 py-3 text-right tabular-nums">
               {{ row.metrics.weeksTracked }}
             </td>
-            <td class="px-3 py-3 text-xs text-text-muted">
+            <td class="whitespace-nowrap px-3 py-3 text-xs text-text-muted">
               <template v-if="row.metrics.lastPeriodStart && row.metrics.lastPeriodEnd">
                 {{
                   store.formatPeriodLabel(
@@ -339,7 +494,9 @@ function typeLabel(campaign: Campaign) {
               </template>
               <template v-else>—</template>
             </td>
-            <td class="relative px-3 py-3 text-right">
+            <td
+              class="relative sticky right-0 z-10 whitespace-nowrap border-l border-border-subtle/60 bg-column px-3 py-3 text-right shadow-[-10px_0_12px_-12px_rgba(0,0,0,0.65)]"
+            >
               <div class="inline-flex items-center gap-1" data-ephemeral-menu>
                 <button
                   type="button"
