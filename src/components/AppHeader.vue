@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, ref, type Ref, watch } from 'vue'
 import { Camera, Archive, LogOut, Menu, Plus, UserRound, Users, X } from '@lucide/vue'
 import { useBoardStore } from '../stores/board'
 import { useAuthStore } from '../stores/auth'
@@ -12,9 +12,16 @@ import HeaderSearch from './HeaderSearch.vue'
 import ArchivedCardsModal from './ArchivedCardsModal.vue'
 import { useEscapeKey } from '../composables/useEscapeKey'
 import logoSxB2c from '../assets/brand/sx-b2c.svg'
+import type { NavTab } from './AppFooter.vue'
 
 const board = useBoardStore()
 const auth = useAuthStore()
+const activeTab = inject<Ref<NavTab>>('activeTab', ref('board'))
+const showBoardChrome = computed(
+  () =>
+    !auth.isCampaignsOnly &&
+    (activeTab.value === 'board' || activeTab.value === 'agenda'),
+)
 const membersManager = ref<{ openModal: () => void } | null>(null)
 const archivedModal = ref<{ openModal: () => void } | null>(null)
 const menuOpen = ref(false)
@@ -98,10 +105,16 @@ onBeforeUnmount(() => {
       />
       <div class="h-6 w-px bg-white/15" />
       <h1 class="truncate text-base font-semibold tracking-tight text-text-primary">
-        {{ auth.isCampaignsOnly ? 'Campanhas' : board.title }}
+        {{
+          auth.isCampaignsOnly
+            ? 'Campanhas'
+            : activeTab === 'campaigns'
+              ? 'Campanhas'
+              : board.title
+        }}
       </h1>
       <button
-        v-if="!auth.isCampaignsOnly"
+        v-if="showBoardChrome"
         type="button"
         class="flex size-8 shrink-0 items-center justify-center rounded-xl border border-dashed border-white/25 text-text-secondary transition-colors hover:border-accent hover:bg-accent/15 hover:text-accent"
         title="Cadastrar ou remover usuários"
@@ -112,9 +125,9 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
-    <!-- Desktop: filtro (só quadro completo) -->
+    <!-- Desktop: filtro (só quadro / agenda) -->
     <div
-      v-if="!auth.isCampaignsOnly"
+      v-if="showBoardChrome"
       class="hidden min-w-0 flex-1 items-center justify-center gap-2 px-2 md:flex"
     >
       <MemberFilterSelect compact />
@@ -125,10 +138,10 @@ onBeforeUnmount(() => {
 
     <!-- Direita: busca + filtro mini (mobile) + notificações + avatar -->
     <div class="relative z-20 ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
-      <HeaderSearch v-if="!auth.isCampaignsOnly" />
+      <HeaderSearch v-if="showBoardChrome" />
 
       <button
-        v-if="auth.isAdmin && !auth.isCampaignsOnly"
+        v-if="auth.isAdmin && showBoardChrome"
         type="button"
         class="relative inline-flex size-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
         title="Cartões arquivados"
@@ -144,7 +157,7 @@ onBeforeUnmount(() => {
         </span>
       </button>
 
-      <div v-if="!auth.isCampaignsOnly" class="flex items-center gap-1 md:hidden">
+      <div v-if="showBoardChrome" class="flex items-center gap-1 md:hidden">
         <MemberFilterSelect mini />
         <LabelFilterSelect mini />
         <DateFilterSelect mini />
@@ -236,10 +249,18 @@ onBeforeUnmount(() => {
 
           <div class="border-b border-white/10 px-4 py-3">
             <p class="text-xs text-text-muted">
-              {{ auth.isCampaignsOnly ? 'Acesso' : 'Quadro' }}
+              {{
+                auth.isCampaignsOnly || activeTab === 'campaigns'
+                  ? 'Acesso'
+                  : 'Quadro'
+              }}
             </p>
             <p class="truncate text-sm font-semibold text-text-primary">
-              {{ auth.isCampaignsOnly ? 'Campanhas' : board.title }}
+              {{
+                auth.isCampaignsOnly || activeTab === 'campaigns'
+                  ? 'Campanhas'
+                  : board.title
+              }}
             </p>
           </div>
 

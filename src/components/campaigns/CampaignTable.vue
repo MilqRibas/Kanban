@@ -183,14 +183,14 @@ function typeLabel(campaign: Campaign) {
 
 <template>
   <!-- Mobile: cards (sem scroll horizontal forçado) -->
-  <div class="space-y-2 p-3 md:hidden">
+  <div class="space-y-2.5 md:hidden">
     <p v-if="rows.length === 0" class="py-8 text-center text-sm text-text-muted">
       Nenhuma campanha encontrada. Importe um relatório e vincule um Agent ID.
     </p>
     <article
       v-for="row in rows"
       :key="`m-${row.campaign.id}`"
-      class="rounded-xl border border-border-subtle/60 bg-white/[0.03] p-3"
+      class="rounded-2xl border border-border-subtle/60 bg-board-elevated/50 p-3.5"
     >
       <div class="flex items-start justify-between gap-2">
         <button
@@ -198,7 +198,7 @@ function typeLabel(campaign: Campaign) {
           class="min-w-0 flex-1 text-left"
           @click="emit('view', row.campaign.id)"
         >
-          <p class="truncate font-medium text-text-primary">
+          <p class="line-clamp-2 font-medium leading-snug text-text-primary">
             {{ row.campaign.name }}
           </p>
           <p class="mt-0.5 truncate text-[11px] text-text-muted">
@@ -210,10 +210,10 @@ function typeLabel(campaign: Campaign) {
         <CampaignStatusBadge :status="row.metrics.status" />
       </div>
 
-      <dl class="mt-3 grid grid-cols-2 gap-2 text-xs">
+      <dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5 text-xs">
         <div>
           <dt class="text-text-muted">Jogadores</dt>
-          <dd class="tabular-nums text-text-primary">
+          <dd class="mt-0.5 tabular-nums text-text-primary">
             {{ row.cohortSize }}
             <span
               v-if="row.cohortSize !== row.metrics.agencyPlayers"
@@ -225,75 +225,75 @@ function typeLabel(campaign: Campaign) {
         </div>
         <div>
           <dt class="text-text-muted">Ativos</dt>
-          <dd class="tabular-nums text-text-primary">
+          <dd class="mt-0.5 tabular-nums text-text-primary">
             {{ row.metrics.uniqueActivePlayers }}
           </dd>
         </div>
         <div>
           <dt class="text-text-muted">Investimento</dt>
-          <dd class="tabular-nums text-text-primary">
+          <dd class="mt-0.5 tabular-nums text-text-primary">
             {{ formatCurrency(row.campaign.investment) }}
           </dd>
         </div>
         <div>
           <dt class="text-text-muted">Rake acum.</dt>
-          <dd class="tabular-nums text-text-primary">
+          <dd class="mt-0.5 tabular-nums text-text-primary">
             {{ formatCurrency(row.metrics.accumulatedRake) }}
           </dd>
         </div>
         <div>
           <dt class="text-text-muted">Recuperação</dt>
-          <dd class="tabular-nums text-text-primary">
+          <dd class="mt-0.5 tabular-nums text-text-primary">
             {{ formatPercent(row.metrics.recoveryRate) }}
           </dd>
         </div>
         <div>
           <dt class="text-text-muted">Ativação</dt>
-          <dd class="tabular-nums text-text-primary">
+          <dd class="mt-0.5 tabular-nums text-text-primary">
             {{ formatPercent(row.metrics.activationRate) }}
           </dd>
         </div>
       </dl>
 
-      <div class="relative mt-3 flex items-center justify-end gap-1 border-t border-border-subtle/40 pt-2">
+      <div class="relative mt-3 flex items-center justify-end gap-0.5 border-t border-border-subtle/40 pt-2">
         <button
           type="button"
-          class="rounded-lg p-2 text-text-muted hover:bg-white/10 hover:text-text-primary"
+          class="rounded-lg p-2.5 text-text-muted hover:bg-white/10 hover:text-text-primary"
           title="Ver"
           @click="emit('view', row.campaign.id)"
         >
-          <Eye :size="16" />
+          <Eye :size="17" />
         </button>
         <button
           type="button"
-          class="rounded-lg p-2 text-text-muted hover:bg-white/10 hover:text-text-primary"
+          class="rounded-lg p-2.5 text-text-muted hover:bg-white/10 hover:text-text-primary"
           title="Editar"
           @click="emit('edit', row.campaign.id)"
         >
-          <Pencil :size="16" />
+          <Pencil :size="17" />
         </button>
         <button
           v-if="canDelete(row.campaign)"
           type="button"
-          class="rounded-lg p-2 text-danger hover:bg-danger/10"
+          class="rounded-lg p-2.5 text-danger hover:bg-danger/10"
           title="Excluir"
           @click="onDelete(row.campaign.id)"
         >
-          <Trash2 :size="16" />
+          <Trash2 :size="17" />
         </button>
         <button
           type="button"
           data-ephemeral-menu
-          class="rounded-lg p-2 text-text-muted hover:bg-white/10 hover:text-text-primary"
+          class="rounded-lg p-2.5 text-text-muted hover:bg-white/10 hover:text-text-primary"
           title="Mais"
           @click.stop="toggleMenu(row.campaign.id)"
         >
-          <MoreHorizontal :size="16" />
+          <MoreHorizontal :size="17" />
         </button>
         <div
           v-if="menuId === row.campaign.id"
           data-ephemeral-menu
-          class="absolute bottom-10 right-0 z-20 min-w-[10rem] overflow-hidden rounded-xl border border-border-subtle bg-board-elevated py-1 shadow-xl"
+          class="absolute bottom-11 right-0 z-20 min-w-[10rem] overflow-hidden rounded-xl border border-border-subtle bg-board-elevated py-1 shadow-xl"
           @click.stop
         >
           <button

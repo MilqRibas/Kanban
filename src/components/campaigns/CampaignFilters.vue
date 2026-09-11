@@ -113,7 +113,8 @@ const selectClass =
         class="min-w-0 flex-1"
         :class="selectClass"
         :value="nameDraft"
-        placeholder="Buscar campanha, agência ou Agent ID…"
+        placeholder="Buscar campanha…"
+        aria-label="Buscar campanha, agência ou Agent ID"
         @input="onNameInput(($event.target as HTMLInputElement).value)"
       />
       <button

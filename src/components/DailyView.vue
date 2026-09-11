@@ -317,7 +317,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col pt-2 sm:pt-3">
+  <div class="flex min-h-0 flex-1 flex-col pt-2 sm:pt-3 has-footer-pad">
     <div
       v-if="dailyBootstrapping || (daily.loading && !daily.ready)"
       class="flex min-h-0 flex-1 items-center justify-center"

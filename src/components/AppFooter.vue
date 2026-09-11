@@ -84,9 +84,16 @@ let mediaQuery: MediaQueryList | null = null
 function updateClearance() {
   const pill = pillRef.value
   if (!pill) return
-  const top = pill.getBoundingClientRect().top
-  const gap = 10
-  const clearance = Math.max(72, Math.ceil(window.innerHeight - top + gap))
+  const rect = pill.getBoundingClientRect()
+  const gap = 12
+  // Distância do topo da pill até a base do app (não da janela do browser).
+  const appBottom =
+    document.getElementById('app')?.getBoundingClientRect().bottom ??
+    window.innerHeight
+  const clearance = Math.max(
+    72,
+    Math.ceil(appBottom - rect.top + gap + (window.visualViewport?.offsetTop ?? 0)),
+  )
   document.documentElement.style.setProperty('--footer-clearance', `${clearance}px`)
 }
 

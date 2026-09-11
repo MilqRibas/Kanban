@@ -112,7 +112,7 @@ function dayCardOverflow(dateKey: string | null) {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col pt-2 sm:pt-3">
+  <div class="flex min-h-0 flex-1 flex-col pt-2 sm:pt-3 has-footer-pad">
     <div
       class="page-shell panel-glass flex min-h-0 flex-1 flex-col rounded-2xl p-2 shadow-xl shadow-black/20 sm:p-3"
     >

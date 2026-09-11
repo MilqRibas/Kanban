@@ -182,33 +182,32 @@ function onBackFromDetails() {
       @edit="onEdit"
     />
 
-    <div
-      v-else
-      class="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-footer-pad pt-1.5 sm:pt-2"
-    >
-      <div class="page-shell flex min-w-0 flex-col gap-2 sm:gap-3">
-        <header class="flex shrink-0 flex-wrap items-center justify-between gap-2">
+    <template v-else>
+      <!-- Chrome fixo: título, abas e filtros -->
+      <div class="page-shell shrink-0 space-y-2 pt-1.5 sm:space-y-2.5 sm:pt-2">
+        <header class="flex items-start justify-between gap-2">
           <div class="min-w-0">
             <p class="text-[10px] font-semibold uppercase tracking-wide text-accent/90">
               Aquisição
             </p>
-            <h2 class="text-xl font-semibold tracking-tight text-text-primary sm:text-2xl">
+            <h2 class="text-lg font-semibold tracking-tight text-text-primary sm:text-2xl">
               Campanhas
             </h2>
           </div>
-          <div class="flex flex-wrap items-center gap-2">
+          <div class="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <button
               type="button"
-              class="inline-flex items-center gap-1.5 rounded-xl border border-border-subtle bg-board-elevated px-3 py-1.5 text-sm font-medium text-text-primary hover:bg-surface sm:px-3.5 sm:py-2"
+              class="inline-flex size-9 items-center justify-center rounded-xl border border-border-subtle bg-board-elevated text-text-primary hover:bg-surface sm:h-auto sm:w-auto sm:gap-1.5 sm:px-3.5 sm:py-2 sm:text-sm sm:font-medium"
+              title="Importar relatório"
+              aria-label="Importar relatório"
               @click="importOpen = true"
             >
               <FileUp :size="16" />
-              <span class="sm:hidden">Importar</span>
               <span class="hidden sm:inline">Importar relatório</span>
             </button>
             <button
               type="button"
-              class="inline-flex items-center gap-1.5 rounded-xl bg-accent px-3 py-1.5 text-sm font-semibold text-board hover:bg-accent-hover sm:px-3.5 sm:py-2"
+              class="inline-flex h-9 items-center gap-1 rounded-xl bg-accent px-2.5 text-sm font-semibold text-board hover:bg-accent-hover sm:h-auto sm:gap-1.5 sm:px-3.5 sm:py-2"
               @click="openCreate"
             >
               <Plus :size="16" />
@@ -219,7 +218,7 @@ function onBackFromDetails() {
         </header>
 
         <div
-          class="-mx-1 flex max-w-full gap-1 overflow-x-auto px-1 sm:mx-0 sm:inline-flex sm:flex-wrap sm:gap-1 sm:overflow-visible sm:rounded-xl sm:border sm:border-border-subtle sm:bg-board-elevated/80 sm:p-1"
+          class="-mx-0.5 flex max-w-full gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] sm:mx-0 sm:inline-flex sm:flex-wrap sm:gap-1 sm:overflow-visible sm:rounded-xl sm:border sm:border-border-subtle sm:bg-board-elevated/80 sm:p-1 sm:pb-1 [&::-webkit-scrollbar]:hidden"
           role="tablist"
           aria-label="Visões de campanhas"
         >
@@ -230,7 +229,7 @@ function onBackFromDetails() {
             role="tab"
             :aria-selected="screen === tab.id"
             :class="[
-              'shrink-0 rounded-lg px-3 py-1.5 text-xs transition-all sm:text-sm',
+              'shrink-0 rounded-lg px-2.5 py-1.5 text-xs transition-all sm:px-3 sm:text-sm',
               screen === tab.id
                 ? 'bg-accent/20 text-text-primary ring-1 ring-accent/45'
                 : 'bg-board-elevated/80 text-text-secondary hover:bg-surface hover:text-text-primary sm:bg-transparent',
@@ -255,35 +254,63 @@ function onBackFromDetails() {
         >
           {{ store.error }}
         </p>
-
-        <section v-if="screen === 'overview'" class="space-y-2.5">
-          <CampaignKpiCards :kpis="overviewKpis" />
-          <CampaignCharts :campaigns="filteredCampaigns" />
-        </section>
-
-        <section v-else-if="screen === 'list'" class="min-w-0 space-y-3">
-          <CollapsiblePanel
-            title="Lista de campanhas"
-            :hint="`${filteredCampaigns.length} ${filteredCampaigns.length === 1 ? 'campanha' : 'campanhas'}`"
-            :default-open="true"
-          >
-            <CampaignTable
-              :campaigns="filteredCampaigns"
-              @view="onView"
-              @edit="onEdit"
-            />
-          </CollapsiblePanel>
-        </section>
-
-        <section v-else-if="screen === 'comparison'">
-          <CampaignComparison :campaigns="filteredCampaigns" />
-        </section>
-
-        <section v-else>
-          <CampaignImportsAdmin />
-        </section>
       </div>
-    </div>
+
+      <!-- Lista/visão com scroll próprio até a barra flutuante -->
+      <div
+        class="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-footer-pad sm:mt-3"
+      >
+        <div class="page-shell pb-3">
+          <section v-if="screen === 'overview'" class="space-y-2.5">
+            <CampaignKpiCards :kpis="overviewKpis" />
+            <CampaignCharts :campaigns="filteredCampaigns" />
+          </section>
+
+          <section v-else-if="screen === 'list'" class="min-w-0 space-y-2">
+            <div class="mb-1 flex items-baseline justify-between gap-2 px-0.5 md:hidden">
+              <h3 class="text-sm font-semibold text-text-primary">
+                Lista de campanhas
+              </h3>
+              <p class="text-[11px] text-text-muted">
+                {{ filteredCampaigns.length }}
+                {{ filteredCampaigns.length === 1 ? 'campanha' : 'campanhas' }}
+              </p>
+            </div>
+
+            <!-- Mobile: cards sem painel colapsável -->
+            <div class="md:hidden">
+              <CampaignTable
+                :campaigns="filteredCampaigns"
+                @view="onView"
+                @edit="onEdit"
+              />
+            </div>
+
+            <!-- Desktop: painel com tabela -->
+            <CollapsiblePanel
+              class="hidden md:block"
+              title="Lista de campanhas"
+              :hint="`${filteredCampaigns.length} ${filteredCampaigns.length === 1 ? 'campanha' : 'campanhas'}`"
+              :default-open="true"
+            >
+              <CampaignTable
+                :campaigns="filteredCampaigns"
+                @view="onView"
+                @edit="onEdit"
+              />
+            </CollapsiblePanel>
+          </section>
+
+          <section v-else-if="screen === 'comparison'">
+            <CampaignComparison :campaigns="filteredCampaigns" />
+          </section>
+
+          <section v-else>
+            <CampaignImportsAdmin />
+          </section>
+        </div>
+      </div>
+    </template>
 
     <CampaignFormModal
       v-model:open="formOpen"

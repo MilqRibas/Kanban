@@ -118,6 +118,7 @@ function goToTab(tab: NavTab) {
 }
 
 provide('setActiveTab', goToTab)
+provide('activeTab', activeTab)
 
 onMounted(() => {
   void auth.init()
@@ -273,7 +274,7 @@ watch(activeTab, async (tab) => {
     <div class="relative z-10 flex h-full min-h-0 flex-col">
       <AppHeader />
       <main
-        class="tab-stage relative flex min-h-0 flex-1 flex-col overflow-hidden pb-[var(--footer-clearance)]"
+        class="tab-stage relative flex min-h-0 flex-1 flex-col overflow-hidden"
       >
         <div
           v-if="contentLoading"

@@ -224,7 +224,7 @@ function confirmDelete() {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col overflow-hidden pt-2">
+  <div class="flex min-h-0 flex-1 flex-col overflow-hidden pt-2 has-footer-pad">
     <div
       v-if="notesBootstrapping || notesStore.loading"
       class="flex min-h-0 flex-1 items-center justify-center"
