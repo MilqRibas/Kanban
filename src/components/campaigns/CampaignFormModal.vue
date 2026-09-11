@@ -597,8 +597,8 @@ async function save() {
                 Fim do período da campanha
                 <span
                   class="inline-flex text-text-muted"
-                  aria-label="Registro de quando a campanha rodou. Não fecha a coorte: jogadores e rake posteriores no Agent ID continuam sendo atribuídos."
-                  title="Registro de quando a campanha rodou. Não fecha a coorte: jogadores e rake posteriores no Agent ID continuam sendo atribuídos."
+                  aria-label="Registro de quando a campanha rodou. Não fecha a atribuição: jogadores e rake posteriores no Agent ID continuam sendo atribuídos."
+                  title="Registro de quando a campanha rodou. Não fecha a atribuição: jogadores e rake posteriores no Agent ID continuam sendo atribuídos."
                 >
                   <Info :size="13" />
                 </span>
@@ -668,7 +668,6 @@ async function save() {
                   Selecionado: {{ selectedAgentLabel }}
                   · {{ cohortPreview.playerCount }}
                   {{ cohortPreview.playerCount === 1 ? 'jogador' : 'jogadores' }}
-                  na coorte
                   · rake {{ formatCurrency(accumulatedRakePreview) }}
                 </p>
                 <p

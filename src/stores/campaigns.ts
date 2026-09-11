@@ -78,6 +78,10 @@ import {
   sumActivationBonuses,
   type CampaignCohortMember,
 } from '../utils/campaignCohort'
+import {
+  averagePaybackDays,
+  computePaybackTiming,
+} from '../utils/campaignPaybackTiming'
 import { coerceBrazilianCount } from '../utils/campaignFormat'
 import {
   parseTransactionReportFile,
@@ -796,6 +800,18 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     return metricsByCampaignId.value.get(campaign.id) ?? buildMetrics(campaign)
   }
 
+  function paybackTimingFor(campaign: Campaign) {
+    const m = metricsFor(campaign)
+    return computePaybackTiming({
+      startDate: campaign.startDate,
+      totalInvestment: m.totalInvestment,
+      accumulatedRake: m.accumulatedRake,
+      payback: m.payback,
+      organicFixedPayback: m.organicFixedPayback,
+      periods: cohortWeeklyPeriodsFor(campaign),
+    })
+  }
+
   function competingActivationCampaigns(campaignId: string) {
     return campaigns.value
       .filter((c) => c.id !== campaignId && c.agentId)
@@ -1000,6 +1016,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     let paybackCount = 0
     let recoveringCount = 0
     let noDataCount = 0
+    const paybackDaySamples: Array<{ daysToPayback: number | null }> = []
 
     for (const campaign of list) {
       const m = metricsFor(campaign)
@@ -1012,6 +1029,10 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         if (m.totalInvestment != null) paidInvestment += m.totalInvestment
         if (m.status === 'payback') paybackCount += 1
         if (m.status === 'recovering') recoveringCount += 1
+        const timing = paybackTimingFor(campaign)
+        if (timing.daysToPayback != null) {
+          paybackDaySamples.push({ daysToPayback: timing.daysToPayback })
+        }
       } else {
         organicRake += m.accumulatedRake
       }
@@ -1035,6 +1056,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       activationRate,
       recoveryRate,
       paybackCount,
+      averagePaybackDays: averagePaybackDays(paybackDaySamples),
       costPerActive,
       recoveringCount,
       noDataCount,
@@ -2925,6 +2947,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     canArchiveCampaign,
     canDeleteCampaign,
     metricsFor,
+    paybackTimingFor,
     activationInvestmentFor,
     activationBonusesFor,
     purchasePowerFor,

@@ -42,6 +42,8 @@ import {
 } from '../../utils/campaignFunnelMetrics'
 import CampaignStatusBadge from './CampaignStatusBadge.vue'
 import CollapsiblePanel from './CollapsiblePanel.vue'
+import CampaignAlertsPanel from './CampaignAlertsPanel.vue'
+import { buildCampaignPlayerAlerts } from '../../utils/campaignPlayerAlerts'
 
 const props = defineProps<{
   campaign: Campaign
@@ -67,6 +69,7 @@ type DetailTab =
   | 'game-profile'
   | 'players'
   | 'table-details'
+  | 'alerts'
   | 'history'
 const activeTab = ref<DetailTab>('overview')
 
@@ -100,6 +103,16 @@ const cohortWeeklyPeriods = computed(() =>
 const playerPeriods = computed(() => store.playerPeriodsForCampaign(props.campaign))
 const cohortMembers = computed(() => store.cohortMembersFor(props.campaign))
 const metrics = computed(() => store.metricsFor(props.campaign))
+const paybackTiming = computed(() => store.paybackTimingFor(props.campaign))
+const playerAlerts = computed(() => {
+  if (activeTab.value !== 'alerts') return []
+  const lastWeek = cohortWeeklyPeriods.value[cohortWeeklyPeriods.value.length - 1]
+  return buildCampaignPlayerAlerts({
+    periods: playerPeriods.value,
+    members: cohortMembers.value,
+    referencePeriodEnd: lastWeek?.periodEnd ?? lastWeek?.periodStart ?? null,
+  })
+})
 const funnel = computed(() =>
   activeTab.value === 'funnel' ? store.funnelFor(props.campaign) : null,
 )
@@ -298,7 +311,7 @@ const overviewCards = computed(() => {
     },
     { label: 'Ativação', value: formatCurrency(m.activationInvestment) },
     { label: 'Investimento Total', value: formatCurrency(m.totalInvestment) },
-    { label: 'Coorte', value: formatNumber(cohortMembers.value.length) },
+    { label: 'Jogadores', value: formatNumber(cohortMembers.value.length) },
     { label: 'Jogadores (funil)', value: formatNumber(m.agencyPlayers) },
     { label: 'Ativos', value: formatNumber(m.uniqueActivePlayers) },
     { label: 'Ativação %', value: formatPercent(m.activationRate) },
@@ -557,7 +570,6 @@ const purchasePowerDistribution = computed(() => {
   const pp = purchasePower.value
   if (!pp) return []
   return [
-    { label: 'Mediana / depositante', value: formatCurrency(pp.medianPerDepositor) },
     { label: 'Maior depósito', value: formatCurrency(pp.maxDeposit) },
     {
       label: 'Top 1',
@@ -876,6 +888,14 @@ watch(tableDetailsPeriod, async (period) => {
           <button
             type="button"
             class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+            :class="activeTab === 'alerts' ? 'bg-accent text-board' : 'text-text-secondary hover:bg-surface hover:text-text-primary'"
+            @click="activeTab = 'alerts'"
+          >
+            Alertas
+          </button>
+          <button
+            type="button"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
             :class="activeTab === 'history' ? 'bg-accent text-board' : 'text-text-secondary hover:bg-surface hover:text-text-primary'"
             @click="activeTab = 'history'"
           >
@@ -892,6 +912,28 @@ watch(tableDetailsPeriod, async (period) => {
                 class="text-xs text-text-muted"
               >
                 Captação orgânica sem investimento — payback fixo 100%.
+              </span>
+              <span
+                v-else-if="paybackTiming.daysToPayback != null"
+                class="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-300"
+                title="Dias desde o início da campanha até a semana em que o rake acumulado cruzou o investimento total."
+              >
+                Payback em {{ paybackTiming.daysToPayback }} dias
+              </span>
+              <span
+                v-else-if="paybackTiming.expectedDaysToPayback != null"
+                class="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-200"
+                title="Projeção com base no ritmo de rake observado até agora (não é um prazo garantido)."
+              >
+                Dias esperados até payback:
+                {{ paybackTiming.expectedDaysToPayback }} dias
+                <span class="ml-1 opacity-70">(projeção)</span>
+              </span>
+              <span
+                v-else-if="!metrics.organicFixedPayback && metrics.status !== 'payback'"
+                class="text-xs text-text-muted"
+              >
+                Estimativa ainda indisponível
               </span>
             </div>
             <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
@@ -1183,8 +1225,8 @@ watch(tableDetailsPeriod, async (period) => {
                   !hasAgent
                     ? 'Nenhum agente vinculado.'
                     : !hasCohort
-                      ? 'Nenhum jogador na coorte deste Agent ID a partir do início da campanha.'
-                      : 'Nenhuma semana atribuída à coorte ainda.'
+                      ? 'Nenhum jogador deste Agent ID a partir do início da campanha.'
+                      : 'Nenhuma semana atribuída aos jogadores ainda.'
                 }}
               </p>
             </template>
@@ -1466,8 +1508,8 @@ watch(tableDetailsPeriod, async (period) => {
                   !hasAgent
                     ? 'Nenhum agente vinculado.'
                     : !hasCohort
-                      ? 'Nenhum jogador na coorte deste Agent ID a partir do início da campanha.'
-                      : 'Nenhuma semana atribuída à coorte ainda.'
+                      ? 'Nenhum jogador deste Agent ID a partir do início da campanha.'
+                      : 'Nenhuma semana atribuída aos jogadores ainda.'
                 }}
               </p>
             </template>
@@ -1613,8 +1655,8 @@ watch(tableDetailsPeriod, async (period) => {
                   !hasAgent
                     ? 'Nenhum agente vinculado.'
                     : !hasCohort
-                      ? 'Nenhum jogador na coorte deste Agent ID a partir do início da campanha.'
-                      : 'Nenhuma semana atribuída à coorte ainda.'
+                      ? 'Nenhum jogador deste Agent ID a partir do início da campanha.'
+                      : 'Nenhuma semana atribuída aos jogadores ainda.'
                 }}
               </p>
             </template>
@@ -1701,7 +1743,7 @@ watch(tableDetailsPeriod, async (period) => {
               <CollapsiblePanel
                 v-if="filteredPlayers.length"
                 title="Jogadores"
-                :hint="`${filteredPlayers.length} na coorte`"
+                :hint="`${filteredPlayers.length} jogadores`"
                 :default-open="true"
               >
                 <div class="overflow-x-auto px-3 pb-3">
@@ -1795,8 +1837,8 @@ watch(tableDetailsPeriod, async (period) => {
                   !hasAgent
                     ? 'Nenhum agente vinculado.'
                     : !hasCohort
-                      ? 'Nenhum jogador na coorte deste Agent ID a partir do início da campanha.'
-                      : 'Nenhuma semana atribuída à coorte ainda.'
+                      ? 'Nenhum jogador deste Agent ID a partir do início da campanha.'
+                      : 'Nenhuma semana atribuída aos jogadores ainda.'
                 }}
               </p>
             </template>
@@ -1855,6 +1897,14 @@ watch(tableDetailsPeriod, async (period) => {
                 Nenhum detalhe de mesa encontrado.
               </p>
             </template>
+          </div>
+
+          <div v-else-if="activeTab === 'alerts'" class="space-y-3">
+            <p class="text-xs text-text-muted">
+              Mini CRM comportamental com base no ID do jogador e no rake
+              atribuído a esta campanha. Nickname é só exibição.
+            </p>
+            <CampaignAlertsPanel :alerts="playerAlerts" />
           </div>
 
           <div v-else-if="activeTab === 'history'">

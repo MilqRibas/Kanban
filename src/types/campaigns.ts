@@ -6,6 +6,7 @@ export const CAMPAIGN_TYPE_OPTIONS = [
   'Satélite',
   'Reativação',
   'Comunidade',
+  'Torneio',
   'Outro',
 ] as const
 
@@ -48,7 +49,7 @@ export const CAMPAIGN_STATUS_LABELS: Record<CampaignComputedStatus, string> = {
   payback: 'Payback',
   recovering: 'Em recuperação',
   no_return: 'Sem retorno',
-  no_data: 'Sem semanas na coorte',
+  no_data: 'Sem semanas de jogadores',
   archived: 'Arquivada',
 }
 

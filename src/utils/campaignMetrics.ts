@@ -202,6 +202,8 @@ export type OverviewKpis = {
   activationRate: number | null
   recoveryRate: number | null
   paybackCount: number
+  /** Média de dias até payback (só campanhas com cruzamento real). */
+  averagePaybackDays: number | null
   costPerActive: number | null
 }
 
@@ -233,6 +235,7 @@ export function buildOverviewKpis(
     activationRate: calculateActivationRate(totalActive, totalCaptured),
     recoveryRate: calculateInvestmentRecovery(totalAccumulatedRake, totalInvestment),
     paybackCount,
+    averagePaybackDays: null,
     costPerActive: calculateCostPerActivePlayer(totalInvestment, totalActive),
   }
 }

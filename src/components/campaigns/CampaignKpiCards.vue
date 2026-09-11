@@ -4,6 +4,7 @@ import {
   Activity,
   Banknote,
   CircleDollarSign,
+  Clock,
   Percent,
   Target,
   TrendingUp,
@@ -22,7 +23,7 @@ const cards: {
   label: string
   shortLabel: string
   icon: Component
-  format: 'currency' | 'number' | 'percent' | 'count'
+  format: 'currency' | 'number' | 'percent' | 'count' | 'days'
 }[] = [
   {
     key: 'totalInvestment',
@@ -33,8 +34,8 @@ const cards: {
   },
   {
     key: 'totalAccumulatedRake',
-    label: 'Rake das pagas',
-    shortLabel: 'Rake pagas',
+    label: 'Rake',
+    shortLabel: 'Rake',
     icon: CircleDollarSign,
     format: 'currency',
   },
@@ -74,6 +75,13 @@ const cards: {
     format: 'count',
   },
   {
+    key: 'averagePaybackDays',
+    label: 'Tempo de payback médio',
+    shortLabel: 'Payback médio',
+    icon: Clock,
+    format: 'days',
+  },
+  {
     key: 'costPerActive',
     label: 'Custo por ativo',
     shortLabel: 'Custo/ativo',
@@ -85,13 +93,17 @@ const cards: {
 function display(value: number | null, format: (typeof cards)[number]['format']) {
   if (format === 'currency') return formatCurrency(value)
   if (format === 'percent') return formatPercent(value)
+  if (format === 'days') {
+    if (value == null || !Number.isFinite(value)) return '—'
+    return `${formatNumber(value)} dias`
+  }
   if (format === 'count') return formatNumber(value ?? 0)
   return formatNumber(value)
 }
 </script>
 
 <template>
-  <div class="grid grid-cols-2 gap-1.5 sm:gap-2 md:grid-cols-4 xl:grid-cols-8">
+  <div class="grid grid-cols-2 gap-1.5 sm:gap-2 md:grid-cols-3 xl:grid-cols-9">
     <div
       v-for="card in cards"
       :key="card.key"

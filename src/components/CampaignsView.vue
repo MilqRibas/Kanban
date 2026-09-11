@@ -15,8 +15,22 @@ import CampaignComparison from './campaigns/CampaignComparison.vue'
 import CampaignImportsAdmin from './campaigns/CampaignImportsAdmin.vue'
 import CollapsiblePanel from './campaigns/CollapsiblePanel.vue'
 import { buildSearchHaystack, matchesSearch } from '../utils/search'
+import type { Campaign } from '../types/campaigns'
 
 type CampaignScreen = 'overview' | 'list' | 'comparison' | 'imports'
+
+/** Torneio no filtro também encontra legado Outro + campaign_type_other. */
+function matchesCampaignTypeFilter(campaign: Campaign, selected: string) {
+  if (campaign.campaignType === selected) return true
+  if (
+    selected === 'Torneio' &&
+    campaign.campaignType === 'Outro' &&
+    (campaign.campaignTypeOther || '').trim().toLowerCase() === 'torneio'
+  ) {
+    return true
+  }
+  return false
+}
 
 const store = useCampaignsStore()
 const bootstrapping = ref(false)
@@ -95,7 +109,7 @@ const filteredCampaigns = computed(() => {
     }
     if (
       filters.value.campaignType !== 'all' &&
-      campaign.campaignType !== filters.value.campaignType
+      !matchesCampaignTypeFilter(campaign, filters.value.campaignType)
     ) {
       return false
     }

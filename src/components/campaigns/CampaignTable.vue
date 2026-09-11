@@ -206,7 +206,7 @@ function typeLabel(campaign: Campaign) {
             </th>
             <th class="px-3 py-3 font-medium text-right" :aria-sort="sortAria('players')">
               <button type="button" class="inline-flex w-full items-center justify-end gap-1 hover:text-text-primary" @click="toggleSort('players')">
-                Coorte
+                Jogadores
                 <ChevronDown v-if="sortKey === 'players'" :size="13" :class="{ 'rotate-180': sortAsc }" />
               </button>
             </th>
