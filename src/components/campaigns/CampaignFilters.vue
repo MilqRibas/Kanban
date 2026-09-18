@@ -78,6 +78,19 @@ function patch(partial: Partial<CampaignFiltersState>) {
   emit('update:modelValue', { ...props.modelValue, ...partial })
 }
 
+function clearFilters() {
+  nameDraft.value = ''
+  emit('update:modelValue', {
+    year: 'all',
+    month: 'all',
+    status: 'all',
+    name: '',
+    campaignType: 'all',
+    nature: 'all',
+  })
+  emit('update:showArchived', false)
+}
+
 const nameDraft = ref(props.modelValue.name)
 let nameTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -106,20 +119,21 @@ const selectClass =
 </script>
 
 <template>
-  <div class="panel-glass rounded-2xl p-2.5 sm:p-3.5">
+  <div class="rounded-xl border border-border-subtle/70 bg-board-elevated/40 p-2 sm:p-2.5">
     <div class="flex items-center gap-2">
       <input
         type="search"
         class="min-w-0 flex-1"
         :class="selectClass"
         :value="nameDraft"
-        placeholder="Buscar campanha…"
+        placeholder="Buscar campanha, agência ou Agent ID…"
         aria-label="Buscar campanha, agência ou Agent ID"
         @input="onNameInput(($event.target as HTMLInputElement).value)"
       />
       <button
         type="button"
         class="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border-subtle bg-surface px-2.5 py-1.5 text-xs text-text-secondary hover:text-text-primary sm:px-3 sm:py-2 sm:text-sm"
+        :aria-expanded="expanded"
         @click="expanded = !expanded"
       >
         Filtros
@@ -134,6 +148,14 @@ const selectClass =
           class="transition-transform"
           :class="expanded ? 'rotate-180' : ''"
         />
+      </button>
+      <button
+        v-if="activeFilterCount"
+        type="button"
+        class="hidden shrink-0 text-xs text-text-muted underline-offset-2 hover:text-text-secondary hover:underline sm:inline"
+        @click="clearFilters"
+      >
+        Limpar
       </button>
     </div>
 
@@ -262,6 +284,15 @@ const selectClass =
         />
         Mostrar arquivadas
       </label>
+
+      <button
+        v-if="activeFilterCount"
+        type="button"
+        class="col-span-2 text-left text-xs text-accent hover:underline sm:hidden"
+        @click="clearFilters"
+      >
+        Limpar filtros
+      </button>
     </div>
   </div>
 </template>

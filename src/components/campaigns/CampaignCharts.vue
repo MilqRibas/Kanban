@@ -10,6 +10,10 @@ const props = defineProps<{
   campaigns: Campaign[]
 }>()
 
+const emit = defineEmits<{
+  view: [id: string]
+}>()
+
 const store = useCampaignsStore()
 
 const rows = computed(() => {
@@ -74,42 +78,50 @@ const lastWeekStart = computed(
   <div class="space-y-3">
     <CollapsiblePanel
       title="Recuperação por campanha"
-      hint="Status e % de rake sobre o investimento total"
+      hint="Rake líquido ÷ custo total · clique para abrir"
       :default-open="true"
     >
       <div class="px-2 pb-3 sm:px-3">
         <div v-if="rows.length === 0" class="px-2 py-4 text-sm text-text-muted">
-          Nenhuma campanha para exibir.
+          Nenhuma campanha para exibir com os filtros atuais.
         </div>
-        <ul v-else class="space-y-1.5">
+        <ul v-else class="space-y-1">
           <li
             v-for="(row, idx) in rows"
             :key="row.campaign.id"
-            class="space-y-1 rounded-xl px-2 py-2"
-            :class="idx % 2 === 1 ? 'bg-white/[0.04]' : 'bg-transparent'"
           >
-            <div class="flex items-center justify-between gap-3 text-sm">
-              <span class="min-w-0 truncate font-medium text-text-primary">
-                {{ row.campaign.name }}
-              </span>
-              <div class="flex shrink-0 items-center gap-2">
-                <CampaignStatusBadge :status="row.metrics.status" />
-                <span class="w-16 text-right tabular-nums text-text-secondary">
-                  {{ formatPercent(row.metrics.recoveryRate) }}
+            <button
+              type="button"
+              class="w-full space-y-1 rounded-xl px-2 py-2 text-left transition-colors hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+              :class="idx % 2 === 1 ? 'bg-white/[0.03]' : 'bg-transparent'"
+              @click="emit('view', row.campaign.id)"
+            >
+              <div class="flex items-center justify-between gap-3 text-sm">
+                <span class="min-w-0 truncate font-medium text-text-primary">
+                  {{ row.campaign.name }}
                 </span>
+                <div class="flex shrink-0 items-center gap-2">
+                  <CampaignStatusBadge :status="row.metrics.status" />
+                  <span class="w-16 text-right tabular-nums text-text-secondary">
+                    {{ formatPercent(row.metrics.recoveryRate) }}
+                  </span>
+                </div>
               </div>
-            </div>
-            <div class="h-2 overflow-hidden rounded-full bg-white/10">
-              <div
-                class="h-full rounded-full bg-accent transition-all"
-                :style="{ width: `${row.recoveryWidth}%` }"
-              />
-            </div>
-            <p class="text-[11px] text-text-muted">
-              {{ formatCurrency(row.metrics.accumulatedRake) }} rake ·
-              {{ row.metrics.weeksTracked }} sem. ·
-              {{ row.health.classificationLabel }}
-            </p>
+              <div class="h-2 overflow-hidden rounded-full bg-white/10">
+                <div
+                  class="h-full rounded-full bg-accent transition-all"
+                  :style="{ width: `${row.recoveryWidth}%` }"
+                />
+              </div>
+              <p class="text-[11px] text-text-muted">
+                {{ formatCurrency(row.metrics.accumulatedRakeLiquid) }} líq.
+                <span class="text-text-muted/70">
+                  ({{ formatCurrency(row.metrics.accumulatedRake) }} bruto)
+                </span>
+                · {{ row.metrics.weeksTracked }} sem.
+                · {{ row.health.classificationLabel }}
+              </p>
+            </button>
           </li>
         </ul>
       </div>
@@ -117,9 +129,9 @@ const lastWeekStart = computed(
 
     <CollapsiblePanel
       v-if="weekColumns.length"
-      title="Rake semanal"
-      hint="Valores por semana importada — a última coluna é a mais recente"
-      :default-open="true"
+      title="Rake semanal (bruto)"
+      hint="Valores importados por semana — a última coluna é a mais recente"
+      :default-open="false"
     >
       <div class="overflow-x-auto">
         <table class="min-w-full text-left text-sm">

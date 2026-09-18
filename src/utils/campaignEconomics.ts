@@ -1,5 +1,21 @@
+import { LEAGUE_FEE_RATE } from './crmIncentiveEconomics'
 import { safeDivide } from './campaignMetricsBridge'
 import type { AcquisitionNature } from '../types/campaigns'
+
+/** Espelho da taxa da liga usada no CRM (fonte única: crmIncentiveEconomics). */
+export { LEAGUE_FEE_RATE }
+
+/** Taxa da liga sobre rake bruto confirmado. */
+export function toLeagueFee(rakeBruto: number): number {
+  const n = Number(rakeBruto) || 0
+  return n * LEAGUE_FEE_RATE
+}
+
+/** Rake líquido = bruto × (1 − taxa da liga). */
+export function toLiquidRake(rakeBruto: number): number {
+  const n = Number(rakeBruto) || 0
+  return n * (1 - LEAGUE_FEE_RATE)
+}
 
 /** Investimento da Campanha informado manualmente (null = não preenchido). */
 export function hasCampaignInvestment(
@@ -23,14 +39,15 @@ export function resolveTotalInvestment(params: {
 }
 
 /**
- * Payback / recuperação oficial.
- * ORGANIC + investment null → 100% fixo (mesmo com bônus).
- * Caso contrário → rake / Investimento Total (quando denominador válido).
+ * Recuperação oficial = Rake Líquido ÷ (Investimento + Ativação).
+ * `accumulatedRake` / períodos entram como RAKE BRUTO; a conversão 18% é interna.
+ * ORGANIC + investment null → 100% fixo.
  */
 export function calculateRecoveryRate(params: {
   acquisitionNature: AcquisitionNature
   campaignInvestment: number | null | undefined
   activationInvestment: number
+  /** Rake bruto acumulado (fato importado). */
   accumulatedRake: number
 }): number | null {
   if (
@@ -41,10 +58,15 @@ export function calculateRecoveryRate(params: {
   }
   const total = resolveTotalInvestment(params)
   if (total === null || total <= 0) return null
-  const rate = safeDivide(params.accumulatedRake, total)
+  const liquid = toLiquidRake(params.accumulatedRake)
+  const rate = safeDivide(liquid, total)
   return rate === null ? null : rate * 100
 }
 
+/**
+ * Payback oficial: primeira semana em que Σ rake líquido ≥ investimento total.
+ * `weeklyRake` nos períodos é bruto; a conversão é aplicada no acumulado.
+ */
 export function calculateWeeklyPaybackAgainstTotal(
   totalInvestment: number | null,
   periods: Array<{ periodStart: string; periodEnd: string; weeklyRake: number }>,
@@ -69,17 +91,17 @@ export function calculateWeeklyPaybackAgainstTotal(
   const sorted = [...periods].sort((a, b) =>
     a.periodStart.localeCompare(b.periodStart),
   )
-  let accumulated = 0
+  let accumulatedLiquid = 0
   for (let i = 0; i < sorted.length; i += 1) {
-    accumulated += Number(sorted[i].weeklyRake) || 0
-    if (accumulated >= totalInvestment) {
+    accumulatedLiquid += toLiquidRake(Number(sorted[i].weeklyRake) || 0)
+    if (accumulatedLiquid >= totalInvestment) {
       return {
         reached: true,
         periodStart: sorted[i].periodStart,
         periodEnd: sorted[i].periodEnd,
         periodsToPayback: i + 1,
-        accumulatedAtPayback: accumulated,
-        surplus: accumulated - totalInvestment,
+        accumulatedAtPayback: accumulatedLiquid,
+        surplus: accumulatedLiquid - totalInvestment,
       }
     }
   }
@@ -105,6 +127,7 @@ export function calculateEconomicStatus(params: {
   acquisitionNature: AcquisitionNature
   campaignInvestment: number | null | undefined
   activationInvestment: number
+  /** Rake bruto acumulado. */
   accumulatedRake: number
   hasImportedPeriods: boolean
 }): EconomicStatus {
@@ -116,7 +139,6 @@ export function calculateEconomicStatus(params: {
     !hasCampaignInvestment(params.campaignInvestment)
 
   if (organicFixed) {
-    // Payback fixo 100% — não marcar "em recuperação" só porque há rake.
     return 'payback'
   }
 
@@ -124,8 +146,9 @@ export function calculateEconomicStatus(params: {
   if (total === null || total <= 0) {
     return 'no_return'
   }
-  if (params.accumulatedRake >= total) return 'payback'
-  if (params.accumulatedRake > 0 && params.accumulatedRake < total) {
+  const liquid = toLiquidRake(params.accumulatedRake)
+  if (liquid >= total) return 'payback'
+  if (liquid > 0 && liquid < total) {
     return 'recovering'
   }
   return 'no_return'

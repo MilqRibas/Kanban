@@ -12,6 +12,8 @@ import {
   calculateWeeklyPaybackAgainstTotal,
   hasCampaignInvestment,
   resolveTotalInvestment,
+  toLeagueFee,
+  toLiquidRake,
 } from './campaignEconomics'
 
 export type WeeklyPeriodPoint = {
@@ -452,9 +454,15 @@ export type CampaignWeeklyMetrics = {
   costPerAgencyPlayer: number | null
   costPerActive: number | null
   costPerPlayerFunnel: number | null
+  /** Rake bruto acumulado (fato importado). */
   accumulatedRake: number
+  /** Taxa da liga 18% sobre o bruto. */
+  leagueFee: number
+  /** Rake líquido = bruto × 0,82 (base oficial de recuperação/payback). */
+  accumulatedRakeLiquid: number
   averageRakePerActive: number | null
   recoveryRate: number | null
+  /** Diferença líquido − custo (não bruto − custo). */
   investmentDifference: number | null
   campaignInvestment: number | null
   activationInvestment: number
@@ -484,6 +492,8 @@ export function buildCampaignWeeklyMetrics(params: {
   const activationInvestment = Number(params.activationInvestment) || 0
   const agencyPlayers = campaign.capturedPlayers
   const accumulatedRake = sumWeeklyRake(agentPeriods)
+  const leagueFee = toLeagueFee(accumulatedRake)
+  const accumulatedRakeLiquid = toLiquidRake(accumulatedRake)
   const sorted = sortPeriodsChronologically(agentPeriods)
   const last = sorted[sorted.length - 1] ?? null
   const nature = campaign.acquisitionNature ?? 'PAID'
@@ -517,7 +527,7 @@ export function buildCampaignWeeklyMetrics(params: {
         periodStart: last?.periodStart ?? null,
         periodEnd: last?.periodEnd ?? null,
         periodsToPayback: agentPeriods.length || null,
-        accumulatedAtPayback: accumulatedRake,
+        accumulatedAtPayback: accumulatedRakeLiquid,
         surplus: null,
       }
     : calculateWeeklyPaybackAgainstTotal(totalInvestment, agentPeriods)
@@ -537,10 +547,12 @@ export function buildCampaignWeeklyMetrics(params: {
       campaign.clubFichasConversions ?? 0,
     ),
     accumulatedRake,
+    leagueFee,
+    accumulatedRakeLiquid,
     averageRakePerActive: safeDivide(accumulatedRake, uniqueActivePlayers),
     recoveryRate,
     investmentDifference:
-      totalInvestment != null ? accumulatedRake - totalInvestment : null,
+      totalInvestment != null ? accumulatedRakeLiquid - totalInvestment : null,
     campaignInvestment: hasCampaignInvestment(campaign.investment)
       ? Number(campaign.investment)
       : null,

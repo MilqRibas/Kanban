@@ -106,11 +106,9 @@ onBeforeUnmount(() => {
       <div class="h-6 w-px bg-white/15" />
       <h1 class="truncate text-base font-semibold tracking-tight text-text-primary">
         {{
-          auth.isCampaignsOnly
+          auth.isCampaignsOnly || activeTab === 'campaigns'
             ? 'Campanhas'
-            : activeTab === 'campaigns'
-              ? 'Campanhas'
-              : board.title
+            : board.title
         }}
       </h1>
       <button

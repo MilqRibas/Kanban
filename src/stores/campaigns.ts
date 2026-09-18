@@ -182,7 +182,7 @@ function asRangeQuery(query: unknown): RangeQuery {
 }
 
 const TRANSACTION_LIST_COLUMNS =
-  'id, board_id, import_id, external_transaction_id, receiver_player_id, receiver_nickname, agent_id, agent_nickname, occurred_at, period_start, period_end, origin, transaction_type, amount, chips_send_out, chips_claimback, system_status, order_status, is_deposit, is_bonus, created_at'
+  'id, board_id, import_id, external_transaction_id, receiver_player_id, receiver_nickname, sender_player_id, agent_id, agent_nickname, occurred_at, period_start, period_end, origin, transaction_type, amount, chips_send_out, chips_claimback, system_status, order_status, is_deposit, is_bonus, created_at'
 
 function collapseParsedReport(parsed: ParsedReport): ParsedReport {
   const agents = aggregateAgentsById(parsed.agents)
@@ -345,6 +345,7 @@ function mapTransaction(row: Record<string, unknown>): CampaignTransaction {
     externalTransactionId: String(row.external_transaction_id ?? ''),
     receiverPlayerId: String(row.receiver_player_id ?? ''),
     receiverNickname: (row.receiver_nickname as string | null) ?? null,
+    senderPlayerId: (row.sender_player_id as string | null) ?? null,
     agentId: (row.agent_id as string | null) ?? null,
     agentNickname: (row.agent_nickname as string | null) ?? null,
     occurredAt: (row.occurred_at as string | null) ?? null,
@@ -1009,6 +1010,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     const list = visibleCampaigns.value.filter((c) => !c.isArchived)
     let paidInvestment = 0
     let paidRake = 0
+    let paidLiquid = 0
     let organicRake = 0
     let paidActive = 0
     let totalCaptured = 0
@@ -1025,6 +1027,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       totalActive += m.uniqueActivePlayers
       if (paid) {
         paidRake += m.accumulatedRake
+        paidLiquid += m.accumulatedRakeLiquid
         paidActive += m.uniqueActivePlayers
         if (m.totalInvestment != null) paidInvestment += m.totalInvestment
         if (m.status === 'payback') paybackCount += 1
@@ -1042,7 +1045,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     const activationRate =
       totalCaptured > 0 ? (totalActive / totalCaptured) * 100 : null
     const recoveryRate =
-      paidInvestment > 0 ? (paidRake / paidInvestment) * 100 : null
+      paidInvestment > 0 ? (paidLiquid / paidInvestment) * 100 : null
     const costPerActive =
       paidActive > 0 && paidInvestment > 0 ? paidInvestment / paidActive : null
     const averageRakePerActive = paidActive > 0 ? paidRake / paidActive : null
@@ -2508,6 +2511,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         external_transaction_id: t.externalTransactionId,
         receiver_player_id: t.receiverPlayerId,
         receiver_nickname: t.receiverNickname,
+        sender_player_id: t.senderPlayerId ?? null,
         agent_id: t.agentId,
         agent_nickname: t.agentNickname,
         occurred_at: t.occurredAt,

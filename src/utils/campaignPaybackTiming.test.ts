@@ -84,9 +84,9 @@ describe('computePaybackTiming', () => {
         },
       ],
     })
-    // elapsed 01/07..19/07 = 19 days; daily = 200/19; remaining 800 → ceil(800/(200/19)) = 76
+    // líquido 200*0.82=164; elapsed 19d; remaining 1000-164=836 → ceil(836/(164/19))=97
     expect(result.daysToPayback).toBeNull()
-    expect(result.expectedDaysToPayback).toBe(76)
+    expect(result.expectedDaysToPayback).toBe(97)
     expect(result.projectionUnavailable).toBe(false)
   })
 

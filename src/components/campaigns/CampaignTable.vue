@@ -108,7 +108,7 @@ const rows = computed(() => {
     else if (key === 'investment')
       cmp = compareNum(a.campaign.investment, b.campaign.investment)
     else if (key === 'rake')
-      cmp = compareNum(a.metrics.accumulatedRake, b.metrics.accumulatedRake)
+      cmp = compareNum(a.metrics.accumulatedRakeLiquid, b.metrics.accumulatedRakeLiquid)
     else if (key === 'recovery')
       cmp = compareNum(a.metrics.recoveryRate, b.metrics.recoveryRate)
     else if (key === 'health')
@@ -236,9 +236,9 @@ function typeLabel(campaign: Campaign) {
           </dd>
         </div>
         <div>
-          <dt class="text-text-muted">Rake acum.</dt>
+          <dt class="text-text-muted">Rake líq.</dt>
           <dd class="mt-0.5 tabular-nums text-text-primary">
-            {{ formatCurrency(row.metrics.accumulatedRake) }}
+            {{ formatCurrency(row.metrics.accumulatedRakeLiquid) }}
           </dd>
         </div>
         <div>
@@ -381,7 +381,7 @@ function typeLabel(campaign: Campaign) {
             </th>
             <th class="whitespace-nowrap px-3 py-3 font-medium text-right" :aria-sort="sortAria('rake')">
               <button type="button" class="inline-flex w-full items-center justify-end gap-1 hover:text-text-primary" @click="toggleSort('rake')">
-                Rake acum.
+                Rake líq.
                 <ChevronDown v-if="sortKey === 'rake'" :size="13" :class="{ 'rotate-180': sortAsc }" />
               </button>
             </th>
@@ -465,7 +465,7 @@ function typeLabel(campaign: Campaign) {
               {{ formatCurrency(row.campaign.investment) }}
             </td>
             <td class="whitespace-nowrap px-3 py-3 text-right tabular-nums">
-              {{ formatCurrency(row.metrics.accumulatedRake) }}
+              {{ formatCurrency(row.metrics.accumulatedRakeLiquid) }}
             </td>
             <td class="whitespace-nowrap px-3 py-3 text-right tabular-nums">
               {{ formatPercent(row.metrics.recoveryRate) }}

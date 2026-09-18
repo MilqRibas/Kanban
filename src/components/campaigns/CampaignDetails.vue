@@ -44,10 +44,13 @@ import CampaignStatusBadge from './CampaignStatusBadge.vue'
 import CollapsiblePanel from './CollapsiblePanel.vue'
 import CampaignAlertsPanel from './CampaignAlertsPanel.vue'
 import { buildCampaignPlayerAlerts } from '../../utils/campaignPlayerAlerts'
+import { usePlayer360 } from '../../composables/usePlayer360'
 
 const props = defineProps<{
   campaign: Campaign
 }>()
+
+const player360 = usePlayer360()
 
 const emit = defineEmits<{
   back: []
@@ -310,14 +313,16 @@ const overviewCards = computed(() => {
       value: formatCurrency(m.campaignInvestment),
     },
     { label: 'Ativação', value: formatCurrency(m.activationInvestment) },
-    { label: 'Investimento Total', value: formatCurrency(m.totalInvestment) },
+    { label: 'Custo Total', value: formatCurrency(m.totalInvestment) },
     { label: 'Jogadores', value: formatNumber(cohortMembers.value.length) },
     { label: 'Jogadores (funil)', value: formatNumber(m.agencyPlayers) },
     { label: 'Ativos', value: formatNumber(m.uniqueActivePlayers) },
     { label: 'Ativação %', value: formatPercent(m.activationRate) },
     { label: 'Custo / jogador (funil)', value: formatCurrency(m.costPerPlayerFunnel) },
     { label: 'Custo / ativo', value: formatCurrency(m.costPerActive) },
-    { label: 'Rake acumulado', value: formatCurrency(m.accumulatedRake) },
+    { label: 'Rake Bruto', value: formatCurrency(m.accumulatedRake) },
+    { label: 'Taxa da Liga (18%)', value: formatCurrency(m.leagueFee) },
+    { label: 'Rake Líquido', value: formatCurrency(m.accumulatedRakeLiquid) },
     { label: 'Recuperação', value: formatPercent(m.recoveryRate) },
     { label: 'Volume depositado', value: formatCurrency(pp?.depositedVolume) },
     { label: 'Depositantes', value: formatNumber(pp?.uniqueDepositors) },
@@ -677,6 +682,10 @@ function sortPlayers(key: typeof playerSortKey.value) {
 
 function openPlayerDetail(playerId: string) {
   selectedPlayerId.value = playerId
+}
+
+function openPlayer360FromCampaign(playerId: string) {
+  void player360.open(playerId)
 }
 
 function closePlayerDetail() {
@@ -1956,6 +1965,13 @@ watch(tableDetailsPeriod, async (period) => {
       </div>
 
       <div class="p-4 space-y-4">
+        <button
+          type="button"
+          class="w-full rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent/20"
+          @click="openPlayer360FromCampaign(selectedPlayerDetail.player.playerId)"
+        >
+          Abrir Player 360º
+        </button>
         <div class="grid grid-cols-2 gap-2.5">
           <div class="rounded-xl bg-surface/40 px-3 py-2.5">
             <p class="text-[11px] font-medium uppercase tracking-wide text-text-muted">

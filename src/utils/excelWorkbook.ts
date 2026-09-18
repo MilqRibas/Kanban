@@ -1,11 +1,59 @@
 import readXlsxFile from 'read-excel-file/browser'
+import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 
 export type WorkbookSheets = Map<string, unknown[][]>
+
+/**
+ * Suprema exports sometimes embed literal NaN in sheet XML, which makes
+ * read-excel-file throw VALUE_INVALID. Blank those cells before parse.
+ */
+export function sanitizeExcelNaNCells(buffer: ArrayBuffer): ArrayBuffer {
+  try {
+    const files = unzipSync(new Uint8Array(buffer))
+    let changed = false
+    for (const name of Object.keys(files)) {
+      if (!/^xl\/worksheets\/[^/]+\.xml$/i.test(name)) continue
+      const xml = strFromU8(files[name]!)
+      const next = xml
+        .replace(/<v>\s*NaN\s*<\/v>/gi, '<v></v>')
+        .replace(/<v>\s*#N\/A\s*<\/v>/gi, '<v></v>')
+        .replace(/<v>\s*#VALUE!\s*<\/v>/gi, '<v></v>')
+        .replace(/<v>\s*#DIV\/0!\s*<\/v>/gi, '<v></v>')
+      if (next !== xml) {
+        files[name] = strToU8(next)
+        changed = true
+      }
+    }
+    if (!changed) return buffer
+    const zipped = zipSync(files)
+    return zipped.buffer.slice(
+      zipped.byteOffset,
+      zipped.byteOffset + zipped.byteLength,
+    ) as ArrayBuffer
+  } catch {
+    return buffer
+  }
+}
+
+function isInvalidCellError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  return /VALUE_INVALID|InvalidSpreadsheetError/i.test(msg)
+}
+
+async function readSheets(buffer: ArrayBuffer) {
+  return readXlsxFile(sanitizeExcelNaNCells(buffer))
+}
 
 export async function readWorkbookFromBuffer(
   buffer: ArrayBuffer,
 ): Promise<WorkbookSheets> {
-  const sheets = await readXlsxFile(buffer)
+  let sheets
+  try {
+    sheets = await readSheets(buffer)
+  } catch (err) {
+    if (!isInvalidCellError(err)) throw err
+    sheets = await readXlsxFile(sanitizeExcelNaNCells(buffer))
+  }
   const map = new Map<string, unknown[][]>()
   for (const { sheet, data } of sheets) {
     map.set(sheet, data as unknown[][])
@@ -16,7 +64,13 @@ export async function readWorkbookFromBuffer(
 export async function readFirstSheetFromBuffer(
   buffer: ArrayBuffer,
 ): Promise<unknown[][]> {
-  const sheets = await readXlsxFile(buffer)
+  let sheets
+  try {
+    sheets = await readSheets(buffer)
+  } catch (err) {
+    if (!isInvalidCellError(err)) throw err
+    sheets = await readXlsxFile(sanitizeExcelNaNCells(buffer))
+  }
   const first = sheets[0]
   if (!first) throw new Error('Planilha vazia.')
   return first.data as unknown[][]

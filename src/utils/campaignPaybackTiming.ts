@@ -1,3 +1,4 @@
+import { toLiquidRake } from './campaignEconomics'
 import {
   inclusiveDayCount,
   type WeeklyPaybackResult,
@@ -16,17 +17,17 @@ export type PaybackTimingResult = {
 const MIN_ELAPSED_DAYS_FOR_PROJECTION = 7
 
 /**
- * Tempo de payback a partir da regra canônica já usada pelo sistema:
- * `payback.reached` = primeira semana em que rake acumulado ≥ investimento total.
+ * Tempo de payback a partir da regra canônica:
+ * `payback.reached` = primeira semana em que rake LÍQUIDO acumulado ≥ investimento total.
  *
- * Precisão: granularidade semanal. Para o realizado, usa o `periodEnd` da semana
- * em que o total foi cruzado (limite superior da semana do cruzamento).
+ * `accumulatedRake` e `periods[].weeklyRake` entram como bruto; a projeção usa ritmo líquido.
  *
  * Campanhas com `organicFixedPayback` não entram (payback fixo sem cruzamento).
  */
 export function computePaybackTiming(params: {
   startDate: string | null | undefined
   totalInvestment: number | null | undefined
+  /** Rake bruto acumulado. */
   accumulatedRake: number
   payback: WeeklyPaybackResult
   organicFixedPayback: boolean
@@ -54,11 +55,11 @@ export function computePaybackTiming(params: {
   }
 
   const total = Number(params.totalInvestment)
-  const rake = Number(params.accumulatedRake) || 0
+  const liquid = toLiquidRake(Number(params.accumulatedRake) || 0)
   if (
     !Number.isFinite(total) ||
     total <= 0 ||
-    rake <= 0 ||
+    liquid <= 0 ||
     !params.startDate ||
     params.periods.length === 0
   ) {
@@ -69,7 +70,7 @@ export function computePaybackTiming(params: {
     }
   }
 
-  const remaining = total - rake
+  const remaining = total - liquid
   if (remaining <= 0) {
     // Status pode ainda não refletir; não inventar projeção.
     return {
@@ -105,7 +106,7 @@ export function computePaybackTiming(params: {
     }
   }
 
-  const dailyRate = rake / elapsedDays
+  const dailyRate = liquid / elapsedDays
   if (!Number.isFinite(dailyRate) || dailyRate <= 0) {
     return {
       daysToPayback: null,

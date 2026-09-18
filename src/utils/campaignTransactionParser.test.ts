@@ -7,7 +7,6 @@ import {
   buildPurchasePowerMetrics,
 } from './campaignDepositMetrics'
 import {
-  normalizeEntityId,
   parseTransactionReportBuffer,
   resolveTransactionAmount,
 } from './campaignTransactionParser'
@@ -57,10 +56,136 @@ describe('transaction parser — real Suprema headers', () => {
     expect(parsed.recognizedHeaders.agentId.toLowerCase()).toContain('agente')
   })
 
-  it('normalizes numeric and string IDs the same way', () => {
-    expect(normalizeEntityId(1730032)).toBe('1730032')
-    expect(normalizeEntityId('1730032')).toBe('1730032')
-    expect(normalizeEntityId('1730032.0')).toBe('1730032')
+  it('maps Sender player ID and Sender player nickname from real Suprema headers', async () => {
+    const headers = [
+      'ID',
+      'Sender player ID',
+      'Sender player nickname',
+      'Receiver player ID',
+      'Receiver nickname',
+      'Agente player ID',
+      'Dia',
+      'Hora',
+      'Origem',
+      'SX tipo',
+      'Chips Send Out',
+      'Chips Claimback',
+      'Status sistema',
+      'Order status',
+    ]
+    const buffer = await buildWorkbookBuffer(headers, [
+      [
+        'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+        1092502,
+        'MKT GT',
+        555001,
+        'playerNick',
+        1730032,
+        '16/09/2026',
+        '15:57:38',
+        '-',
+        'Bônus',
+        50,
+        0,
+        'Concluído',
+        'Concluído',
+      ],
+      [
+        'b2c3d4e5-f6a7-8901-bcde-f12345678901',
+        1092502,
+        'MKT GT',
+        555002,
+        'otherNick',
+        1708406,
+        '16/09/2026',
+        '16:01:00',
+        '-',
+        'Bônus',
+        30,
+        0,
+        'Concluído',
+        'Concluído',
+      ],
+      [
+        'c3d4e5f6-a7b8-9012-cdef-123456789012',
+        9999999,
+        'Other Account',
+        555003,
+        'third',
+        1730032,
+        '16/09/2026',
+        '16:05:00',
+        'SX 24 Horas',
+        'Envio de Fichas Jogador',
+        100,
+        0,
+        'Concluído',
+        'Concluído',
+      ],
+    ])
+    const parsed = await parseTransactionReportBuffer(
+      buffer,
+      'Relatório de transações suprema 16-09-2026-15-57-38.xlsx',
+    )
+    expect(parsed.recognizedHeaders.senderPlayerId).toBe('Sender player ID')
+    expect(parsed.recognizedHeaders.senderNickname).toBe('Sender player nickname')
+    expect(parsed.warnings.some((w) => w.code === 'sender_column_ok')).toBe(true)
+    expect(parsed.warnings.some((w) => w.code === 'missing_sender_column')).toBe(false)
+
+    const mkt = parsed.transactions.filter((t) => t.senderPlayerId === '1092502')
+    expect(mkt).toHaveLength(2)
+    expect(mkt[0].senderNickname).toBe('MKT GT')
+    expect(mkt.map((t) => t.receiverPlayerId).sort()).toEqual(['555001', '555002'])
+    expect(mkt.reduce((s, t) => s + t.amount, 0)).toBe(80)
+
+    // Non-MKT sender must not be treated as MKT GT by the parser itself
+    expect(parsed.transactions[2].senderPlayerId).toBe('9999999')
+    expect(parsed.transactions[2].isDeposit).toBe(true)
+  })
+
+  it('maps bare Player ID as sender when Receiver player ID also exists', async () => {
+    const headers = [
+      'ID',
+      'Player ID',
+      'Receiver player ID',
+      'Agente player ID',
+      'Dia',
+      'Hora',
+      'Origem',
+      'SX tipo',
+      'Chips Send Out',
+      'Order Status',
+    ]
+    const buffer = await buildWorkbookBuffer(headers, [
+      [9001, 1092502, 555001, 1730032, '03/08/2026', '10:15:00', '-', 'Bônus', 50, 'Completed'],
+    ])
+    const parsed = await parseTransactionReportBuffer(buffer, 'mkt-sample.xlsx')
+    expect(parsed.transactions[0].senderPlayerId).toBe('1092502')
+    expect(parsed.transactions[0].receiverPlayerId).toBe('555001')
+    expect(parsed.transactions[0].agentId).toBe('1730032')
+    expect(parsed.recognizedHeaders.senderPlayerId.toLowerCase()).toContain('player')
+  })
+
+  it('preserves unmapped columns in raw and warns', async () => {
+    const headers = [
+      'ID',
+      'Receiver player ID',
+      'Agente player ID',
+      'Dia',
+      'Hora',
+      'Origem',
+      'SX tipo',
+      'Chips Send Out',
+      'Order Status',
+      'Conta misteriosa',
+    ]
+    const buffer = await buildWorkbookBuffer(headers, [
+      [1, 10, 20, '03/08/2026', '10:00:00', 'SX 24 Horas', '-', 100, 'Completed', 'ABC'],
+    ])
+    const parsed = await parseTransactionReportBuffer(buffer, 'file.xlsx')
+    expect(parsed.transactions[0].raw['col:Conta misteriosa']).toBe('ABC')
+    expect(parsed.warnings.some((w) => w.code === 'unmapped_headers')).toBe(true)
+    expect(parsed.warnings.some((w) => w.code === 'missing_sender_column')).toBe(true)
   })
 
   it('uses Dia/Hora for occurredAt, not batch period', async () => {
@@ -221,7 +346,7 @@ describe('payback + funnel regression', () => {
         activationInvestment: 800,
         accumulatedRake: 5220,
       }),
-    ).toBeCloseTo(90, 5)
+    ).toBeCloseTo((5220 * 0.82) / 5800 * 100, 5)
   })
 
   it('organic without investment stays 100%', () => {

@@ -25,6 +25,8 @@ import { useNotificationsStore } from './stores/notifications'
 import { useCommunityStore } from './stores/community'
 import { useHubSectionsStore } from './stores/hubSections'
 import { useCampaignsStore } from './stores/campaigns'
+import { providePlayer360 } from './composables/usePlayer360'
+import Player360Panel from './components/crm/Player360Panel.vue'
 
 const TAB_STORAGE_KEY = 'b2c-active-tab'
 const NAV_TABS: readonly NavTab[] = [
@@ -40,6 +42,8 @@ const NAV_TABS: readonly NavTab[] = [
 function readStoredTab(): NavTab {
   try {
     const raw = localStorage.getItem(TAB_STORAGE_KEY)
+    // Legado: CRM era aba top-level — agora vive dentro de Campanhas.
+    if (raw === 'crm') return 'campaigns'
     if (raw && (NAV_TABS as readonly string[]).includes(raw)) {
       return raw as NavTab
     }
@@ -90,6 +94,7 @@ const notifications = useNotificationsStore()
 const community = useCommunityStore()
 const hubSections = useHubSectionsStore()
 const campaigns = useCampaignsStore()
+providePlayer360()
 const activeTab = ref<NavTab>(readStoredTab())
 const boardBootstrapping = ref(false)
 const notesReady = ref(false)
@@ -132,6 +137,7 @@ function prefetchTabChunks() {
   void import('./components/NotesView.vue')
   void import('./components/HubView.vue')
   void import('./components/CampaignsView.vue')
+  void import('./components/crm/CrmView.vue')
 }
 
 async function ensureTabData(tab: NavTab) {
@@ -306,6 +312,7 @@ watch(activeTab, async (tab) => {
       </main>
       <AppFooter v-model:active-tab="activeTab" />
       <CardDetailPanel v-if="!auth.isCampaignsOnly" />
+      <Player360Panel />
     </div>
   </div>
 

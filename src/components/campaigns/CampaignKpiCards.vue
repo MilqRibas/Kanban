@@ -12,6 +12,7 @@ import {
   UserCheck,
 } from '@lucide/vue'
 import type { OverviewKpis } from '../../utils/campaignMetrics'
+import { LEAGUE_FEE_RATE } from '../../utils/crmIncentiveEconomics'
 import { formatCurrency, formatNumber, formatPercent } from '../../utils/campaignFormat'
 
 defineProps<{
@@ -24,6 +25,7 @@ const cards: {
   shortLabel: string
   icon: Component
   format: 'currency' | 'number' | 'percent' | 'count' | 'days'
+  hint?: string
 }[] = [
   {
     key: 'totalInvestment',
@@ -34,10 +36,11 @@ const cards: {
   },
   {
     key: 'totalAccumulatedRake',
-    label: 'Rake',
-    shortLabel: 'Rake',
+    label: 'Rake bruto',
+    shortLabel: 'Rake bruto',
     icon: CircleDollarSign,
     format: 'currency',
+    hint: 'Fato importado · recuperação usa líquido (−18%)',
   },
   {
     key: 'totalCaptured',
@@ -56,16 +59,17 @@ const cards: {
   {
     key: 'activationRate',
     label: 'Taxa de ativação',
-    shortLabel: 'Ativação',
+    shortLabel: '% Ativação',
     icon: Percent,
     format: 'percent',
   },
   {
     key: 'recoveryRate',
-    label: 'Recuperação',
-    shortLabel: 'Recuperação',
+    label: 'Recuperação líquida',
+    shortLabel: '% Recuperação',
     icon: TrendingUp,
     format: 'percent',
+    hint: 'Rake líquido ÷ (investimento + ativação)',
   },
   {
     key: 'paybackCount',
@@ -108,22 +112,31 @@ function display(value: number | null, format: (typeof cards)[number]['format'])
       v-for="card in cards"
       :key="card.key"
       class="panel-glass rounded-xl px-2.5 py-2 sm:px-3 sm:py-2.5"
+      :title="card.hint || card.label"
     >
       <div class="flex items-center gap-1.5 text-text-muted">
         <component :is="card.icon" :size="12" class="shrink-0 text-accent" />
         <span class="truncate text-[10px] font-medium uppercase tracking-wide">
-          <span class="xl:hidden">{{ card.shortLabel }}</span>
-          <span class="hidden xl:inline">{{ card.shortLabel }}</span>
+          {{ card.shortLabel }}
         </span>
       </div>
       <p class="mt-1 text-sm font-semibold tabular-nums leading-tight text-text-primary sm:text-base lg:text-lg">
         {{ display(kpis[card.key], card.format) }}
       </p>
       <p
-        v-if="card.key === 'totalAccumulatedRake' && (kpis.organicAccumulatedRake ?? 0) > 0.009"
+        v-if="card.key === 'totalAccumulatedRake'"
         class="mt-0.5 truncate text-[10px] text-text-muted"
       >
-        Orgânicas {{ formatCurrency(kpis.organicAccumulatedRake) }}
+        Líquido {{ formatCurrency((kpis.totalAccumulatedRake || 0) * (1 - LEAGUE_FEE_RATE)) }}
+        <span v-if="(kpis.organicAccumulatedRake ?? 0) > 0.009">
+          · Org. {{ formatCurrency(kpis.organicAccumulatedRake) }}
+        </span>
+      </p>
+      <p
+        v-else-if="card.key === 'recoveryRate'"
+        class="mt-0.5 truncate text-[10px] text-text-muted"
+      >
+        Base líquida (−18% liga)
       </p>
     </div>
   </div>

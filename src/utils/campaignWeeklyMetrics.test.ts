@@ -37,7 +37,7 @@ describe('weekly rake accumulation', () => {
     ])
   })
 
-  it('records payback on the first week that crosses investment and keeps it', () => {
+  it('records payback on the first week that crosses investment (liquid) and keeps it', () => {
     const weeks = [
       { periodStart: '2026-07-06', periodEnd: '2026-07-12', weeklyRake: 500 },
       { periodStart: '2026-07-13', periodEnd: '2026-07-19', weeklyRake: 700 },
@@ -46,13 +46,14 @@ describe('weekly rake accumulation', () => {
       { periodStart: '2026-08-03', periodEnd: '2026-08-09', weeklyRake: 400 },
     ]
 
-    const at4 = calculateWeeklyPayback(2000, weeks.slice(0, 4))
+    // Bruto 2100 → líquido 1722; custo 1600 → cruza na 4ª semana
+    const at4 = calculateWeeklyPayback(1600, weeks.slice(0, 4))
     expect(at4.reached).toBe(true)
     expect(at4.periodStart).toBe('2026-07-27')
     expect(at4.periodsToPayback).toBe(4)
-    expect(at4.accumulatedAtPayback).toBe(2100)
+    expect(at4.accumulatedAtPayback).toBeCloseTo(2100 * 0.82, 5)
 
-    const at5 = calculateWeeklyPayback(2000, weeks)
+    const at5 = calculateWeeklyPayback(1600, weeks)
     expect(at5.reached).toBe(true)
     expect(at5.periodStart).toBe('2026-07-27')
     expect(at5.periodsToPayback).toBe(4)
@@ -70,7 +71,7 @@ describe('weekly rake accumulation', () => {
     expect(acc[0].rake).toBe(230)
   })
 
-  it('builds recovery from accumulated rake', () => {
+  it('builds recovery from accumulated liquid rake', () => {
     const metrics = buildCampaignWeeklyMetrics({
       campaign: {
         investment: 2000,
@@ -88,7 +89,8 @@ describe('weekly rake accumulation', () => {
       activationInvestment: 0,
     })
     expect(metrics.accumulatedRake).toBe(1500)
-    expect(metrics.recoveryRate).toBe(75)
+    expect(metrics.accumulatedRakeLiquid).toBeCloseTo(1230, 5)
+    expect(metrics.recoveryRate).toBeCloseTo(61.5, 5)
     expect(metrics.status).toBe('recovering')
     expect(metrics.activationRate).toBe(47)
   })

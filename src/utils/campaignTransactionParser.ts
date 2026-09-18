@@ -14,6 +14,10 @@ export type ParsedTransactionRow = {
   externalTransactionId: string
   receiverPlayerId: string
   receiverNickname: string | null
+  /** Remetente quando presente no XLSX (ex.: MKT GT = 1092502). */
+  senderPlayerId: string | null
+  /** Nickname do remetente (auxiliar; identidade canônica é senderPlayerId). */
+  senderNickname: string | null
   agentId: string | null
   agentNickname: string | null
   occurredAt: string | null
@@ -114,6 +118,8 @@ type FieldKey =
   | 'externalTransactionId'
   | 'receiverPlayerId'
   | 'receiverNickname'
+  | 'senderPlayerId'
+  | 'senderNickname'
   | 'agentId'
   | 'agentNickname'
   | 'day'
@@ -149,6 +155,17 @@ const FIELD_MATCHERS: Array<{
     // NÃO incluir "player id" solto — colide com "Agente player ID".
   },
   {
+    field: 'senderPlayerId',
+    exact: [
+      'sender player id',
+      'senderplayerid',
+      'id jogador remetente',
+      'player id remetente',
+      'from player id',
+      'sender id',
+    ],
+  },
+  {
     field: 'agentId',
     exact: [
       'agente player id',
@@ -166,6 +183,16 @@ const FIELD_MATCHERS: Array<{
       'receiver nick',
       'nickname receptor',
       'nick receptor',
+    ],
+  },
+  {
+    field: 'senderNickname',
+    exact: [
+      'sender player nickname',
+      'sender nickname',
+      'sender nick',
+      'nickname remetente',
+      'nick remetente',
     ],
   },
   {
@@ -227,6 +254,7 @@ const FIELD_MATCHERS: Array<{
 function mapHeaders(headerRow: unknown[]): {
   map: Map<FieldKey, number>
   labels: Record<string, string>
+  allHeaders: Array<{ idx: number; raw: string; h: string }>
 } {
   const map = new Map<FieldKey, number>()
   const labels: Record<string, string> = {}
@@ -262,18 +290,38 @@ function mapHeaders(headerRow: unknown[]): {
     }
   }
 
-  return { map, labels }
+  // 3) "Player ID" solto = remetente somente se Receiver já estiver mapeado
+  //    e a coluna não for agente (relatórios Suprema às vezes trazem Player ID do enviador).
+  if (!map.has('senderPlayerId') && map.has('receiverPlayerId')) {
+    const receiverIdx = map.get('receiverPlayerId')
+    const hit = normalized.find(
+      (c) =>
+        c.idx !== receiverIdx &&
+        (c.h === 'player id' || c.h === 'playerid' || c.h === 'id jogador') &&
+        !c.h.includes('agente') &&
+        !c.h.includes('agent') &&
+        !c.h.includes('receiver') &&
+        !c.h.includes('receptor'),
+    )
+    if (hit) {
+      map.set('senderPlayerId', hit.idx)
+      labels.senderPlayerId = hit.raw || hit.h
+    }
+  }
+
+  return { map, labels, allHeaders: normalized.filter((c) => c.raw || c.h) }
 }
 
 function findHeaderRow(rows: unknown[][]): {
   index: number
   map: Map<FieldKey, number>
   labels: Record<string, string>
+  allHeaders: Array<{ idx: number; raw: string; h: string }>
 } | null {
   for (let i = 0; i < Math.min(rows.length, 40); i += 1) {
-    const { map, labels } = mapHeaders(rows[i] ?? [])
-    if (map.has('externalTransactionId') && map.has('receiverPlayerId')) {
-      return { index: i, map, labels }
+    const mapped = mapHeaders(rows[i] ?? [])
+    if (mapped.map.has('externalTransactionId') && mapped.map.has('receiverPlayerId')) {
+      return { index: i, ...mapped }
     }
   }
   return null
@@ -473,6 +521,29 @@ export async function parseTransactionReportBuffer(
     })
   }
 
+  const mappedIdx = new Set(header.map.values())
+  const unmappedHeaders = header.allHeaders.filter((h) => h.raw && !mappedIdx.has(h.idx))
+  if (unmappedHeaders.length) {
+    warnings.push({
+      code: 'unmapped_headers',
+      message: `Colunas do XLSX não mapeadas (preservadas em raw): ${unmappedHeaders
+        .map((h) => h.raw)
+        .join(', ')}`,
+    })
+  }
+  if (!header.map.has('senderPlayerId')) {
+    warnings.push({
+      code: 'missing_sender_column',
+      message:
+        'Coluna de remetente (Sender / Player ID) não encontrada. Envio MKT GT (1092502) só será identificado se essa coluna existir no relatório.',
+    })
+  } else {
+    warnings.push({
+      code: 'sender_column_ok',
+      message: `Coluna de remetente reconhecida: ${header.labels.senderPlayerId}`,
+    })
+  }
+
   const transactions: ParsedTransactionRow[] = []
   const seen = new Set<string>()
   let rowsSkipped = 0
@@ -543,11 +614,18 @@ export async function parseTransactionReportBuffer(
     header.map.forEach((idx, key) => {
       raw[key] = row[idx]
     })
+    // Preserva TODAS as colunas originais do XLSX (evita perda silenciosa de Sender etc.)
+    for (const h of header.allHeaders) {
+      if (!h.raw) continue
+      raw[`col:${h.raw}`] = row[h.idx]
+    }
 
     transactions.push({
       externalTransactionId,
       receiverPlayerId,
       receiverNickname: toText(col('receiverNickname', row)),
+      senderPlayerId: normalizeEntityId(col('senderPlayerId', row)) || null,
+      senderNickname: toText(col('senderNickname', row)),
       agentId,
       agentNickname: toText(col('agentNickname', row)),
       occurredAt,

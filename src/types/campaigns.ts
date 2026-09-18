@@ -187,6 +187,8 @@ export interface CampaignTransaction {
   externalTransactionId: string
   receiverPlayerId: string
   receiverNickname: string | null
+  /** Remetente (MKT GT etc.) quando o XLSX / RPC informar. */
+  senderPlayerId: string | null
   agentId: string | null
   agentNickname: string | null
   occurredAt: string | null
