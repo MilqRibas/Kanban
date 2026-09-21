@@ -115,11 +115,11 @@ onBeforeUnmount(() => {
 })
 
 const selectClass =
-  'rounded-lg border border-border-subtle bg-surface px-2.5 py-1.5 text-sm text-text-primary outline-none focus:border-accent/60 sm:rounded-xl sm:px-3 sm:py-2'
+  'rounded-xl border border-border-subtle bg-surface px-2.5 py-1.5 text-sm text-text-primary outline-none focus:border-accent/60 sm:px-3 sm:py-2'
 </script>
 
 <template>
-  <div class="rounded-xl border border-border-subtle/70 bg-board-elevated/40 p-2 sm:p-2.5">
+  <div class="panel-glass rounded-2xl p-2.5 sm:p-3">
     <div class="flex items-center gap-2">
       <input
         type="search"
@@ -132,7 +132,7 @@ const selectClass =
       />
       <button
         type="button"
-        class="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border-subtle bg-surface px-2.5 py-1.5 text-xs text-text-secondary hover:text-text-primary sm:px-3 sm:py-2 sm:text-sm"
+        class="inline-flex shrink-0 items-center gap-1 rounded-xl border border-border-subtle bg-surface px-2.5 py-1.5 text-xs text-text-secondary hover:text-text-primary sm:px-3 sm:py-2 sm:text-sm"
         :aria-expanded="expanded"
         @click="expanded = !expanded"
       >

@@ -48,7 +48,7 @@ function confirmAddList() {
       class="board-scroll min-h-0 flex-1 overflow-x-auto overflow-y-hidden pt-3 sm:pt-4"
     >
       <div
-        class="board-track mx-auto flex h-full w-max min-w-full items-start justify-center gap-4 px-5 sm:gap-5 sm:px-8"
+        class="board-track mx-auto flex h-full w-max min-w-full items-start justify-center gap-4 px-5 pb-3 sm:gap-5 sm:px-8 sm:pb-4"
       >
         <draggable
           v-model="boardColumns"

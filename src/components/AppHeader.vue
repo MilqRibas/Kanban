@@ -20,7 +20,7 @@ const activeTab = inject<Ref<NavTab>>('activeTab', ref('board'))
 const showBoardChrome = computed(
   () =>
     !auth.isCampaignsOnly &&
-    (activeTab.value === 'board' || activeTab.value === 'agenda'),
+    activeTab.value === 'board',
 )
 const membersManager = ref<{ openModal: () => void } | null>(null)
 const archivedModal = ref<{ openModal: () => void } | null>(null)
@@ -108,7 +108,9 @@ onBeforeUnmount(() => {
         {{
           auth.isCampaignsOnly || activeTab === 'campaigns'
             ? 'Campanhas'
-            : board.title
+            : activeTab === 'agenda'
+              ? 'Agenda'
+              : board.title
         }}
       </h1>
       <button
@@ -123,7 +125,7 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
-    <!-- Desktop: filtro (só quadro / agenda) -->
+    <!-- Desktop: filtros só no quadro -->
     <div
       v-if="showBoardChrome"
       class="hidden min-w-0 flex-1 items-center justify-center gap-2 px-2 md:flex"

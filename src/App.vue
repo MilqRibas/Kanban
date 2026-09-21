@@ -25,6 +25,7 @@ import { useNotificationsStore } from './stores/notifications'
 import { useCommunityStore } from './stores/community'
 import { useHubSectionsStore } from './stores/hubSections'
 import { useCampaignsStore } from './stores/campaigns'
+import { useAgendaStore } from './stores/agenda'
 import { providePlayer360 } from './composables/usePlayer360'
 import Player360Panel from './components/crm/Player360Panel.vue'
 
@@ -94,6 +95,7 @@ const notifications = useNotificationsStore()
 const community = useCommunityStore()
 const hubSections = useHubSectionsStore()
 const campaigns = useCampaignsStore()
+const agenda = useAgendaStore()
 providePlayer360()
 const activeTab = ref<NavTab>(readStoredTab())
 const boardBootstrapping = ref(false)
@@ -101,6 +103,7 @@ const notesReady = ref(false)
 const dailyReady = ref(false)
 const campaignsReady = ref(false)
 const hubReady = ref(false)
+const agendaReady = ref(false)
 const chunksPrefetched = ref(false)
 
 const showAuth = computed(
@@ -164,6 +167,10 @@ async function ensureTabData(tab: NavTab) {
     await campaigns.init()
     campaignsReady.value = true
   }
+  if (tab === 'agenda' && !agendaReady.value) {
+    await agenda.init()
+    agendaReady.value = true
+  }
 }
 
 watch(
@@ -183,10 +190,12 @@ watch(
       community.reset()
       hubSections.reset()
       campaigns.reset()
+      agenda.reset()
       notesReady.value = false
       dailyReady.value = false
       campaignsReady.value = false
       hubReady.value = false
+      agendaReady.value = false
       boardBootstrapping.value = false
       return
     }

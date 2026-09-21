@@ -250,7 +250,7 @@ function onBackFromDetails() {
 
         <!-- Nível 1: módulos do ecossistema (sempre full-width, empilhados) -->
         <div
-          class="flex w-full gap-1 overflow-x-auto rounded-xl border border-border-subtle bg-board-elevated/80 p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          class="flex w-full gap-1 overflow-x-auto rounded-2xl border border-border-subtle bg-board-elevated/80 p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           role="tablist"
           aria-label="Áreas do ecossistema"
         >

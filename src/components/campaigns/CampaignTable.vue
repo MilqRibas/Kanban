@@ -333,7 +333,8 @@ function typeLabel(campaign: Campaign) {
   </div>
 
   <!-- Desktop / tablet: tabela com scroll horizontal -->
-  <div class="campaign-table-scroll hidden min-w-0 max-w-full overflow-x-auto overscroll-x-contain pb-1 md:block">
+  <div class="panel-glass hidden overflow-hidden rounded-2xl md:block">
+    <div class="campaign-table-scroll min-w-0 max-w-full overflow-x-auto overscroll-x-contain">
       <table class="w-full min-w-[72rem] border-collapse text-left text-sm">
         <thead class="border-b border-border-subtle bg-surface/60 text-xs uppercase tracking-wide text-text-muted">
           <tr>
@@ -581,4 +582,5 @@ function typeLabel(campaign: Campaign) {
         </tbody>
       </table>
     </div>
+  </div>
 </template>

@@ -4,11 +4,13 @@ import {
   CalendarDays,
   Columns3,
   Ellipsis,
-  LayoutGrid,
   ListChecks,
   Megaphone,
   NotebookPen,
+  Plus,
+  Star,
   Users,
+  type LucideIcon,
 } from '@lucide/vue'
 import { useAuthStore } from '../stores/auth'
 
@@ -31,52 +33,105 @@ const emit = defineEmits<{
 
 const auth = useAuthStore()
 
-type TabItem = { id: NavTab; label: string; icon: typeof CalendarDays }
+const SX_PLAYER_URL = 'https://sxplayer.vercel.app/admin'
 
-/** Ordem alfabética; as 5 primeiras ficam sempre visíveis no mobile */
-const ALL_TABS: TabItem[] = [
-  { id: 'agenda', label: 'Agenda', icon: CalendarDays },
-  { id: 'campaigns', label: 'Campanhas', icon: Megaphone },
-  { id: 'community', label: 'Comunidade', icon: Users },
-  { id: 'hub', label: 'HUB', icon: LayoutGrid },
-  { id: 'notes', label: 'Notas', icon: NotebookPen },
-  { id: 'board', label: 'Quadro', icon: Columns3 },
-  { id: 'daily', label: 'Tarefas', icon: ListChecks },
+type TabItem = {
+  kind: 'tab'
+  id: NavTab
+  label: string
+  icon: LucideIcon
+  /** Se false, só ícone (ex.: HUB como +). */
+  showLabel?: boolean
+  /** Estilo especial: botão circular com stroke. */
+  variant?: 'default' | 'hubPlus'
+}
+
+type ExternalItem = {
+  kind: 'external'
+  id: string
+  label: string
+  href: string
+  icon: LucideIcon
+}
+
+type FooterItem = TabItem | ExternalItem
+
+/** Ordem visual: HUB (+) por último; SX PLAYER antes do HUB. */
+const ALL_ITEMS: FooterItem[] = [
+  { kind: 'tab', id: 'agenda', label: 'Agenda', icon: CalendarDays },
+  { kind: 'tab', id: 'campaigns', label: 'Campanhas', icon: Megaphone },
+  { kind: 'tab', id: 'community', label: 'Comunidade', icon: Users },
+  { kind: 'tab', id: 'notes', label: 'Notas', icon: NotebookPen },
+  { kind: 'tab', id: 'board', label: 'Quadro', icon: Columns3 },
+  { kind: 'tab', id: 'daily', label: 'Tarefas', icon: ListChecks },
+  {
+    kind: 'external',
+    id: 'sx-player',
+    label: 'SX PLAYER',
+    href: SX_PLAYER_URL,
+    icon: Star,
+  },
+  {
+    kind: 'tab',
+    id: 'hub',
+    label: 'HUB',
+    icon: Plus,
+    showLabel: false,
+    variant: 'hubPlus',
+  },
 ]
 
-const tabs = computed(() => {
+const items = computed(() => {
   const allowed = new Set(auth.allowedTabs as readonly string[])
-  return ALL_TABS.filter((tab) => allowed.has(tab.id))
+  return ALL_ITEMS.filter((item) => {
+    if (item.kind === 'external') return !auth.isCampaignsOnly
+    return allowed.has(item.id)
+  })
 })
 
 /** Abas principais no mobile (resto vai em "Mais") */
-const PRIMARY_IDS: NavTab[] = ['agenda', 'board', 'daily', 'notes', 'hub']
-const MORE_IDS: NavTab[] = ['campaigns', 'community']
+const PRIMARY_IDS: Array<NavTab | 'sx-player'> = [
+  'agenda',
+  'board',
+  'daily',
+  'notes',
+  'campaigns',
+  'sx-player',
+  'hub',
+]
+const MORE_IDS: Array<NavTab | 'sx-player'> = ['community']
 
 const navRef = ref<HTMLElement | null>(null)
 const pillRef = ref<HTMLElement | null>(null)
 const moreOpen = ref(false)
 const useMoreMenu = ref(false)
 
-const primaryTabs = computed(() => {
-  const visible = tabs.value
+function itemKey(item: FooterItem) {
+  return item.kind === 'tab' ? item.id : item.id
+}
+
+const primaryItems = computed(() => {
+  const visible = items.value
   if (!useMoreMenu.value) return visible
-  const primary = visible.filter((tab) => PRIMARY_IDS.includes(tab.id))
-  // Papéis com poucas abas (ex.: só Campanhas) — mostra tudo na barra.
+  const primary = visible.filter((item) => PRIMARY_IDS.includes(itemKey(item) as NavTab | 'sx-player'))
   if (primary.length === 0) return visible
   return primary
 })
-const moreTabs = computed(() => {
+
+const moreItems = computed(() => {
   if (!useMoreMenu.value) return []
-  const visible = tabs.value
-  const primary = visible.filter((tab) => PRIMARY_IDS.includes(tab.id))
+  const visible = items.value
+  const primary = visible.filter((item) => PRIMARY_IDS.includes(itemKey(item) as NavTab | 'sx-player'))
   if (primary.length === 0) return []
-  return visible.filter((tab) => MORE_IDS.includes(tab.id))
+  return visible.filter((item) => MORE_IDS.includes(itemKey(item) as NavTab | 'sx-player'))
 })
-const moreActive = computed(
-  () => moreTabs.value.some((tab) => tab.id === props.activeTab),
+
+const moreActive = computed(() =>
+  moreItems.value.some(
+    (item) => item.kind === 'tab' && item.id === props.activeTab,
+  ),
 )
-const showMoreMenu = computed(() => moreTabs.value.length > 0)
+const showMoreMenu = computed(() => moreItems.value.length > 0)
 
 let resizeObserver: ResizeObserver | null = null
 let mediaQuery: MediaQueryList | null = null
@@ -86,7 +141,6 @@ function updateClearance() {
   if (!pill) return
   const rect = pill.getBoundingClientRect()
   const gap = 12
-  // Distância do topo da pill até a base do app (não da janela do browser).
   const appBottom =
     document.getElementById('app')?.getBoundingClientRect().bottom ??
     window.innerHeight
@@ -109,6 +163,11 @@ function syncMoreMenu(event?: MediaQueryList | MediaQueryListEvent) {
 function selectTab(tab: NavTab) {
   moreOpen.value = false
   emit('update:activeTab', tab)
+}
+
+function openExternal(href: string) {
+  moreOpen.value = false
+  window.open(href, '_blank', 'noopener,noreferrer')
 }
 
 function onDocPointerDown(event: PointerEvent) {
@@ -156,26 +215,65 @@ onBeforeUnmount(() => {
   >
     <div
       ref="pillRef"
-      class="pointer-events-auto relative flex max-w-full items-center gap-0.5 rounded-2xl border border-accent/60 bg-board-elevated/95 px-1.5 py-1.5 shadow-2xl shadow-black/50 backdrop-blur-md sm:gap-2 sm:px-2.5 sm:py-2"
+      class="pointer-events-auto relative flex max-w-full items-center gap-0.5 rounded-2xl border border-accent/60 bg-board-elevated/95 px-1.5 py-1.5 shadow-2xl shadow-black/50 backdrop-blur-md sm:gap-1.5 sm:px-2.5 sm:py-2"
     >
-      <button
-        v-for="tab in primaryTabs"
-        :key="tab.id"
-        type="button"
-        :aria-current="activeTab === tab.id ? 'page' : undefined"
-        :aria-label="tab.label"
-        :title="tab.label"
-        :class="[
-          'inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl px-2.5 py-2 text-xs transition-all duration-300 ease-out sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm',
-          activeTab === tab.id
-            ? 'bg-accent/20 text-text-primary ring-1 ring-accent/45'
-            : 'text-text-secondary hover:bg-surface hover:text-text-primary',
-        ]"
-        @click="selectTab(tab.id)"
-      >
-        <component :is="tab.icon" :size="17" :stroke-width="2" />
-        <span class="hidden sm:inline">{{ tab.label }}</span>
-      </button>
+      <template v-for="item in primaryItems" :key="itemKey(item)">
+        <!-- HUB: + circular com stroke -->
+        <button
+          v-if="item.kind === 'tab' && item.variant === 'hubPlus'"
+          type="button"
+          :aria-current="activeTab === item.id ? 'page' : undefined"
+          :aria-label="item.label"
+          :title="item.label"
+          :class="[
+            'inline-flex size-9 shrink-0 items-center justify-center rounded-full border transition-all duration-300 ease-out sm:size-10',
+            activeTab === item.id
+              ? 'border-accent bg-accent/20 text-text-primary'
+              : 'border-accent/55 text-text-secondary hover:border-accent hover:bg-surface hover:text-text-primary',
+          ]"
+          @click="selectTab(item.id)"
+        >
+          <Plus :size="18" :stroke-width="2.25" />
+        </button>
+
+        <!-- Aba normal -->
+        <button
+          v-else-if="item.kind === 'tab'"
+          type="button"
+          :aria-current="activeTab === item.id ? 'page' : undefined"
+          :aria-label="item.label"
+          :title="item.label"
+          :class="[
+            'inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl px-2.5 py-2 text-xs transition-all duration-300 ease-out sm:gap-2 sm:px-3.5 sm:py-2.5 sm:text-sm',
+            activeTab === item.id
+              ? 'bg-accent/20 text-text-primary ring-1 ring-accent/45'
+              : 'text-text-secondary hover:bg-surface hover:text-text-primary',
+          ]"
+          @click="selectTab(item.id)"
+        >
+          <component :is="item.icon" :size="17" :stroke-width="2" />
+          <span v-if="item.showLabel !== false" class="hidden sm:inline">{{ item.label }}</span>
+        </button>
+
+        <!-- Link externo (SX PLAYER) — chip no padrão dos cartões -->
+        <a
+          v-else
+          :href="item.href"
+          target="_blank"
+          rel="noopener noreferrer"
+          :aria-label="item.label"
+          :title="item.label"
+          class="inline-flex shrink-0 items-center gap-1.5 rounded-2xl border border-white/12 bg-card/90 px-2.5 py-2 text-xs text-text-primary shadow-sm transition-all duration-300 ease-out hover:border-accent/40 hover:bg-card sm:gap-2 sm:px-3.5 sm:py-2"
+          @click.prevent="openExternal(item.href)"
+        >
+          <span
+            class="inline-flex size-5 items-center justify-center rounded-full bg-accent/20 text-accent"
+          >
+            <component :is="item.icon" :size="13" :stroke-width="2.25" />
+          </span>
+          <span class="hidden font-medium sm:inline">{{ item.label }}</span>
+        </a>
+      </template>
 
       <div v-if="showMoreMenu" class="relative">
         <button
@@ -197,26 +295,39 @@ onBeforeUnmount(() => {
 
         <div
           v-if="moreOpen"
-          class="absolute bottom-[calc(100%+8px)] right-0 z-50 min-w-[11rem] overflow-hidden rounded-xl border border-border-subtle bg-board-elevated py-1 shadow-2xl shadow-black/50"
+          class="absolute bottom-[calc(100%+8px)] right-0 z-50 min-w-[11rem] overflow-hidden rounded-2xl border border-border-subtle bg-board-elevated py-1 shadow-2xl shadow-black/50"
           role="menu"
         >
-          <button
-            v-for="tab in moreTabs"
-            :key="tab.id"
-            type="button"
-            role="menuitem"
-            :aria-current="activeTab === tab.id ? 'page' : undefined"
-            :class="[
-              'flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors',
-              activeTab === tab.id
-                ? 'bg-accent/15 text-text-primary'
-                : 'text-text-secondary hover:bg-surface hover:text-text-primary',
-            ]"
-            @click="selectTab(tab.id)"
-          >
-            <component :is="tab.icon" :size="16" :stroke-width="2" />
-            {{ tab.label }}
-          </button>
+          <template v-for="item in moreItems" :key="itemKey(item)">
+            <button
+              v-if="item.kind === 'tab'"
+              type="button"
+              role="menuitem"
+              :aria-current="activeTab === item.id ? 'page' : undefined"
+              :class="[
+                'flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors',
+                activeTab === item.id
+                  ? 'bg-accent/15 text-text-primary'
+                  : 'text-text-secondary hover:bg-surface hover:text-text-primary',
+              ]"
+              @click="selectTab(item.id)"
+            >
+              <component :is="item.icon" :size="16" :stroke-width="2" />
+              {{ item.label }}
+            </button>
+            <a
+              v-else
+              role="menuitem"
+              :href="item.href"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
+              @click.prevent="openExternal(item.href)"
+            >
+              <component :is="item.icon" :size="16" :stroke-width="2" />
+              {{ item.label }}
+            </a>
+          </template>
         </div>
       </div>
     </div>
