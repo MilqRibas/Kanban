@@ -4,6 +4,7 @@ import { Loader2 } from '@lucide/vue'
 import {
   fetchClubCaseInvestment,
   fetchXtremeCaseSummary,
+  parseMoneyInput,
   saveClubCaseInvestment,
   type XtremeCaseSummary,
 } from '../../services/clubCaseApi'
@@ -12,7 +13,9 @@ import { consolidateXtremeCase, LEAGUE_FEE_RATE } from '../../utils/clubDimensio
 
 const loading = ref(true)
 const saving = ref(false)
-const error = ref<string | null>(null)
+const loadError = ref<string | null>(null)
+const saveError = ref<string | null>(null)
+const saveOk = ref(false)
 const summary = ref<XtremeCaseSummary | null>(null)
 const investment = ref('0')
 const activation = ref('0')
@@ -21,8 +24,8 @@ const economics = computed(() => {
   const agencies = summary.value?.agencies ?? []
   return consolidateXtremeCase({
     agencies,
-    investment: Number(investment.value) || 0,
-    activation: Number(activation.value) || 0,
+    investment: parseMoneyInput(investment.value) ?? 0,
+    activation: parseMoneyInput(activation.value) ?? 0,
   })
 })
 
@@ -32,7 +35,7 @@ const deposits = computed(() => summary.value?.deposits ?? 0)
 
 onMounted(async () => {
   loading.value = true
-  error.value = null
+  loadError.value = null
   try {
     const [caseRow, snap] = await Promise.all([
       fetchClubCaseInvestment('xtreme_pro'),
@@ -42,33 +45,44 @@ onMounted(async () => {
     activation.value = String(caseRow.activationCost)
     summary.value = snap
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Falha ao carregar o case Xtreme Pro.'
+    loadError.value =
+      err instanceof Error ? err.message : 'Falha ao carregar o case Xtreme Pro.'
   } finally {
     loading.value = false
   }
 })
 
 async function onSave() {
-  const investmentValue = Number(investment.value)
-  const activationValue = Number(activation.value)
-  if (!Number.isFinite(investmentValue) || investmentValue < 0) {
-    error.value = 'Investimento inválido.'
+  const investmentValue = parseMoneyInput(investment.value)
+  const activationValue = parseMoneyInput(activation.value)
+  if (investmentValue == null || investmentValue < 0) {
+    saveError.value = 'Investimento inválido.'
+    saveOk.value = false
     return
   }
-  if (!Number.isFinite(activationValue) || activationValue < 0) {
-    error.value = 'Ativação inválida.'
+  if (activationValue == null || activationValue < 0) {
+    saveError.value = 'Ativação inválida.'
+    saveOk.value = false
     return
   }
   saving.value = true
-  error.value = null
+  saveError.value = null
+  saveOk.value = false
   try {
-    await saveClubCaseInvestment({
+    const saved = await saveClubCaseInvestment({
       clubCode: 'xtreme_pro',
       investment: investmentValue,
       activationCost: activationValue,
     })
+    investment.value = String(saved.investment)
+    activation.value = String(saved.activationCost)
+    saveOk.value = true
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Falha ao salvar o investimento.'
+    saveOk.value = false
+    saveError.value =
+      err instanceof Error
+        ? err.message
+        : 'Não foi possível salvar o investimento. Tente novamente.'
   } finally {
     saving.value = false
   }
@@ -94,7 +108,7 @@ async function onSave() {
       <Loader2 :size="14" class="animate-spin" />
       Carregando case…
     </p>
-    <p v-else-if="error" class="mt-3 text-xs text-rose-200">{{ error }}</p>
+    <p v-else-if="loadError" class="mt-3 text-xs text-rose-200">{{ loadError }}</p>
 
     <template v-else>
       <p
@@ -109,9 +123,9 @@ async function onSave() {
           Investimento total
           <input
             v-model="investment"
-            type="number"
-            min="0"
-            step="0.01"
+            type="text"
+            inputmode="decimal"
+            autocomplete="off"
             class="mt-1 w-full rounded-xl border border-white/10 bg-board px-3 py-2 text-sm text-text-primary outline-none ring-accent/40 focus:ring-2"
           />
         </label>
@@ -119,21 +133,25 @@ async function onSave() {
           Ativação
           <input
             v-model="activation"
-            type="number"
-            min="0"
-            step="0.01"
+            type="text"
+            inputmode="decimal"
+            autocomplete="off"
             class="mt-1 w-full rounded-xl border border-white/10 bg-board px-3 py-2 text-sm text-text-primary outline-none ring-accent/40 focus:ring-2"
           />
         </label>
       </div>
-      <button
-        type="button"
-        class="mt-2 inline-flex h-8 items-center rounded-lg bg-accent px-3 text-xs font-semibold text-board hover:bg-accent-hover disabled:opacity-60"
-        :disabled="saving"
-        @click="onSave"
-      >
-        {{ saving ? 'Salvando…' : 'Salvar investimento' }}
-      </button>
+      <div class="mt-2 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          class="inline-flex h-8 items-center rounded-lg bg-accent px-3 text-xs font-semibold text-board hover:bg-accent-hover disabled:opacity-60"
+          :disabled="saving"
+          @click="onSave"
+        >
+          {{ saving ? 'Salvando…' : 'Salvar investimento' }}
+        </button>
+        <p v-if="saveOk" class="text-xs text-emerald-300">Investimento salvo.</p>
+        <p v-else-if="saveError" class="text-xs text-rose-200">{{ saveError }}</p>
+      </div>
 
       <dl class="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
         <div>
