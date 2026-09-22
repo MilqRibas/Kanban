@@ -10,6 +10,7 @@ import {
   createEmptyCondition,
   createEmptyGroup,
 } from '../../utils/segmentDefinition'
+import type { SegmentClubFilter } from '../../services/segmentsApi'
 import type { SegmentCondition, SegmentDefinition, SegmentOp } from '../../types/segments'
 
 const name = defineModel<string>('name', { required: true })
@@ -31,12 +32,16 @@ const descriptionText = computed({
 const debouncedDef = useDebouncedValue(() => JSON.stringify(definition.value), 400)
 
 watch(
-  debouncedDef,
+  [debouncedDef, () => store.clubFilter],
   () => {
     void store.runPreview(definition.value)
   },
   { immediate: true },
 )
+
+function onClubChange(event: Event) {
+  store.setClubFilter((event.target as HTMLSelectElement).value as SegmentClubFilter)
+}
 
 function fieldKind(field: string): 'text' | 'number' | 'bool' {
   return SEGMENT_FIELDS.find((f) => f.value === field)?.kind ?? 'number'
@@ -139,6 +144,19 @@ const sampleNicks = computed(() =>
         </div>
 
         <div class="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+          <span>Clube</span>
+          <select
+            :value="store.clubFilter"
+            class="rounded-lg border border-white/10 bg-board-elevated px-2 py-1 text-sm text-text-primary"
+            @change="onClubChange"
+          >
+            <option value="all">Todos</option>
+            <option value="sx_club">SX Club</option>
+            <option value="xtreme_pro">Xtreme Pro</option>
+            <option value="sx_only">Somente SX</option>
+            <option value="xtreme_only">Somente Xtreme</option>
+            <option value="both">Nos dois clubes</option>
+          </select>
           <span>Grupos unidos por</span>
           <select
             v-model="definition.groupLogic"

@@ -1,4 +1,5 @@
 import { RECONCILIATION } from './campaignThresholds'
+import { resolveClubCode, type ClubCode } from './clubDimension'
 import {
   readWorkbookFromBuffer,
   type WorkbookSheets,
@@ -72,6 +73,8 @@ export type ParsedReport = {
   uniquePlayerIds: string[]
   uniqueAgentIds: string[]
   gameTypes: string[]
+  /** Clube lido da coluna opcional "Nome do clube". Null se a coluna não existir. */
+  fileClubCode: ClubCode | null
 }
 
 export type AgentReconciliation = {
@@ -298,9 +301,10 @@ function parseAgentsSheet(matrix: unknown[][]): {
   agents: ParsedAgentRow[]
   period: ParsedPeriod | null
   error: string | null
+  fileClubCode: ClubCode | null
 } {
   if (matrix.length < 2) {
-    return { agents: [], period: null, error: 'Aba Agentes está vazia.' }
+    return { agents: [], period: null, error: 'Aba Agentes está vazia.', fileClubCode: null }
   }
 
   const map = headerIndexMap(matrix[0] ?? [])
@@ -310,7 +314,7 @@ function parseAgentsSheet(matrix: unknown[][]): {
     { aliases: ['semana', 'periodo', 'período'], label: 'Semana' },
     { aliases: ['taxa total', 'taxatotal'], label: 'Taxa total' },
   ])
-  if (missing) return { agents: [], period: null, error: missing }
+  if (missing) return { agents: [], period: null, error: missing, fileClubCode: null }
 
   const iAgentId = col(map, 'agent id', 'agentid', 'id agente')
   const iName = col(map, 'agent name', 'agentname', 'nome agente', 'nome')
@@ -325,6 +329,8 @@ function parseAgentsSheet(matrix: unknown[][]): {
 
   const agents: ParsedAgentRow[] = []
   let period: ParsedPeriod | null = null
+  const clubCodes = new Set<ClubCode>()
+  const iClub = col(map, 'nome do clube', 'club name', 'nome clube')
 
   for (let r = 1; r < matrix.length; r += 1) {
     const row = matrix[r] ?? []
@@ -337,6 +343,7 @@ function parseAgentsSheet(matrix: unknown[][]): {
         agents: [],
         period: null,
         error: `Período inválido na aba Agentes (linha ${r + 1}).`,
+        fileClubCode: null,
       }
     }
     if (!period) period = parsed
@@ -352,13 +359,19 @@ function parseAgentsSheet(matrix: unknown[][]): {
       weeklyRake: toNumber(row[iTaxa]),
       hands: iHands >= 0 ? Math.trunc(toNumber(row[iHands])) : 0,
     })
+    if (iClub >= 0) {
+      const code = resolveClubCode(row[iClub])
+      if (code) clubCodes.add(code)
+    }
   }
+
+  const fileClubCode = clubCodes.size === 1 ? [...clubCodes][0]! : null
 
   if (agents.length === 0) {
-    return { agents: [], period: null, error: 'Nenhum Agent ID encontrado na aba Agentes.' }
+    return { agents: [], period: null, error: 'Nenhum Agent ID encontrado na aba Agentes.', fileClubCode: null }
   }
 
-  return { agents: aggregateAgentsById(agents), period, error: null }
+  return { agents: aggregateAgentsById(agents), period, error: null, fileClubCode }
 }
 
 function parseBlockedSheet(
@@ -569,6 +582,7 @@ export function parseAgentReportWorkbook(sheets: WorkbookSheets): ParsedReport {
     uniquePlayerIds,
     uniqueAgentIds,
     gameTypes,
+    fileClubCode: agentsParsed.fileClubCode,
   }
 }
 

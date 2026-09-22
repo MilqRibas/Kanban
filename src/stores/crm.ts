@@ -31,6 +31,7 @@ export const useCrmStore = defineStore('crm', () => {
   const incentiveAvailableFilter = ref<CrmIncentiveAvailableFilter>('all')
   const incentiveReceivedFilter = ref<CrmIncentiveReceivedFilter>('all')
   const sort = ref<CrmPlayerSort>('last_activity_desc')
+  const clubFilter = ref<'all' | 'sx_club' | 'xtreme_pro'>('all')
   const loading = ref(false)
   const ready = ref(false)
   const error = ref<string | null>(null)
@@ -68,6 +69,7 @@ export const useCrmStore = defineStore('crm', () => {
         incentiveAvailableFilter: incentiveAvailableFilter.value,
         incentiveReceivedFilter: incentiveReceivedFilter.value,
         sort: sort.value,
+        club: clubFilter.value,
         limit: limit.value,
         offset: offset.value,
       })
@@ -131,6 +133,11 @@ export const useCrmStore = defineStore('crm', () => {
 
   async function setSort(value: CrmPlayerSort) {
     sort.value = value
+    await loadPlayers({ resetOffset: true })
+  }
+
+  async function setClubFilter(value: 'all' | 'sx_club' | 'xtreme_pro') {
+    clubFilter.value = value
     await loadPlayers({ resetOffset: true })
   }
 
@@ -215,6 +222,8 @@ export const useCrmStore = defineStore('crm', () => {
     incentiveAvailableFilter,
     incentiveReceivedFilter,
     sort,
+    clubFilter,
+    setClubFilter,
     loading,
     ready,
     error,
@@ -235,6 +244,7 @@ export const useCrmStore = defineStore('crm', () => {
     setCampaignFilter,
     setIncentiveAvailableFilter,
     setIncentiveReceivedFilter,
+    setClubFilter,
     setSort,
     nextPage,
     prevPage,

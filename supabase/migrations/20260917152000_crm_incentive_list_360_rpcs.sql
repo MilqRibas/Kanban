@@ -1,4 +1,6 @@
 -- Etapa 2: RPCs de listagem e Player 360º com economia de incentivos (MKT GT).
+-- OBSOLETO (regra MKT-only). Sucessor OR: 20260918121000_crm_incentive_list_360_or_bonus.sql
+-- e 20260918184500_crm_list_players_sort_asc.sql. Não aplicar isoladamente.
 -- Substitui crm_list_players (nova assinatura) e estende crm_get_player_360.
 -- Depende de: crm_get_economic_settings, crm_compute_incentive_economics,
 -- crm_is_mkt_gt_transfer, crm_incentive_metadata.

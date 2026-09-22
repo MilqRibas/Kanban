@@ -9,6 +9,7 @@ import { useCampaignsStore } from '../../stores/campaigns'
 import { crmDisplayName } from '../../utils/crmPlayerIdentity'
 import {
   INCENTIVE_CLASSIFICATIONS,
+  incentiveDetection,
   type IncentiveClassification,
 } from '../../utils/crmIncentiveEconomics'
 import type { CrmIncentiveHistoryItem } from '../../types/crm'
@@ -53,13 +54,15 @@ function classificationLabel(value: IncentiveClassification | null): string {
 }
 
 function detectionLabel(item: CrmIncentiveHistoryItem): string | null {
-  const d = item.detection
+  const d =
+    item.detection ??
+    incentiveDetection({
+      senderPlayerId: item.senderPlayerId,
+      isBonus: item.isBonus,
+    })
   if (d === 'mkt_gt') return 'MKT GT'
   if (d === 'bonus') return 'Bônus'
   if (d === 'mkt_gt_bonus') return 'MKT GT + Bônus'
-  if (item.senderPlayerId === '1092502' && item.isBonus) return 'MKT GT + Bônus'
-  if (item.senderPlayerId === '1092502') return 'MKT GT'
-  if (item.isBonus) return 'Bônus'
   return null
 }
 
@@ -338,6 +341,9 @@ watch(
                         class="text-text-muted"
                       >
                         · {{ detectionLabel(item) }}
+                      </span>
+                      <span class="text-text-muted">
+                        · {{ item.clubName || (item.clubCode === 'sx_club' ? 'SX Club' : item.clubCode === 'xtreme_pro' ? 'Xtreme Pro' : 'Clube desconhecido') }}
                       </span>
                     </p>
                     <p class="truncate font-mono text-[10px] text-text-muted">

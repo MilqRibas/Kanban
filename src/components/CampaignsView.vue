@@ -16,6 +16,7 @@ import CampaignDetails from './campaigns/CampaignDetails.vue'
 import CampaignCharts from './campaigns/CampaignCharts.vue'
 import CampaignComparison from './campaigns/CampaignComparison.vue'
 import CampaignImportsAdmin from './campaigns/CampaignImportsAdmin.vue'
+import CampaignXtremeCase from './campaigns/CampaignXtremeCase.vue'
 import CrmPipelinesView from './crm/CrmPipelinesView.vue'
 import CrmBiView from './crm/CrmBiView.vue'
 import SegmentsView from './segments/SegmentsView.vue'
@@ -333,6 +334,7 @@ function onBackFromDetails() {
               Recuperação e payback usam <span class="text-text-secondary">rake líquido</span>
               (bruto − 18% taxa da liga). O rake bruto continua visível nos detalhes.
             </p>
+            <CampaignXtremeCase />
             <CampaignKpiCards :kpis="overviewKpis" />
             <CampaignCharts :campaigns="filteredCampaigns" @view="onView" />
           </section>

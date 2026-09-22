@@ -5,6 +5,7 @@ import {
   listSegments,
   previewSegment,
   upsertSegment,
+  type SegmentClubFilter,
 } from '../services/segmentsApi'
 import type {
   SegmentDefinition,
@@ -25,6 +26,7 @@ export const useSegmentsStore = defineStore('segments', () => {
   const preview = ref<SegmentPreviewResult | null>(null)
   const previewLoading = ref(false)
   const previewError = ref<string | null>(null)
+  const clubFilter = ref<SegmentClubFilter>('all')
 
   async function load() {
     loading.value = true
@@ -100,7 +102,7 @@ export const useSegmentsStore = defineStore('segments', () => {
         preview.value = { count: 0, sample: [] }
         return preview.value
       }
-      preview.value = await previewSegment(cleaned, sampleLimit)
+      preview.value = await previewSegment(cleaned, sampleLimit, clubFilter.value)
       return preview.value
     } catch (err) {
       const message =
@@ -130,6 +132,10 @@ export const useSegmentsStore = defineStore('segments', () => {
     if (row) row.playerCount = count
   }
 
+  function setClubFilter(value: SegmentClubFilter) {
+    clubFilter.value = value
+  }
+
   function reset() {
     rows.value = []
     loading.value = false
@@ -150,6 +156,8 @@ export const useSegmentsStore = defineStore('segments', () => {
     preview,
     previewLoading,
     previewError,
+    clubFilter,
+    setClubFilter,
     init,
     load,
     save,

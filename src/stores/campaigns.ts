@@ -22,6 +22,7 @@ import type {
   ImportConflict,
 } from '../types/campaigns'
 import { BOARD_ID, supabase } from '../lib/supabase'
+import type { ClubCode } from '../utils/clubDimension'
 import { useAuthStore } from './auth'
 import { useToastStore } from './toast'
 import {
@@ -2018,11 +2019,14 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   async function commitReport(params: {
     preview: ReportPreview
     replace: boolean
+    /** Clube deste arquivo quando o XLSX de rake não traz a coluna. */
+    clubCode?: ClubCode | null
   }): Promise<CommitReportResult | null> {
     const toast = useToastStore()
     const auth = useAuthStore()
     const { preview, replace } = params
     const { parsed, filename, conflict, reconciliations } = preview
+    const reportClub = parsed.fileClubCode ?? params.clubCode ?? null
 
     if (conflict && !replace) {
       toast.error('Já existem dados para este período. Confirme a substituição.')
@@ -2095,6 +2099,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
           players_rake_sum: reco?.playersRakeSum ?? 0,
           unique_players: reco?.uniquePlayers ?? 0,
           reconciliation_diff: reco?.diff ?? 0,
+          club_code: reportClub,
           created_at: now,
         }
       })
@@ -2112,6 +2117,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         weekly_rake: p.weeklyRake,
         gains: p.gains,
         hands: p.hands,
+        club_code: reportClub,
         created_at: now,
       }))
 
@@ -2131,6 +2137,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         gains: t.gains,
         rake: t.rake,
         admin_fee: t.adminFee,
+        club_code: reportClub,
         created_at: now,
       }))
 
@@ -2406,6 +2413,8 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   async function commitTransactionReport(params: {
     preview: TransactionReportPreview
     replace: boolean
+    /** Fallback quando a linha não traz Nome do clube resolvível. */
+    clubCode?: ClubCode | null
   }): Promise<CommitTransactionResult | null> {
     const toast = useToastStore()
     const auth = useAuthStore()
@@ -2512,6 +2521,10 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         receiver_player_id: t.receiverPlayerId,
         receiver_nickname: t.receiverNickname,
         sender_player_id: t.senderPlayerId ?? null,
+        sender_nickname: t.senderNickname,
+        sx_type: t.sxType,
+        club_code: t.clubCode ?? params.clubCode ?? null,
+        club_name: t.clubName,
         agent_id: t.agentId,
         agent_nickname: t.agentNickname,
         occurred_at: t.occurredAt,

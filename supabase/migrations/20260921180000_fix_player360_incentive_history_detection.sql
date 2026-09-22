@@ -1,7 +1,4 @@
--- OBSOLETO (Player 360 sem detection/isBonus no histórico de incentivo OR).
--- Sucessor: 20260918121000_crm_incentive_list_360_or_bonus.sql
--- Hotfix prod: 20260921180000_fix_player360_incentive_history_detection.sql
--- Não aplicar isoladamente — reverte para MKT-only no enviado.
+-- Hotfix: reaplica incentiveHistory com isBonus + detection (RPC 360 estava sem esses campos em producao).
 
 CREATE OR REPLACE FUNCTION public.crm_get_player_360(
   p_board_id text,
@@ -168,7 +165,7 @@ BEGIN
       FROM public.campaign_transactions t
       WHERE t.board_id = p_board_id
         AND t.receiver_player_id = v_player
-        AND public.crm_is_mkt_gt_transfer(t.sender_player_id, v_mkt)
+        AND public.crm_is_incentive_transaction(t.sender_player_id, t.is_bonus, v_mkt)
     ),
     incentives AS (
       SELECT public.crm_compute_incentive_economics(
@@ -186,6 +183,13 @@ BEGIN
             'occurredAt', t.occurred_at,
             'externalTransactionId', t.external_transaction_id,
             'senderPlayerId', t.sender_player_id,
+            'isBonus', t.is_bonus,
+            'detection', CASE
+              WHEN public.crm_is_mkt_gt_transfer(t.sender_player_id, v_mkt) AND coalesce(t.is_bonus, false) THEN 'mkt_gt_bonus'
+              WHEN public.crm_is_mkt_gt_transfer(t.sender_player_id, v_mkt) THEN 'mkt_gt'
+              WHEN coalesce(t.is_bonus, false) THEN 'bonus'
+              ELSE 'unknown'
+            END,
             'agentId', t.agent_id,
             'classification', m.classification,
             'product', m.product,
@@ -204,7 +208,7 @@ BEGIN
        AND m.external_transaction_id = t.external_transaction_id
       WHERE t.board_id = p_board_id
         AND t.receiver_player_id = v_player
-        AND public.crm_is_mkt_gt_transfer(t.sender_player_id, v_mkt)
+        AND public.crm_is_incentive_transaction(t.sender_player_id, t.is_bonus, v_mkt)
     ),
     exists_check AS (
       SELECT (

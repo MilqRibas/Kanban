@@ -14,6 +14,7 @@ import { useSegmentsStore } from '../../stores/segments'
 import { formatDate } from '../../utils/campaignFormat'
 import { createDefaultDefinition } from '../../utils/segmentDefinition'
 import { matchesSearch, buildSearchHaystack } from '../../utils/search'
+import type { SegmentClubFilter } from '../../services/segmentsApi'
 import type { SegmentDefinition, SegmentRow } from '../../types/segments'
 import SegmentBuilder from './SegmentBuilder.vue'
 
@@ -43,6 +44,10 @@ const filtered = computed(() => {
 })
 
 const builderOpen = computed(() => creating.value || Boolean(editing.value))
+
+function onClubChange(event: Event) {
+  store.setClubFilter((event.target as HTMLSelectElement).value as SegmentClubFilter)
+}
 
 function openCreate() {
   editing.value = null
@@ -112,6 +117,7 @@ watch(
           <h3 class="text-base font-semibold text-text-primary">Segmentações</h3>
           <p class="text-xs text-text-muted">
             Defina públicos com condições compostas (AND/OR) e use-os em pipelines CRM.
+            O filtro de clube vale na prévia. Todos inclui histórico sem clube identificado.
           </p>
         </div>
         <button
@@ -123,6 +129,22 @@ watch(
           Nova segmentação
         </button>
       </header>
+
+      <label class="flex items-center gap-2 text-xs text-text-muted">
+        Clube na prévia
+        <select
+          :value="store.clubFilter"
+          class="rounded-lg border border-white/10 bg-board-elevated px-2 py-1 text-sm text-text-primary"
+          @change="onClubChange"
+        >
+          <option value="all">Todos</option>
+          <option value="sx_club">SX Club</option>
+          <option value="xtreme_pro">Xtreme Pro</option>
+          <option value="sx_only">Somente SX</option>
+          <option value="xtreme_only">Somente Xtreme</option>
+          <option value="both">Nos dois clubes</option>
+        </select>
+      </label>
 
       <div class="relative">
         <Search

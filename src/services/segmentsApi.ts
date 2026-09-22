@@ -138,14 +138,24 @@ export async function deleteSegment(id: string): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
+export type SegmentClubFilter =
+  | 'all'
+  | 'sx_club'
+  | 'xtreme_pro'
+  | 'sx_only'
+  | 'xtreme_only'
+  | 'both'
+
 export async function previewSegment(
   definition: SegmentDefinition,
   sampleLimit = 20,
+  club: SegmentClubFilter = 'all',
 ): Promise<SegmentPreviewResult> {
   const { data, error } = await supabase.rpc('crm_preview_segment', {
     p_board_id: BOARD_ID,
     p_definition: definition,
     p_sample_limit: sampleLimit,
+    ...(club === 'all' ? {} : { p_club: club }),
   })
   if (error) throw new Error(error.message)
 

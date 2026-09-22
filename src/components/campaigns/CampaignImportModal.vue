@@ -11,6 +11,10 @@ import {
 } from '../../stores/campaigns'
 import { formatCurrency } from '../../utils/campaignFormat'
 import { formatPeriodLabel } from '../../utils/campaignWeeklyMetrics'
+import {
+  CLUB_FILTER_OPTIONS,
+  type ClubCode,
+} from '../../utils/clubDimension'
 
 const props = defineProps<{
   open: boolean
@@ -31,6 +35,7 @@ const txResult = ref<CommitTransactionResult | null>(null)
 const parsing = ref(false)
 const replaceConfirmed = ref(false)
 const stepError = ref<string | null>(null)
+const importClub = ref<ClubCode>('sx_club')
 
 useEscapeKey(
   () => props.open && !store.importing,
@@ -117,6 +122,7 @@ async function confirmImport() {
     const committed = await store.commitReport({
       preview: preview.value,
       replace: Boolean(preview.value.conflict && replaceConfirmed.value),
+      clubCode: importClub.value,
     })
     if (!committed) {
       stepError.value = 'Falha ao processar o relatório.'
@@ -131,6 +137,7 @@ async function confirmImport() {
   const committed = await store.commitTransactionReport({
     preview: txPreview.value,
     replace: Boolean(txPreview.value.conflict && replaceConfirmed.value),
+    clubCode: importClub.value,
   })
   if (!committed) {
     stepError.value = 'Falha ao processar as transações.'
@@ -210,6 +217,25 @@ const hasResult = computed(() => Boolean(result.value || txResult.value))
               Transações
             </button>
           </div>
+
+          <label class="block text-xs text-text-muted">
+            Clube deste arquivo
+            <select
+              v-model="importClub"
+              class="mt-1 w-full rounded-xl border border-border-subtle bg-board px-3 py-2 text-sm text-text-primary"
+            >
+              <option
+                v-for="opt in CLUB_FILTER_OPTIONS.filter((o) => o.value !== 'all')"
+                :key="opt.value"
+                :value="opt.value"
+              >
+                {{ opt.label }}
+              </option>
+            </select>
+            <span class="mt-1 block text-[11px]">
+              Nome do clube no arquivo prevalece. Esta escolha vale quando o XLSX não traz o clube.
+            </span>
+          </label>
 
           <div
             class="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border-subtle bg-column/40 px-4 py-8"

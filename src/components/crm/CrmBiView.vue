@@ -35,6 +35,11 @@ watch(debouncedSearch, (value) => {
   void crm.setSearch(value)
 })
 
+async function onBiClubChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value as 'all' | 'sx_club' | 'xtreme_pro'
+  await crm.setClubFilter(value)
+}
+
 const activeColumn = computed<BiSortColumn | null>(() => {
   const s = crm.sort
   if (s.startsWith('player_id')) return 'player_id'
@@ -79,6 +84,15 @@ function moneyClass(value: number): string {
       placeholder="Buscar Player ID, nick ou nome…"
       class="w-full rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary outline-none ring-accent/40 placeholder:text-text-muted focus:ring-2"
     />
+    <select
+      class="w-full rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary sm:w-auto"
+      :value="crm.clubFilter"
+      @change="onBiClubChange"
+    >
+      <option value="all">Clube: todos</option>
+      <option value="sx_club">SX Club</option>
+      <option value="xtreme_pro">Xtreme Pro</option>
+    </select>
 
     <p
       v-if="crm.error"

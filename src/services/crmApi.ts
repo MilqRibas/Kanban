@@ -77,6 +77,11 @@ function mapIncentiveHistoryItem(raw: Record<string, unknown>): CrmIncentiveHist
     classifiedBy: asString(raw.classifiedBy),
     classifiedAt: asString(raw.classifiedAt),
     senderPlayerId,
+    senderNickname: asString(raw.senderNickname),
+    receiverNickname: asString(raw.receiverNickname),
+    sxType: asString(raw.sxType),
+    clubCode: asString(raw.clubCode),
+    clubName: asString(raw.clubName),
     isBonus,
     detection,
   }
@@ -130,6 +135,7 @@ export async function fetchCrmPlayerList(
     p_offset: offset,
     p_incentive_available_filter: query.incentiveAvailableFilter ?? 'all',
     p_incentive_received_filter: query.incentiveReceivedFilter ?? 'all',
+    p_club: !query.club || query.club === 'all' ? null : query.club,
   })
   if (error) throw new Error(error.message)
 

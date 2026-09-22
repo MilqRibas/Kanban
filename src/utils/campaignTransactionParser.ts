@@ -1,4 +1,5 @@
 import { classifyTransactionFlags } from './campaignDepositMetrics'
+import { resolveClubCode, type ClubCode } from './clubDimension'
 import {
   excelSerialToParts,
   readFirstSheetFromBuffer,
@@ -32,6 +33,10 @@ export type ParsedTransactionRow = {
   orderStatus: string | null
   isDeposit: boolean
   isBonus: boolean
+  /** Nome do clube no XLSX, quando a coluna existe. */
+  clubName: string | null
+  /** sx_club | xtreme_pro. Null se a coluna não resolver. */
+  clubCode: ClubCode | null
   raw: Record<string, unknown>
 }
 
@@ -133,6 +138,7 @@ type FieldKey =
   | 'systemStatus'
   | 'orderStatus'
   | 'amount'
+  | 'clubName'
 
 const FIELD_MATCHERS: Array<{
   field: FieldKey
@@ -236,6 +242,10 @@ const FIELD_MATCHERS: Array<{
   {
     field: 'chipsClaimback',
     exact: ['chips claimback', 'chip claimback', 'claimback', 'claim back'],
+  },
+  {
+    field: 'clubName',
+    exact: ['nome do clube', 'club name', 'nome clube'],
   },
   {
     field: 'systemStatus',
@@ -610,6 +620,9 @@ export async function parseTransactionReportBuffer(
     const agentId = normalizeEntityId(col('agentId', row)) || null
     if (!agentId) withoutAgentId += 1
 
+    const clubName = toText(col('clubName', row))
+    const clubCode = resolveClubCode(clubName)
+
     const raw: Record<string, unknown> = {}
     header.map.forEach((idx, key) => {
       raw[key] = row[idx]
@@ -639,6 +652,8 @@ export async function parseTransactionReportBuffer(
       orderStatus,
       isDeposit: flags.isDeposit,
       isBonus: flags.isBonus,
+      clubName,
+      clubCode,
       raw,
     })
   }

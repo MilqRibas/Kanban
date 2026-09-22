@@ -124,6 +124,11 @@ export type CrmIncentiveHistoryItem = {
   classifiedBy: string | null
   classifiedAt: string | null
   senderPlayerId: string | null
+  senderNickname?: string | null
+  receiverNickname?: string | null
+  sxType?: string | null
+  clubCode?: string | null
+  clubName?: string | null
   isBonus?: boolean | null
   /** Derivado: mkt_gt | bonus | mkt_gt_bonus */
   detection?: 'mkt_gt' | 'bonus' | 'mkt_gt_bonus' | string | null
@@ -165,6 +170,7 @@ export type CrmListQuery = {
   incentiveAvailableFilter?: CrmIncentiveAvailableFilter
   incentiveReceivedFilter?: CrmIncentiveReceivedFilter
   sort?: CrmPlayerSort
+  club?: 'all' | 'sx_club' | 'xtreme_pro'
   limit?: number
   offset?: number
 }

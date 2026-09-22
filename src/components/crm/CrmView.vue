@@ -60,6 +60,11 @@ async function onFilterChange(event: Event) {
   await crm.setCampaignFilter(value)
 }
 
+async function onClubChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value as 'all' | 'sx_club' | 'xtreme_pro'
+  await crm.setClubFilter(value)
+}
+
 async function onAvailableFilterChange(event: Event) {
   const value = (event.target as HTMLSelectElement).value as CrmIncentiveAvailableFilter
   await crm.setIncentiveAvailableFilter(value)
@@ -104,6 +109,15 @@ async function onSortChange(event: Event) {
           placeholder="Buscar Player ID, nick, nome ou agente…"
           class="w-full min-w-[12rem] flex-1 rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary outline-none ring-accent/40 placeholder:text-text-muted focus:ring-2"
         />
+        <select
+          class="rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary"
+          :value="crm.clubFilter"
+          @change="onClubChange"
+        >
+          <option value="all">Clube: todos</option>
+          <option value="sx_club">SX Club</option>
+          <option value="xtreme_pro">Xtreme Pro</option>
+        </select>
         <select
           class="rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary"
           :value="crm.campaignFilter"
