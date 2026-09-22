@@ -244,7 +244,6 @@ export const useCrmStore = defineStore('crm', () => {
     setCampaignFilter,
     setIncentiveAvailableFilter,
     setIncentiveReceivedFilter,
-    setClubFilter,
     setSort,
     nextPage,
     prevPage,

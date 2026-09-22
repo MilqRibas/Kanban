@@ -255,20 +255,18 @@ onBeforeUnmount(() => {
           <span v-if="item.showLabel !== false" class="hidden sm:inline">{{ item.label }}</span>
         </button>
 
-        <!-- Link externo (SX Player) — mesmo padrão das abas -->
-        <a
+        <!-- Link externo (SX Player) — mesmo markup das abas -->
+        <button
           v-else
-          :href="item.href"
-          target="_blank"
-          rel="noopener noreferrer"
+          type="button"
           :aria-label="item.label"
           :title="item.label"
           class="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl px-2.5 py-2 text-xs text-text-secondary transition-all duration-300 ease-out hover:bg-surface hover:text-text-primary sm:gap-2 sm:px-3.5 sm:py-2.5 sm:text-sm"
-          @click.prevent="openExternal(item.href)"
+          @click="openExternal(item.href)"
         >
           <component :is="item.icon" :size="17" :stroke-width="2" />
           <span class="hidden sm:inline">{{ item.label }}</span>
-        </a>
+        </button>
       </template>
 
       <div v-if="showMoreMenu" class="relative">
