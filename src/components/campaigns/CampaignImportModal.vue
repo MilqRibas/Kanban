@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { FileUp, Loader2, X } from '@lucide/vue'
 import { useEscapeKey } from '../../composables/useEscapeKey'
+import { useToastStore } from '../../stores/toast'
 import {
   useCampaignsStore,
   type CommitReportResult,
@@ -25,129 +26,401 @@ const emit = defineEmits<{
   imported: [result: CommitReportResult | CommitTransactionResult]
 }>()
 
+type QueueStatus =
+  | 'ready'
+  | 'needs_replace'
+  | 'importing'
+  | 'done'
+  | 'error'
+  | 'skipped'
+
+type QueueItem = {
+  id: string
+  file: File
+  replaceConfirmed: boolean
+  status: QueueStatus
+  error: string | null
+  rakePreview: ReportPreview | null
+  txPreview: TransactionReportPreview | null
+  rakeResult: CommitReportResult | null
+  txResult: CommitTransactionResult | null
+}
+
 const store = useCampaignsStore()
+const toast = useToastStore()
 const fileInput = ref<HTMLInputElement | null>(null)
 const importKind = ref<'rake' | 'transactions'>('rake')
-const preview = ref<ReportPreview | null>(null)
-const txPreview = ref<TransactionReportPreview | null>(null)
-const result = ref<CommitReportResult | null>(null)
-const txResult = ref<CommitTransactionResult | null>(null)
+const queue = ref<QueueItem[]>([])
 const parsing = ref(false)
-const replaceConfirmed = ref(false)
+const batchRunning = ref(false)
 const stepError = ref<string | null>(null)
 const importClub = ref<ClubCode>('sx_club')
+const replaceAllConflicts = ref(false)
 
 useEscapeKey(
-  () => props.open && !store.importing,
+  () => props.open && !store.importing && !batchRunning.value,
   () => close(),
 )
+
+function resetQueueState() {
+  queue.value = []
+  replaceAllConflicts.value = false
+  stepError.value = null
+  batchRunning.value = false
+}
 
 watch(
   () => props.open,
   (open) => {
     if (!open) {
-      preview.value = null
-      txPreview.value = null
-      result.value = null
-      txResult.value = null
-      replaceConfirmed.value = false
-      stepError.value = null
+      resetQueueState()
       importKind.value = 'rake'
     }
   },
 )
 
 watch(importKind, () => {
-  preview.value = null
-  txPreview.value = null
-  result.value = null
-  txResult.value = null
-  replaceConfirmed.value = false
-  stepError.value = null
+  resetQueueState()
+})
+
+watch(replaceAllConflicts, (value) => {
+  if (!value) return
+  for (const item of queue.value) {
+    if (item.status === 'needs_replace' || itemHasConflict(item)) {
+      item.replaceConfirmed = true
+      if (item.status === 'needs_replace') item.status = 'ready'
+    }
+  }
 })
 
 function close() {
+  if (batchRunning.value || store.importing) return
   emit('update:open', false)
+}
+
+function itemHasConflict(item: QueueItem): boolean {
+  if (importKind.value === 'rake') return Boolean(item.rakePreview?.conflict)
+  return Boolean(item.txPreview?.conflict)
+}
+
+function itemPeriodLabel(item: QueueItem): string {
+  const period =
+    importKind.value === 'rake'
+      ? item.rakePreview?.parsed.period
+      : item.txPreview?.parsed.period
+  if (!period) return '—'
+  return formatPeriodLabel(period.start, period.end)
+}
+
+function statusLabel(status: QueueStatus): string {
+  switch (status) {
+    case 'ready':
+      return 'Pronto'
+    case 'needs_replace':
+      return 'Conflito'
+    case 'importing':
+      return 'Importando…'
+    case 'done':
+      return 'Importado'
+    case 'error':
+      return 'Erro'
+    case 'skipped':
+      return 'Pulado'
+    default:
+      return status
+  }
+}
+
+function createQueueId() {
+  return `q-${crypto.randomUUID().slice(0, 8)}`
 }
 
 async function onFileChange(event: Event) {
   const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
+  const files = [...(input.files ?? [])]
   input.value = ''
-  if (!file) return
-  stepError.value = null
-  result.value = null
-  txResult.value = null
-  replaceConfirmed.value = false
+  if (!files.length) return
+
+  resetQueueState()
   parsing.value = true
   try {
-    if (importKind.value === 'rake') {
-      txPreview.value = null
-      const next = await store.previewReport(file)
-      preview.value = next
-      if (!next) stepError.value = 'Não foi possível validar o arquivo.'
-    } else {
-      preview.value = null
-      const next = await store.previewTransactionReport(file)
-      txPreview.value = next
-      if (!next) stepError.value = 'Não foi possível validar o arquivo de transações.'
+    const next: QueueItem[] = []
+    for (const file of files) {
+      const item: QueueItem = {
+        id: createQueueId(),
+        file,
+        replaceConfirmed: false,
+        status: 'ready',
+        error: null,
+        rakePreview: null,
+        txPreview: null,
+        rakeResult: null,
+        txResult: null,
+      }
+
+      if (importKind.value === 'rake') {
+        const preview = await store.previewReport(file)
+        if (!preview) {
+          item.status = 'error'
+          item.error = 'Não foi possível validar o arquivo.'
+        } else {
+          item.rakePreview = preview
+          item.status = preview.conflict ? 'needs_replace' : 'ready'
+        }
+      } else {
+        const preview = await store.previewTransactionReport(file)
+        if (!preview) {
+          item.status = 'error'
+          item.error = 'Não foi possível validar o arquivo de transações.'
+        } else {
+          item.txPreview = preview
+          item.status = preview.conflict ? 'needs_replace' : 'ready'
+        }
+      }
+      next.push(item)
+    }
+    queue.value = next
+    flagIntraBatchConflicts()
+    if (next.every((item) => item.status === 'error')) {
+      stepError.value = 'Nenhum arquivo válido neste lote.'
     }
   } finally {
     parsing.value = false
   }
 }
 
-const activeConflict = computed(() =>
-  importKind.value === 'rake'
-    ? preview.value?.conflict ?? null
-    : txPreview.value?.conflict ?? null,
+function itemPeriodKey(item: QueueItem): string | null {
+  const period =
+    importKind.value === 'rake'
+      ? item.rakePreview?.parsed.period
+      : item.txPreview?.parsed.period
+  if (!period) return null
+  return `${period.start}_${period.end}`
+}
+
+/** Arquivos do mesmo período no lote: o segundo em diante precisa de replace. */
+function flagIntraBatchConflicts() {
+  const seen = new Map<string, string>()
+  for (const item of queue.value) {
+    if (item.status === 'error') continue
+    const key = itemPeriodKey(item)
+    if (!key) continue
+    const firstId = seen.get(key)
+    if (!firstId) {
+      seen.set(key, item.id)
+      continue
+    }
+    if (item.status === 'ready' && !itemHasConflict(item)) {
+      item.status = 'needs_replace'
+      item.error =
+        'Outro arquivo deste lote cobre o mesmo período. Confirme a substituição se quiser reprocessar.'
+    }
+  }
+}
+
+function removeItem(id: string) {
+  if (batchRunning.value) return
+  queue.value = queue.value.filter((item) => item.id !== id)
+  for (const item of queue.value) {
+    if (
+      item.status === 'needs_replace' &&
+      !itemHasConflict(item) &&
+      item.error?.includes('Outro arquivo deste lote')
+    ) {
+      item.status = 'ready'
+      item.error = null
+      item.replaceConfirmed = false
+    }
+  }
+  flagIntraBatchConflicts()
+}
+
+function onItemReplaceToggle(item: QueueItem, checked: boolean) {
+  item.replaceConfirmed = checked
+  if (checked && item.status === 'needs_replace') {
+    item.status = 'ready'
+    item.error = null
+  } else if (!checked && itemHasConflict(item) && item.status === 'ready') {
+    item.status = 'needs_replace'
+  }
+}
+
+const conflictCount = computed(
+  () =>
+    queue.value.filter(
+      (item) =>
+        item.status === 'needs_replace' ||
+        (itemHasConflict(item) && !item.replaceConfirmed),
+    ).length,
+)
+
+const pendingCount = computed(
+  () =>
+    queue.value.filter(
+      (item) => item.status === 'ready' || item.status === 'needs_replace',
+    ).length,
+)
+
+const doneCount = computed(
+  () => queue.value.filter((item) => item.status === 'done').length,
+)
+
+const errorCount = computed(
+  () =>
+    queue.value.filter(
+      (item) => item.status === 'error' || item.status === 'skipped',
+    ).length,
+)
+
+const batchFinished = computed(
+  () =>
+    queue.value.length > 0 &&
+    queue.value.every((item) =>
+      ['done', 'error', 'skipped'].includes(item.status),
+    ),
 )
 
 const canCommit = computed(() => {
-  if (store.importing) return false
-  if (importKind.value === 'rake') {
-    if (!preview.value) return false
-    if (preview.value.conflict && !replaceConfirmed.value) return false
-    return true
-  }
-  if (!txPreview.value) return false
-  if (txPreview.value.conflict && !replaceConfirmed.value) return false
-  return true
+  if (parsing.value || batchRunning.value || store.importing) return false
+  if (!queue.value.length) return false
+  if (batchFinished.value) return false
+  const actionable = queue.value.filter(
+    (item) => item.status === 'ready' || item.status === 'needs_replace',
+  )
+  if (!actionable.length) return false
+  return actionable.every(
+    (item) => item.status === 'ready' && (!itemHasConflict(item) || item.replaceConfirmed),
+  )
 })
 
+const hasAnyConflictNeedingConfirm = computed(() =>
+  queue.value.some(
+    (item) =>
+      (item.status === 'needs_replace' || item.status === 'ready') &&
+      itemHasConflict(item) &&
+      !item.replaceConfirmed,
+  ),
+)
+
 async function confirmImport() {
+  if (!canCommit.value) return
   stepError.value = null
-  if (importKind.value === 'rake') {
-    if (!preview.value || !canCommit.value) return
-    const committed = await store.commitReport({
-      preview: preview.value,
-      replace: Boolean(preview.value.conflict && replaceConfirmed.value),
-      clubCode: importClub.value,
-    })
-    if (!committed) {
-      stepError.value = 'Falha ao processar o relatório.'
-      return
+  batchRunning.value = true
+  let lastResult: CommitReportResult | CommitTransactionResult | null = null
+  let imported = 0
+  let failed = 0
+
+  try {
+    for (const item of queue.value) {
+      if (item.status !== 'ready') continue
+
+      item.status = 'importing'
+      item.error = null
+
+      try {
+        if (importKind.value === 'rake') {
+          const fresh = await store.previewReport(item.file)
+          if (!fresh) {
+            item.status = 'error'
+            item.error = 'Falha ao revalidar o arquivo antes do commit.'
+            failed += 1
+            continue
+          }
+          item.rakePreview = fresh
+          if (fresh.conflict && !item.replaceConfirmed) {
+            item.status = 'skipped'
+            item.error =
+              'Conflito detectado após outro arquivo do lote. Confirme a substituição e tente de novo.'
+            failed += 1
+            continue
+          }
+          const committed = await store.commitReport({
+            preview: fresh,
+            replace: Boolean(fresh.conflict && item.replaceConfirmed),
+            clubCode: importClub.value,
+            quiet: true,
+          })
+          if (!committed) {
+            item.status = 'error'
+            item.error = 'Falha ao processar o relatório.'
+            failed += 1
+            continue
+          }
+          item.rakeResult = committed
+          item.status = 'done'
+          imported += 1
+          lastResult = committed
+          emit('imported', committed)
+        } else {
+          const fresh = await store.previewTransactionReport(item.file)
+          if (!fresh) {
+            item.status = 'error'
+            item.error = 'Falha ao revalidar o arquivo antes do commit.'
+            failed += 1
+            continue
+          }
+          item.txPreview = fresh
+          if (fresh.conflict && !item.replaceConfirmed) {
+            item.status = 'skipped'
+            item.error =
+              'Conflito detectado após outro arquivo do lote. Confirme a substituição e tente de novo.'
+            failed += 1
+            continue
+          }
+          const committed = await store.commitTransactionReport({
+            preview: fresh,
+            replace: Boolean(fresh.conflict && item.replaceConfirmed),
+            clubCode: importClub.value,
+            quiet: true,
+          })
+          if (!committed) {
+            item.status = 'error'
+            item.error = 'Falha ao processar as transações.'
+            failed += 1
+            continue
+          }
+          item.txResult = committed
+          item.status = 'done'
+          imported += 1
+          lastResult = committed
+          emit('imported', committed)
+        }
+      } catch (err) {
+        item.status = 'error'
+        item.error =
+          err instanceof Error ? err.message : 'Falha ao processar o arquivo.'
+        failed += 1
+      }
     }
-    result.value = committed
-    emit('imported', committed)
-    return
+  } finally {
+    batchRunning.value = false
   }
 
-  if (!txPreview.value || !canCommit.value) return
-  const committed = await store.commitTransactionReport({
-    preview: txPreview.value,
-    replace: Boolean(txPreview.value.conflict && replaceConfirmed.value),
-    clubCode: importClub.value,
-  })
-  if (!committed) {
-    stepError.value = 'Falha ao processar as transações.'
-    return
+  if (imported > 0 && failed === 0) {
+    toast.success(
+      imported === 1
+        ? '1 relatório importado.'
+        : `${imported} relatórios importados.`,
+    )
+  } else if (imported > 0 && failed > 0) {
+    toast.success(`${imported} importado(s), ${failed} com problema.`)
+  } else if (failed > 0) {
+    stepError.value = 'Nenhum arquivo do lote foi importado.'
+    toast.error(stepError.value)
   }
-  txResult.value = committed
-  emit('imported', committed)
+
+  void lastResult
 }
 
-const hasResult = computed(() => Boolean(result.value || txResult.value))
+const footerCommitLabel = computed(() => {
+  if (hasAnyConflictNeedingConfirm.value) return 'Confirme os conflitos'
+  if (pendingCount.value <= 1) {
+    return conflictCount.value > 0 ? 'Substituir e processar' : 'Confirmar importação'
+  }
+  return conflictCount.value > 0
+    ? `Substituir e processar ${pendingCount.value}`
+    : `Confirmar ${pendingCount.value} arquivos`
+})
 </script>
 
 <template>
@@ -163,6 +436,7 @@ const hasResult = computed(() => Boolean(result.value || txResult.value))
         type="button"
         class="absolute inset-0 bg-black/60"
         aria-label="Fechar"
+        :disabled="batchRunning || store.importing"
         @click="close"
       />
 
@@ -175,13 +449,14 @@ const hasResult = computed(() => Boolean(result.value || txResult.value))
               Importar relatório
             </h3>
             <p class="text-xs text-text-muted">
-              Escolha o tipo e envie o arquivo XLSX correspondente
+              Escolha o tipo e envie um ou mais arquivos XLSX do mesmo tipo
             </p>
           </div>
           <button
             type="button"
-            class="rounded-lg p-1.5 text-text-muted hover:bg-white/10 hover:text-text-primary"
+            class="rounded-lg p-1.5 text-text-muted hover:bg-white/10 hover:text-text-primary disabled:opacity-50"
             aria-label="Fechar"
+            :disabled="batchRunning || store.importing"
             @click="close"
           >
             <X :size="16" />
@@ -198,7 +473,7 @@ const hasResult = computed(() => Boolean(result.value || txResult.value))
                   ? 'bg-accent text-board'
                   : 'text-text-secondary hover:bg-surface'
               "
-              :disabled="parsing || store.importing"
+              :disabled="parsing || batchRunning || store.importing"
               @click="importKind = 'rake'"
             >
               Rake
@@ -211,7 +486,7 @@ const hasResult = computed(() => Boolean(result.value || txResult.value))
                   ? 'bg-accent text-board'
                   : 'text-text-secondary hover:bg-surface'
               "
-              :disabled="parsing || store.importing"
+              :disabled="parsing || batchRunning || store.importing"
               @click="importKind = 'transactions'"
             >
               Transações
@@ -219,10 +494,11 @@ const hasResult = computed(() => Boolean(result.value || txResult.value))
           </div>
 
           <label class="block text-xs text-text-muted">
-            Clube deste arquivo
+            Clube deste lote
             <select
               v-model="importClub"
               class="mt-1 w-full rounded-xl border border-border-subtle bg-board px-3 py-2 text-sm text-text-primary"
+              :disabled="parsing || batchRunning || store.importing"
             >
               <option
                 v-for="opt in CLUB_FILTER_OPTIONS.filter((o) => o.value !== 'all')"
@@ -233,7 +509,7 @@ const hasResult = computed(() => Boolean(result.value || txResult.value))
               </option>
             </select>
             <span class="mt-1 block text-[11px]">
-              Nome do clube no arquivo prevalece. Esta escolha vale quando o XLSX não traz o clube.
+              Um clube por lote. Nome do clube no arquivo prevalece quando existir.
             </span>
           </label>
 
@@ -244,21 +520,25 @@ const hasResult = computed(() => Boolean(result.value || txResult.value))
             <p class="text-sm text-text-secondary">
               {{
                 importKind === 'rake'
-                  ? 'Relatório semanal (Agentes, Jogadores, Mesas)'
-                  : 'Relatório de transações (depósitos e bônus)'
+                  ? 'Relatórios semanais (Agentes, Jogadores, Mesas)'
+                  : 'Relatórios de transações (depósitos e bônus)'
               }}
             </p>
             <button
               type="button"
               class="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-board hover:bg-accent-hover disabled:opacity-50"
-              :disabled="parsing || store.importing"
+              :disabled="parsing || batchRunning || store.importing"
               @click="fileInput?.click()"
             >
-              Escolher arquivo .xlsx
+              Escolher arquivos .xlsx
             </button>
+            <p class="text-[11px] text-text-muted">
+              Selecione vários arquivos do mesmo tipo. Não misture rake com transações.
+            </p>
             <input
               ref="fileInput"
               type="file"
+              multiple
               accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               class="hidden"
               @change="onFileChange"
@@ -267,219 +547,199 @@ const hasResult = computed(() => Boolean(result.value || txResult.value))
 
           <p v-if="parsing" class="flex items-center gap-2 text-sm text-text-muted">
             <Loader2 class="animate-spin" :size="16" />
-            Validando relatório…
+            Validando lote…
           </p>
 
-          <p v-if="stepError" class="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+          <p
+            v-if="stepError"
+            class="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
+          >
             {{ stepError }}
           </p>
 
-          <div
-            v-if="preview && !result"
-            class="space-y-3 rounded-xl border border-border-subtle bg-board-elevated/60 p-4"
-          >
-            <div>
-              <p class="text-sm font-semibold text-text-primary">
-                {{ preview.filename }}
-              </p>
+          <div v-if="queue.length" class="space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
               <p class="text-xs text-text-muted">
-                Período:
-                {{ formatPeriodLabel(preview.parsed.period.start, preview.parsed.period.end) }}
+                {{ queue.length }} arquivo(s)
+                <template v-if="batchFinished">
+                  · {{ doneCount }} ok
+                  <template v-if="errorCount"> · {{ errorCount }} com problema</template>
+                </template>
               </p>
-            </div>
-            <ul class="grid grid-cols-2 gap-2 text-sm text-text-secondary sm:grid-cols-4">
-              <li>{{ preview.parsed.agents.length }} agências</li>
-              <li>{{ preview.parsed.uniquePlayerIds.length }} jogadores</li>
-              <li>{{ preview.parsed.tables.length }} mesas</li>
-              <li>{{ preview.parsed.gameTypes.length }} modalidades</li>
-            </ul>
-            <p class="text-sm text-text-secondary">
-              {{ preview.conciliatedCount }} agências conciliadas
-              <span v-if="preview.divergenceCount > 0" class="text-amber-200">
-                · {{ preview.divergenceCount }} divergência(s)
-              </span>
-            </p>
-
-            <div
-              v-if="preview.conflict"
-              class="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-3 text-sm text-amber-100"
-            >
-              <p class="font-medium">
-                Já existem dados para este período
-                ({{ preview.conflict.affectedAgentIds.length }} agências).
-              </p>
-              <p class="mt-1 text-xs text-amber-100/80">
-                Substituir recalcula os acumulados sem somar a semana duas vezes.
-              </p>
-              <label class="mt-3 flex items-center gap-2 text-sm">
-                <input v-model="replaceConfirmed" type="checkbox" class="rounded border-white/20" />
-                Substituir / reprocessar o período existente
-              </label>
-            </div>
-
-            <ul
-              v-if="preview.parsed.warnings.length"
-              class="space-y-1 text-xs text-text-muted"
-            >
-              <li v-for="(w, i) in preview.parsed.warnings" :key="i">
-                {{ w.message }}
-              </li>
-            </ul>
-          </div>
-
-          <div
-            v-if="txPreview && !txResult"
-            class="space-y-3 rounded-xl border border-border-subtle bg-board-elevated/60 p-4"
-          >
-            <div>
-              <p class="text-sm font-semibold text-text-primary">
-                {{ txPreview.filename }}
-              </p>
-              <p class="text-xs text-text-muted">
-                Período:
-                {{
-                  formatPeriodLabel(
-                    txPreview.parsed.period.start,
-                    txPreview.parsed.period.end,
-                  )
-                }}
-              </p>
-            </div>
-            <ul class="grid grid-cols-2 gap-2 text-sm text-text-secondary sm:grid-cols-4">
-              <li>{{ txPreview.parsed.transactions.length }} transações</li>
-              <li>{{ txPreview.parsed.depositsCount }} depósitos</li>
-              <li>{{ txPreview.parsed.bonusesCount }} bônus</li>
-              <li>{{ txPreview.parsed.uniqueAgentIds.length }} agências</li>
-            </ul>
-
-            <div
-              v-if="txPreview.conflict"
-              class="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-3 text-sm text-amber-100"
-            >
-              <p class="font-medium">
-                Já existem transações deste período (ou import anterior com conciliação inválida).
-              </p>
-              <p class="mt-1 text-xs text-amber-100/80">
-                Substituir remove o(s) lote(s) anterior(es) e reinsere com upsert por Transaction ID.
-              </p>
-              <label class="mt-3 flex items-center gap-2 text-sm">
-                <input v-model="replaceConfirmed" type="checkbox" class="rounded border-white/20" />
-                Substituir / reprocessar
-              </label>
-            </div>
-
-            <p
-              v-if="txPreview.parsed.uniqueAgentIds.length === 0"
-              class="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
-            >
-              Nenhum Agente player ID reconhecido no arquivo. Verifique o cabeçalho antes de confirmar.
-            </p>
-
-            <ul
-              v-if="txPreview.parsed.warnings.length"
-              class="space-y-1 text-xs text-text-muted"
-            >
-              <li v-for="(w, i) in txPreview.parsed.warnings" :key="i">
-                {{ w.message }}
-              </li>
-            </ul>
-          </div>
-
-          <div
-            v-if="result"
-            class="space-y-3 rounded-xl border border-success/30 bg-success/10 p-4"
-          >
-            <p class="text-sm font-semibold text-success">
-              Relatório de rake processado — {{ result.periodLabel }}
-            </p>
-            <p class="text-sm text-text-secondary">
-              {{ result.agentsCount }} agências ·
-              {{ result.playersCount }} jogadores ·
-              {{ result.tableRowsCount }} mesas ·
-              {{ result.conciliatedCount }} conciliadas
-              <span v-if="result.divergenceCount">
-                · {{ result.divergenceCount }} divergência(s)
-              </span>
-            </p>
-            <div v-if="result.campaignUpdates.length" class="space-y-2">
-              <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                Campanhas atualizadas
-              </p>
-              <div
-                v-for="upd in result.campaignUpdates"
-                :key="upd.campaignId"
-                class="rounded-lg bg-board/50 px-3 py-2 text-sm"
+              <label
+                v-if="hasAnyConflictNeedingConfirm && !batchFinished"
+                class="flex items-center gap-2 text-xs text-amber-100"
               >
-                <p class="font-medium text-text-primary">{{ upd.name }}</p>
-                <p class="text-text-secondary">
-                  +{{ formatCurrency(upd.rakeAdded) }} →
-                  {{ formatCurrency(upd.rakeAfter) }}
-                  <span v-if="upd.recoveryAfter != null">
-                    ({{ upd.recoveryBefore?.toFixed(0) ?? '—' }}% →
-                    {{ upd.recoveryAfter.toFixed(0) }}%)
+                <input
+                  v-model="replaceAllConflicts"
+                  type="checkbox"
+                  class="rounded border-white/20"
+                />
+                Substituir todos os conflitos
+              </label>
+            </div>
+
+            <div
+              v-for="item in queue"
+              :key="item.id"
+              class="space-y-2 rounded-xl border border-border-subtle bg-board-elevated/60 p-3"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <p class="truncate text-sm font-semibold text-text-primary">
+                    {{ item.file.name }}
+                  </p>
+                  <p class="text-xs text-text-muted">
+                    Período: {{ itemPeriodLabel(item) }}
+                    ·
+                    <span
+                      :class="{
+                        'text-amber-200': item.status === 'needs_replace',
+                        'text-success': item.status === 'done',
+                        'text-danger': item.status === 'error' || item.status === 'skipped',
+                      }"
+                    >
+                      {{ statusLabel(item.status) }}
+                    </span>
+                  </p>
+                </div>
+                <button
+                  v-if="!batchFinished && item.status !== 'importing' && !batchRunning"
+                  type="button"
+                  class="shrink-0 rounded-lg px-2 py-1 text-xs text-text-muted hover:bg-white/10 hover:text-text-primary"
+                  @click="removeItem(item.id)"
+                >
+                  Remover
+                </button>
+              </div>
+
+              <ul
+                v-if="importKind === 'rake' && item.rakePreview"
+                class="grid grid-cols-2 gap-1 text-xs text-text-secondary sm:grid-cols-4"
+              >
+                <li>{{ item.rakePreview.parsed.agents.length }} agências</li>
+                <li>{{ item.rakePreview.parsed.uniquePlayerIds.length }} jogadores</li>
+                <li>{{ item.rakePreview.parsed.tables.length }} mesas</li>
+                <li>
+                  {{ item.rakePreview.conciliatedCount }} conciliadas
+                  <span v-if="item.rakePreview.divergenceCount" class="text-amber-200">
+                    · {{ item.rakePreview.divergenceCount }} diverg.
                   </span>
+                </li>
+              </ul>
+
+              <ul
+                v-else-if="importKind === 'transactions' && item.txPreview"
+                class="grid grid-cols-2 gap-1 text-xs text-text-secondary sm:grid-cols-4"
+              >
+                <li>{{ item.txPreview.parsed.transactions.length }} transações</li>
+                <li>{{ item.txPreview.parsed.depositsCount }} depósitos</li>
+                <li>{{ item.txPreview.parsed.bonusesCount }} bônus</li>
+                <li>{{ item.txPreview.parsed.uniqueAgentIds.length }} agências</li>
+              </ul>
+
+              <div
+                v-if="itemHasConflict(item) && !batchFinished && item.status !== 'done'"
+                class="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100"
+              >
+                <p class="font-medium">
+                  {{
+                    importKind === 'rake'
+                      ? 'Já existem dados deste período.'
+                      : 'Já existem transações deste período (ou import inválido).'
+                  }}
                 </p>
+                <label class="mt-2 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    class="rounded border-white/20"
+                    :checked="item.replaceConfirmed"
+                    :disabled="batchRunning || item.status === 'importing'"
+                    @change="
+                      onItemReplaceToggle(
+                        item,
+                        ($event.target as HTMLInputElement).checked,
+                      )
+                    "
+                  />
+                  Substituir / reprocessar este arquivo
+                </label>
+              </div>
+
+              <p
+                v-if="
+                  importKind === 'transactions' &&
+                  item.txPreview &&
+                  item.txPreview.parsed.uniqueAgentIds.length === 0
+                "
+                class="text-xs text-danger"
+              >
+                Nenhum Agente player ID reconhecido neste arquivo.
+              </p>
+
+              <p v-if="item.error" class="text-xs text-danger">
+                {{ item.error }}
+              </p>
+
+              <div
+                v-if="item.rakeResult"
+                class="rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-xs text-success"
+              >
+                Rake processado — {{ item.rakeResult.periodLabel }}
+                <span v-if="item.rakeResult.replaced"> (substituído)</span>
+                · {{ item.rakeResult.agentsCount }} agências
+                · {{ item.rakeResult.playersCount }} jogadores
+              </div>
+
+              <div
+                v-if="item.txResult"
+                class="rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-xs text-success"
+              >
+                Transações processadas — {{ item.txResult.periodLabel }}
+                <span v-if="item.txResult.replaced"> (substituído)</span>
+                · {{ item.txResult.transactionsCount }} TX
+                · {{ item.txResult.depositsCount }} depósitos
+                · {{ item.txResult.bonusesCount }} bônus
+              </div>
+
+              <div
+                v-if="item.rakeResult?.campaignUpdates.length"
+                class="space-y-1"
+              >
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                  Campanhas atualizadas
+                </p>
+                <div
+                  v-for="upd in item.rakeResult.campaignUpdates"
+                  :key="upd.campaignId"
+                  class="rounded-lg bg-board/50 px-2 py-1.5 text-xs text-text-secondary"
+                >
+                  <span class="font-medium text-text-primary">{{ upd.name }}</span>
+                  · +{{ formatCurrency(upd.rakeAdded) }} → {{ formatCurrency(upd.rakeAfter) }}
+                </div>
               </div>
             </div>
-            <p v-else class="text-xs text-text-muted">
-              Nenhuma campanha vinculada às agências deste relatório.
-              Vincule um Agent ID ao criar/editar a campanha.
-            </p>
-          </div>
-
-          <div
-            v-if="txResult"
-            class="space-y-3 rounded-xl border border-success/30 bg-success/10 p-4"
-          >
-            <p class="text-sm font-semibold text-success">
-              Transações processadas — {{ txResult.periodLabel }}
-            </p>
-            <ul class="grid grid-cols-2 gap-2 text-sm text-text-secondary sm:grid-cols-3">
-              <li>{{ txResult.transactionsCount }} transações</li>
-              <li>{{ txResult.depositsCount }} depósitos</li>
-              <li>{{ txResult.bonusesCount }} bônus</li>
-              <li>{{ txResult.playersCount }} jogadores</li>
-              <li>{{ txResult.agentsCount }} Agent IDs</li>
-              <li>{{ txResult.agentsLinkedToCampaigns }} vinculados</li>
-            </ul>
-            <p
-              v-if="txResult.agentsWithoutCampaign > 0"
-              class="text-xs text-amber-100"
-            >
-              {{ txResult.agentsWithoutCampaign }} Agent ID(s) sem campanha:
-              {{ txResult.agentsWithoutCampaignIds.slice(0, 8).join(', ') }}
-              <template v-if="txResult.agentsWithoutCampaignIds.length > 8">…</template>
-            </p>
-            <p
-              v-if="txResult.transactionsWithoutAgent > 0"
-              class="text-xs text-amber-100"
-            >
-              {{ txResult.transactionsWithoutAgent }} transação(ões) sem Agent ID
-              (preservadas, sem campanha).
-            </p>
-            <p class="text-xs text-text-muted">
-              {{ txResult.affectedCampaignIds.length }} campanha(s) afetada(s).
-            </p>
           </div>
         </div>
 
         <footer class="flex justify-end gap-2 border-t border-border-subtle px-5 py-3">
           <button
             type="button"
-            class="rounded-xl px-4 py-2 text-sm text-text-secondary hover:bg-white/10"
+            class="rounded-xl px-4 py-2 text-sm text-text-secondary hover:bg-white/10 disabled:opacity-50"
+            :disabled="batchRunning || store.importing"
             @click="close"
           >
-            {{ hasResult ? 'Fechar' : 'Cancelar' }}
+            {{ batchFinished ? 'Fechar' : 'Cancelar' }}
           </button>
           <button
-            v-if="(preview || txPreview) && !hasResult"
+            v-if="queue.length && !batchFinished"
             type="button"
             class="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-board hover:bg-accent-hover disabled:opacity-50"
             :disabled="!canCommit"
             @click="confirmImport"
           >
-            <Loader2 v-if="store.importing" class="animate-spin" :size="16" />
-            {{ activeConflict ? 'Substituir e processar' : 'Confirmar importação' }}
+            <Loader2 v-if="batchRunning || store.importing" class="animate-spin" :size="16" />
+            {{ footerCommitLabel }}
           </button>
         </footer>
       </section>

@@ -2021,6 +2021,8 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     replace: boolean
     /** Clube deste arquivo quando o XLSX de rake não traz a coluna. */
     clubCode?: ClubCode | null
+    /** Evita toast por arquivo em lote. */
+    quiet?: boolean
   }): Promise<CommitReportResult | null> {
     const toast = useToastStore()
     const auth = useAuthStore()
@@ -2029,7 +2031,9 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     const reportClub = parsed.fileClubCode ?? params.clubCode ?? null
 
     if (conflict && !replace) {
-      toast.error('Já existem dados para este período. Confirme a substituição.')
+      if (!params.quiet) {
+        toast.error('Já existem dados para este período. Confirme a substituição.')
+      }
       return null
     }
 
@@ -2276,9 +2280,11 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         )
       }
 
-      toast.success(
-        replace ? 'Relatório substituído e acumulados recalculados.' : 'Relatório importado.',
-      )
+      if (!params.quiet) {
+        toast.success(
+          replace ? 'Relatório substituído e acumulados recalculados.' : 'Relatório importado.',
+        )
+      }
 
       return {
         importId,
@@ -2295,7 +2301,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       const message =
         err instanceof Error ? err.message : 'Falha ao processar o relatório.'
       error.value = message
-      toast.error(message)
+      if (!params.quiet) toast.error(message)
       return null
     } finally {
       importing.value = false
@@ -2415,6 +2421,8 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     replace: boolean
     /** Fallback quando a linha não traz Nome do clube resolvível. */
     clubCode?: ClubCode | null
+    /** Evita toast por arquivo em lote. */
+    quiet?: boolean
   }): Promise<CommitTransactionResult | null> {
     const toast = useToastStore()
     const auth = useAuthStore()
@@ -2422,7 +2430,9 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     const { parsed, filename, conflict } = preview
 
     if (conflict && !replace) {
-      toast.error('Já existem transações para este período. Confirme a substituição.')
+      if (!params.quiet) {
+        toast.error('Já existem transações para este período. Confirme a substituição.')
+      }
       return null
     }
 
@@ -2577,11 +2587,13 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         )
       }
 
-      toast.success(
-        replace
-          ? 'Transações substituídas.'
-          : 'Transações importadas.',
-      )
+      if (!params.quiet) {
+        toast.success(
+          replace
+            ? 'Transações substituídas.'
+            : 'Transações importadas.',
+        )
+      }
 
       return {
         importId,
@@ -2603,7 +2615,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       const message =
         err instanceof Error ? err.message : 'Falha ao processar transações.'
       error.value = message
-      toast.error(message)
+      if (!params.quiet) toast.error(message)
       return null
     } finally {
       importing.value = false
