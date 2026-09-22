@@ -988,6 +988,179 @@ export const useBoardStore = defineStore('board', () => {
     return card
   }
 
+  async function duplicateCard(cardId: string): Promise<Card | null> {
+    const source = cards.value.find((card) => card.id === cardId)
+    if (!source) return null
+
+    const now = new Date().toISOString()
+    const insertPosition = source.position + 1
+    const toShift = cards.value.filter(
+      (card) =>
+        card.columnId === source.columnId &&
+        card.position >= insertPosition &&
+        card.id !== source.id,
+    )
+    for (const card of toShift) {
+      card.position += 1
+    }
+
+    const checklists = source.checklists.map((list) => ({
+      id: createId('cl'),
+      title: list.title,
+      items: list.items.map((item) => ({
+        id: createId('cli'),
+        text: item.text,
+        completed: item.completed,
+        assigneeIds: [...item.assigneeIds],
+        dueDate: item.dueDate ?? null,
+      })),
+    }))
+
+    const card: Card = {
+      id: createId('card'),
+      columnId: source.columnId,
+      title: `${source.title} (cópia)`,
+      description: source.description,
+      labelIds: [...source.labelIds],
+      memberIds: [...source.memberIds],
+      startDate: source.startDate,
+      dueDate: source.dueDate,
+      checklists,
+      comments: [],
+      attachments: [],
+      completed: false,
+      archivedAt: null,
+      position: insertPosition,
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    cards.value.push(card)
+    quietRealtime()
+
+    if (toShift.length) {
+      await Promise.all(
+        toShift.map((shifted) =>
+          supabase
+            .from('cards')
+            .update({ position: shifted.position, updated_at: now })
+            .eq('id', shifted.id),
+        ),
+      )
+    }
+
+    const { error: insertError } = await supabase.from('cards').insert({
+      id: card.id,
+      board_id: BOARD_ID,
+      column_id: card.columnId,
+      title: card.title,
+      description: card.description,
+      start_date: card.startDate,
+      due_date: card.dueDate,
+      completed: false,
+      archived_at: null,
+      position: card.position,
+      checklists: card.checklists as unknown as Json,
+      created_at: now,
+      updated_at: now,
+    })
+
+    if (insertError) {
+      cards.value = cards.value.filter((item) => item.id !== card.id)
+      for (const shifted of toShift) {
+        shifted.position -= 1
+      }
+      error.value = insertError.message
+      reportWriteError(insertError.message)
+      return null
+    }
+
+    if (card.labelIds.length) {
+      const { error: labelsError } = await supabase.from('card_labels').insert(
+        card.labelIds.map((labelId) => ({
+          card_id: card.id,
+          label_id: labelId,
+        })),
+      )
+      if (labelsError) {
+        reportWriteError(labelsError.message)
+      }
+    }
+
+    if (card.memberIds.length) {
+      const { error: membersError } = await supabase.from('card_members').insert(
+        card.memberIds.map((memberId) => ({
+          card_id: card.id,
+          member_id: memberId,
+        })),
+      )
+      if (membersError) {
+        reportWriteError(membersError.message)
+      }
+    }
+
+    const { data: sourceAttachments } = await supabase
+      .from('attachments')
+      .select(
+        'name, storage_path, url, mime_type, size_bytes, kind, created_at',
+      )
+      .eq('card_id', source.id)
+
+    for (const row of sourceAttachments ?? []) {
+      const attachmentId = createId('a')
+      const kind = row.kind === 'link' ? 'link' : 'file'
+      let storagePath = String(row.storage_path ?? '')
+      let url = String(row.url ?? '')
+
+      if (kind === 'file' && storagePath) {
+        const safeName = String(row.name ?? 'file').replace(/[^\w.\-]+/g, '_')
+        const nextPath = `${BOARD_ID}/${card.id}/${attachmentId}-${safeName}`
+        const { error: copyError } = await supabase.storage
+          .from('card-attachments')
+          .copy(storagePath, nextPath)
+        if (copyError) {
+          continue
+        }
+        storagePath = nextPath
+        const { data: publicUrl } = supabase.storage
+          .from('card-attachments')
+          .getPublicUrl(nextPath)
+        url = publicUrl.publicUrl
+      }
+
+      const attachment: Attachment = {
+        id: attachmentId,
+        name: String(row.name ?? 'Anexo'),
+        url,
+        mimeType: String(row.mime_type ?? 'application/octet-stream'),
+        sizeBytes: Number(row.size_bytes) || 0,
+        createdAt: now,
+        kind,
+      }
+
+      const { error: attachmentError } = await supabase
+        .from('attachments')
+        .insert({
+          id: attachment.id,
+          card_id: card.id,
+          name: attachment.name,
+          storage_path: storagePath,
+          url: attachment.url,
+          mime_type: attachment.mimeType,
+          size_bytes: attachment.sizeBytes,
+          created_at: attachment.createdAt,
+          kind: attachment.kind,
+        })
+
+      if (!attachmentError) {
+        card.attachments.push(attachment)
+      }
+    }
+
+    selectedCardId.value = card.id
+    return card
+  }
+
   async function updateCard(cardId: string, patch: Partial<Card>) {
     const index = cards.value.findIndex((card) => card.id === cardId)
     if (index === -1) return
@@ -1772,6 +1945,7 @@ export const useBoardStore = defineStore('board', () => {
     renameColumn,
     deleteColumn,
     addCard,
+    duplicateCard,
     updateCard,
     archiveCard,
     unarchiveCard,

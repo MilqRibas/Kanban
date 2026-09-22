@@ -15,6 +15,7 @@ import {
   CheckSquare,
   ChevronDown,
   Clock,
+  Copy,
   Ellipsis,
   GripVertical,
   Italic,
@@ -499,6 +500,12 @@ async function archiveCurrentCard() {
   await board.archiveCard(card.value.id)
 }
 
+async function duplicateCurrentCard() {
+  if (!card.value) return
+  cardMenuOpen.value = false
+  await board.duplicateCard(card.value.id)
+}
+
 async function deleteCurrentCard() {
   if (!card.value) return
   const title = card.value.title
@@ -711,6 +718,15 @@ function renderCommentBody(body: string) {
                   >
                     <Archive :size="14" />
                     Arquivar
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface hover:text-text-primary"
+                    @click="duplicateCurrentCard"
+                  >
+                    <Copy :size="14" />
+                    Duplicar
                   </button>
                   <button
                     type="button"
