@@ -221,6 +221,8 @@ export interface CampaignAgentPeriod {
   playersRakeSum: number
   uniquePlayers: number
   reconciliationDiff: number
+  clubCode: string | null
+  slotName: string | null
   createdAt: string
 }
 
@@ -237,6 +239,7 @@ export interface CampaignPlayerPeriod {
   weeklyRake: number
   gains: number
   hands: number
+  clubCode: string | null
   createdAt: string
 }
 
@@ -355,4 +358,5 @@ export type ImportConflict = {
   periodEnd: string
   existingImportIds: string[]
   affectedAgentIds: string[]
+  clubCode?: string | null
 }

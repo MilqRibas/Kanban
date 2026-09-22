@@ -83,6 +83,31 @@ watch(importKind, () => {
   resetQueueState()
 })
 
+watch(importClub, async () => {
+  if (importKind.value !== 'rake' || !queue.value.length || batchRunning.value) return
+  parsing.value = true
+  try {
+    for (const item of queue.value) {
+      if (item.status === 'done' || item.status === 'importing') continue
+      const preview = await store.previewReport(item.file, importClub.value)
+      if (!preview) {
+        item.status = 'error'
+        item.error = 'Não foi possível revalidar o arquivo com o clube selecionado.'
+        item.rakePreview = null
+        continue
+      }
+      item.rakePreview = preview
+      item.replaceConfirmed = false
+      item.error = null
+      item.status = preview.conflict ? 'needs_replace' : 'ready'
+    }
+    flagIntraBatchConflicts()
+    replaceAllConflicts.value = false
+  } finally {
+    parsing.value = false
+  }
+})
+
 watch(replaceAllConflicts, (value) => {
   if (!value) return
   for (const item of queue.value) {
@@ -159,7 +184,7 @@ async function onFileChange(event: Event) {
       }
 
       if (importKind.value === 'rake') {
-        const preview = await store.previewReport(file)
+        const preview = await store.previewReport(file, importClub.value)
         if (!preview) {
           item.status = 'error'
           item.error = 'Não foi possível validar o arquivo.'
@@ -319,7 +344,7 @@ async function confirmImport() {
 
       try {
         if (importKind.value === 'rake') {
-          const fresh = await store.previewReport(item.file)
+          const fresh = await store.previewReport(item.file, importClub.value)
           if (!fresh) {
             item.status = 'error'
             item.error = 'Falha ao revalidar o arquivo antes do commit.'
@@ -645,7 +670,7 @@ const footerCommitLabel = computed(() => {
                 <p class="font-medium">
                   {{
                     importKind === 'rake'
-                      ? 'Já existem dados deste período.'
+                      ? 'Já existem dados deste período e clube (mesmo Slot name).'
                       : 'Já existem transações deste período (ou import inválido).'
                   }}
                 </p>

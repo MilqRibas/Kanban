@@ -186,7 +186,13 @@ export function extractAgentIdFromBlockHeader(raw: unknown): string | null {
 export function aggregateAgentsById(agents: ParsedAgentRow[]): ParsedAgentRow[] {
   const map = new Map<string, ParsedAgentRow>()
   for (const agent of agents) {
-    const key = `${agent.agentId}|${agent.period.start}|${agent.period.end}`
+    const slotKey = String(agent.slotName ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase()
+    const key = `${agent.agentId}|${slotKey}|${agent.period.start}|${agent.period.end}`
     const prev = map.get(key)
     if (!prev) {
       map.set(key, { ...agent })
@@ -196,6 +202,7 @@ export function aggregateAgentsById(agents: ParsedAgentRow[]): ParsedAgentRow[] 
     prev.gains += agent.gains
     prev.hands += agent.hands
     if (agent.agentName) prev.agentName = agent.agentName
+    if (agent.slotName) prev.slotName = agent.slotName
   }
   return [...map.values()]
 }

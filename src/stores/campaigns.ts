@@ -23,6 +23,10 @@ import type {
 } from '../types/campaigns'
 import { BOARD_ID, supabase } from '../lib/supabase'
 import type { ClubCode } from '../utils/clubDimension'
+import {
+  findRakeImportConflicts,
+  resolveRakeImportClub,
+} from '../utils/rakeImportConflict'
 import { useAuthStore } from './auth'
 import { useToastStore } from './toast'
 import {
@@ -381,6 +385,8 @@ function mapAgentPeriod(row: Record<string, unknown>): CampaignAgentPeriod {
     playersRakeSum: toNumber(row.players_rake_sum),
     uniquePlayers: toNumber(row.unique_players),
     reconciliationDiff: toNumber(row.reconciliation_diff),
+    clubCode: (row.club_code as string | null) ?? null,
+    slotName: (row.slot_name as string | null) ?? null,
     createdAt: String(row.created_at),
   }
 }
@@ -399,6 +405,7 @@ function mapPlayerPeriod(row: Record<string, unknown>): CampaignPlayerPeriod {
     weeklyRake: toNumber(row.weekly_rake),
     gains: toNumber(row.gains),
     hands: toNumber(row.hands),
+    clubCode: (row.club_code as string | null) ?? null,
     createdAt: String(row.created_at),
   }
 }
@@ -1978,19 +1985,23 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     return true
   }
 
-  async function previewReport(file: File): Promise<ReportPreview | null> {
+  async function previewReport(
+    file: File,
+    clubCode?: ClubCode | null,
+  ): Promise<ReportPreview | null> {
     const toast = useToastStore()
     try {
       const parsed = collapseParsedReport(await parseAgentReportFile(file))
       const reconciliations = buildAgentReconciliations(parsed.agents, parsed.players)
-      const existing = agentPeriods.value.filter((p) =>
-        parsed.agents.some(
-          (a) =>
-            a.agentId === p.agentId &&
-            a.period.start === p.periodStart &&
-            a.period.end === p.periodEnd,
-        ),
-      )
+      const incomingClub = resolveRakeImportClub({
+        fileClubCode: parsed.fileClubCode,
+        importClub: clubCode,
+      })
+      const existing = findRakeImportConflicts({
+        incomingAgents: parsed.agents,
+        existingPeriods: agentPeriods.value,
+        incomingClub,
+      })
       const conflict: ImportConflict | null =
         existing.length > 0
           ? {
@@ -1998,6 +2009,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
               periodEnd: parsed.period.end,
               existingImportIds: [...new Set(existing.map((e) => e.importId))],
               affectedAgentIds: [...new Set(existing.map((e) => e.agentId))],
+              clubCode: incomingClub,
             }
           : null
 
@@ -2104,6 +2116,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
           unique_players: reco?.uniquePlayers ?? 0,
           reconciliation_diff: reco?.diff ?? 0,
           club_code: reportClub,
+          slot_name: a.slotName,
           created_at: now,
         }
       })
