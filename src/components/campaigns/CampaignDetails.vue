@@ -60,8 +60,16 @@ const emit = defineEmits<{
 const auth = useAuthStore()
 const store = useCampaignsStore()
 onMounted(() => {
-  void store.ensureTransactionsLoaded()
+  void store.ensurePeriodsLoaded()
+  void store.ensureBonusTransactionsLoaded()
+  void store.ensureCampaignTransactions(props.campaign)
 })
+watch(
+  () => props.campaign.id,
+  () => {
+    void store.ensureCampaignTransactions(props.campaign)
+  },
+)
 const menuOpen = ref(false)
 type DetailTab =
   | 'overview'

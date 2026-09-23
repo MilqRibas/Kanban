@@ -18,7 +18,8 @@ const props = defineProps<{
 
 const store = useCampaignsStore()
 onMounted(() => {
-  void store.ensureTransactionsLoaded()
+  void store.ensurePeriodsLoaded()
+  void store.ensureBonusTransactionsLoaded()
 })
 const selectedIds = ref<string[]>([])
 
@@ -32,6 +33,17 @@ watch(
       selectedIds.value = props.campaigns
         .slice(0, Math.min(4, props.campaigns.length))
         .map((c) => c.id)
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  selectedIds,
+  (ids) => {
+    for (const id of ids) {
+      const campaign = props.campaigns.find((c) => c.id === id)
+      if (campaign) void store.ensureCampaignTransactions(campaign)
     }
   },
   { immediate: true },

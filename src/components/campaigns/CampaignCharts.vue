@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import type { Campaign } from '../../types/campaigns'
 import { useCampaignsStore } from '../../stores/campaigns'
 import { formatCurrency, formatPercent } from '../../utils/campaignFormat'
@@ -15,6 +15,9 @@ const emit = defineEmits<{
 }>()
 
 const store = useCampaignsStore()
+onMounted(() => {
+  void store.ensurePeriodsLoaded()
+})
 
 const rows = computed(() => {
   return [...props.campaigns]

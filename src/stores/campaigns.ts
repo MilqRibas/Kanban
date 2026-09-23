@@ -33,6 +33,11 @@ import {
   formatSupabaseError,
   jsonByteLength,
 } from '../utils/transactionImportBatch'
+import {
+  clearCampaignsShellCache,
+  readCampaignsShellCache,
+  writeCampaignsShellCache,
+} from '../utils/campaignsShellCache'
 import { useAuthStore } from './auth'
 import { useToastStore } from './toast'
 import {
@@ -592,6 +597,15 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   const ready = ref(false)
   const transactionsLoaded = ref(false)
   const bonusTransactionsLoaded = ref(false)
+  const periodsLoaded = ref(false)
+  /** Agentes cujo histórico TX já foi baixado sob demanda. */
+  const loadedTxAgentIds = ref(new Set<string>())
+  /** KPIs vindos da RPC (overview rápido antes dos períodos locais). */
+  const overviewKpisRpc = ref<(OverviewKpis & {
+    recoveringCount: number
+    noDataCount: number
+    averageRakePerActive: number | null
+  }) | null>(null)
   const error = ref<string | null>(null)
   const showArchived = ref(false)
 
@@ -1059,6 +1073,13 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     averageRakePerActive: number | null
   } {
     const list = (campaigns ?? visibleCampaigns.value).filter((c) => !c.isArchived)
+    // Snapshot RPC: overview sem filtro (ou lista completa) antes dos períodos locais.
+    if (!periodsLoaded.value && overviewKpisRpc.value) {
+      const allVisible = visibleCampaigns.value.filter((c) => !c.isArchived)
+      if (!campaigns || list.length === allVisible.length) {
+        return overviewKpisRpc.value
+      }
+    }
     let paidInvestment = 0
     let paidRake = 0
     let paidLiquid = 0
@@ -1268,6 +1289,143 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     agentPeriods.value = agentPeriodsRes.data.map(mapAgentPeriod)
     playerPeriods.value = playerPeriodsRes.data.map(mapPlayerPeriod)
     cohortPlayers.value = cohortRes.data.map(mapCohortPlayer)
+    periodsLoaded.value = true
+    persistShellCache()
+  }
+
+  let periodsLoadPromise: Promise<void> | null = null
+
+  async function ensurePeriodsLoaded() {
+    if (periodsLoaded.value) return
+    if (!periodsLoadPromise) {
+      periodsLoadPromise = loadPeriods()
+        .then(() => {
+          void reconcilePersistedCohorts()
+        })
+        .finally(() => {
+          periodsLoadPromise = null
+        })
+    }
+    await periodsLoadPromise
+  }
+
+  async function fetchOverviewKpisRpc() {
+    const { data, error: rpcError } = await supabase.rpc(
+      'crm_campaigns_overview_kpis',
+      { p_board_id: BOARD_ID },
+    )
+    if (rpcError) {
+      console.warn('[campaigns] overview kpis rpc', rpcError.message)
+      return
+    }
+    const payload = (data ?? {}) as Record<string, unknown>
+    const num = (key: string) => {
+      const n = Number(payload[key])
+      return Number.isFinite(n) ? n : 0
+    }
+    const nullable = (key: string) => {
+      if (payload[key] == null) return null
+      const n = Number(payload[key])
+      return Number.isFinite(n) ? n : null
+    }
+    overviewKpisRpc.value = {
+      totalInvestment: num('totalInvestment'),
+      totalAccumulatedRake: num('totalAccumulatedRake'),
+      organicAccumulatedRake: num('organicAccumulatedRake'),
+      totalCaptured: num('totalCaptured'),
+      totalActive: num('totalActive'),
+      activationRate: nullable('activationRate'),
+      recoveryRate: nullable('recoveryRate'),
+      paybackCount: num('paybackCount'),
+      averagePaybackDays: nullable('averagePaybackDays'),
+      costPerActive: nullable('costPerActive'),
+      recoveringCount: num('recoveringCount'),
+      noDataCount: num('noDataCount'),
+      averageRakePerActive: nullable('averageRakePerActive'),
+    }
+  }
+
+  function persistShellCache() {
+    writeCampaignsShellCache({
+      v: 1,
+      boardId: BOARD_ID,
+      savedAt: Date.now(),
+      campaigns: campaigns.value as unknown as Record<string, unknown>[],
+      agents: agents.value as unknown as Record<string, unknown>[],
+      imports: imports.value as unknown as Record<string, unknown>[],
+      transactionImports: transactionImports.value as unknown as Record<
+        string,
+        unknown
+      >[],
+      monthlyResults: monthlyResults.value as unknown as Record<string, unknown>[],
+      history: history.value as unknown as Record<string, unknown>[],
+      agentPeriods: agentPeriods.value as unknown as Record<string, unknown>[],
+      playerPeriods: playerPeriods.value as unknown as Record<string, unknown>[],
+      cohortPlayers: cohortPlayers.value as unknown as Record<string, unknown>[],
+    })
+  }
+
+  function hydrateShellCache() {
+    const cached = readCampaignsShellCache(BOARD_ID)
+    if (!cached) return false
+    campaigns.value = cached.campaigns as unknown as Campaign[]
+    agents.value = cached.agents as unknown as CampaignAgent[]
+    imports.value = cached.imports as unknown as CampaignReportImport[]
+    transactionImports.value =
+      cached.transactionImports as unknown as CampaignTransactionImport[]
+    monthlyResults.value =
+      cached.monthlyResults as unknown as CampaignMonthlyResult[]
+    history.value = cached.history as unknown as CampaignHistoryEntry[]
+    agentPeriods.value = cached.agentPeriods as unknown as CampaignAgentPeriod[]
+    playerPeriods.value =
+      cached.playerPeriods as unknown as CampaignPlayerPeriod[]
+    cohortPlayers.value =
+      cached.cohortPlayers as unknown as CampaignCohortPlayer[]
+    if (agentPeriods.value.length > 0 || playerPeriods.value.length > 0) {
+      periodsLoaded.value = true
+    }
+    return true
+  }
+
+  /** TX só do agente da campanha (+ janela desde startDate). */
+  async function ensureCampaignTransactions(
+    campaign: Pick<Campaign, 'id' | 'agentId' | 'startDate' | 'endDate'>,
+  ) {
+    const agentId = campaign.agentId
+    if (!agentId) return
+    if (transactionsLoaded.value) return
+    if (loadedTxAgentIds.value.has(agentId)) return
+
+    const { data, error: qErr } = await fetchAllPaged(() => {
+      let q = supabase
+        .from('campaign_transactions')
+        .select(TRANSACTION_LIST_COLUMNS)
+        .eq('board_id', BOARD_ID)
+        .eq('agent_id', agentId)
+        .order('id', { ascending: true })
+      if (campaign.startDate) {
+        q = q.or(
+          `occurred_at.gte.${campaign.startDate},period_start.gte.${campaign.startDate}`,
+        )
+      }
+      if (campaign.endDate) {
+        q = q.or(
+          `occurred_at.lte.${campaign.endDate}T23:59:59,period_start.lte.${campaign.endDate}`,
+        )
+      }
+      return asRangeQuery(q)
+    })
+    if (qErr) {
+      console.warn('[campaigns] campaign tx', qErr.message)
+      return
+    }
+    const byId = new Map(transactions.value.map((t) => [t.id, t]))
+    for (const row of data) {
+      const mapped = mapTransaction(row)
+      byId.set(mapped.id, mapped)
+    }
+    transactions.value = [...byId.values()]
+    loadedTxAgentIds.value = new Set([...loadedTxAgentIds.value, agentId])
   }
 
   async function persistCohorts(targets: Campaign[]) {
@@ -1418,8 +1576,38 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     loading.value = false
 
     if (deferPeriods) {
-      void loadPeriods().then(() => {
-        void reconcilePersistedCohorts()
+      const prev = periodsLoaded.value
+        ? null
+        : readCampaignsShellCache(BOARD_ID)
+      writeCampaignsShellCache({
+        v: 1,
+        boardId: BOARD_ID,
+        savedAt: Date.now(),
+        campaigns: campaigns.value as unknown as Record<string, unknown>[],
+        agents: agents.value as unknown as Record<string, unknown>[],
+        imports: imports.value as unknown as Record<string, unknown>[],
+        transactionImports: transactionImports.value as unknown as Record<
+          string,
+          unknown
+        >[],
+        monthlyResults: monthlyResults.value as unknown as Record<
+          string,
+          unknown
+        >[],
+        history: history.value as unknown as Record<string, unknown>[],
+        agentPeriods: (periodsLoaded.value
+          ? agentPeriods.value
+          : (prev?.agentPeriods ?? [])) as Record<string, unknown>[],
+        playerPeriods: (periodsLoaded.value
+          ? playerPeriods.value
+          : (prev?.playerPeriods ?? [])) as Record<string, unknown>[],
+        cohortPlayers: (periodsLoaded.value
+          ? cohortPlayers.value
+          : (prev?.cohortPlayers ??
+            (cohortPlayers.value as unknown as Record<string, unknown>[]))) as Record<
+          string,
+          unknown
+        >[],
       })
       return
     }
@@ -1518,9 +1706,31 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       if (Date.now() < suppressRealtimeUntil) return
       if (mode === 'tx') {
         if (transactionsLoaded.value) void loadTransactionsAndImports()
-        else void loadBonusTransactions()
-      } else if (mode === 'periods') void loadPeriods()
-      else void load()
+        else {
+          const reopenId = selectedCampaignId.value
+          loadedTxAgentIds.value = new Set()
+          void loadBonusTransactions().then(() => {
+            const open = reopenId
+              ? campaigns.value.find((c) => c.id === reopenId)
+              : null
+            if (open) void ensureCampaignTransactions(open)
+          })
+        }
+      } else if (mode === 'periods') {
+        periodsLoaded.value = false
+        clearCampaignsShellCache(BOARD_ID)
+        void loadPeriods()
+      } else {
+        clearCampaignsShellCache(BOARD_ID)
+        periodsLoaded.value = false
+        overviewKpisRpc.value = null
+        loadedTxAgentIds.value = new Set()
+        if (!transactionsLoaded.value) {
+          transactions.value = transactions.value.filter((t) => t.isBonus)
+        }
+        void load()
+        void fetchOverviewKpisRpc()
+      }
     }, 700)
   }
 
@@ -1538,14 +1748,19 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   async function init() {
     loading.value = true
     error.value = null
+    const hadCache = hydrateShellCache()
+    if (hadCache) {
+      ready.value = true
+      loading.value = false
+    }
     try {
       await load({ includeTransactions: false, deferPeriods: true })
+      void fetchOverviewKpisRpc()
     } finally {
       ready.value = true
       loading.value = false
     }
     subscribeRealtime()
-    void ensureBonusTransactionsLoaded()
     const broken = transactionImports.value.filter(
       (i) =>
         i.status === 'completed' &&
@@ -1560,6 +1775,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
 
   function reset() {
     unsubscribeRealtime()
+    clearCampaignsShellCache(BOARD_ID)
     campaigns.value = []
     monthlyResults.value = []
     history.value = []
@@ -1570,8 +1786,12 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     bonusTransactions.value = []
     transactionsLoaded.value = false
     bonusTransactionsLoaded.value = false
+    periodsLoaded.value = false
+    overviewKpisRpc.value = null
+    loadedTxAgentIds.value = new Set()
     transactionsLoadPromise = null
     bonusLoadPromise = null
+    periodsLoadPromise = null
     agentPeriods.value = []
     playerPeriods.value = []
     cohortPlayers.value = []
@@ -3164,6 +3384,10 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     reset,
     load,
     ensureTransactionsLoaded,
+    ensureCampaignTransactions,
+    ensurePeriodsLoaded,
+    ensureBonusTransactionsLoaded,
+    periodsLoaded,
     open,
     close,
     setShowArchived,

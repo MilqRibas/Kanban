@@ -101,6 +101,23 @@ watch(area, async (next) => {
   }
 })
 
+/** Lista/Comparativo precisam de períodos SX ao entrar; overview usa RPC + charts pedem períodos. */
+watch(screen, (next) => {
+  if (next === 'list' || next === 'comparison') {
+    void store.ensurePeriodsLoaded()
+  }
+  if (next === 'comparison') {
+    void store.ensureBonusTransactionsLoaded()
+  }
+})
+
+watch(
+  () => filters.value.status,
+  (status) => {
+    if (status !== 'all') void store.ensurePeriodsLoaded()
+  },
+)
+
 const years = computed(() => {
   const set = new Set<number>()
   for (const campaign of store.campaigns) {
