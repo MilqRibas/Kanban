@@ -650,6 +650,51 @@ describe('activation bonuses from transaction reports', () => {
     expect(sumActivationBonuses(forB)).toBe(90)
   })
 
+  it('counts MKT GT transfer without bonus flag as activation', () => {
+    const rows = attributedActivationBonuses({
+      members,
+      campaignAgentId,
+      transactions: [
+        {
+          id: 'mkt-only',
+          receiverPlayerId: 'p1',
+          agentId: campaignAgentId,
+          occurredAt: '2026-07-03T12:00:00Z',
+          periodStart: '2026-06-29',
+          periodEnd: '2026-07-05',
+          isBonus: false,
+          senderPlayerId: '1092502',
+          amount: 40,
+        },
+      ],
+      competing: [],
+    })
+    expect(sumActivationBonuses(rows)).toBe(40)
+  })
+
+  it('counts MKT GT + bonus on the same TX only once', () => {
+    const rows = attributedActivationBonuses({
+      members,
+      campaignAgentId,
+      transactions: [
+        {
+          id: 'both',
+          externalTransactionId: 'ext-both',
+          receiverPlayerId: 'p1',
+          agentId: campaignAgentId,
+          occurredAt: '2026-07-03T12:00:00Z',
+          periodStart: '2026-06-29',
+          periodEnd: '2026-07-05',
+          isBonus: true,
+          senderPlayerId: '1092502',
+          amount: 25,
+        },
+      ],
+      competing: [],
+    })
+    expect(sumActivationBonuses(rows)).toBe(25)
+  })
+
   it('ignores a reimported identical transaction row (same id)', () => {
     const once = [
       bonus({ receiverPlayerId: 'p1', amount: 100, id: 'ext-1' }),

@@ -38,6 +38,10 @@ import {
   readCampaignsShellCache,
   writeCampaignsShellCache,
 } from '../utils/campaignsShellCache'
+import {
+  isIncentiveTransaction,
+  MKT_GT_PLAYER_ID,
+} from '../utils/crmIncentiveEconomics'
 import { useAuthStore } from './auth'
 import { useToastStore } from './toast'
 import {
@@ -585,7 +589,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   const imports = ref<CampaignReportImport[]>([])
   const transactionImports = ref<CampaignTransactionImport[]>([])
   const transactions = ref<CampaignTransaction[]>([])
-  /** Só bônus — suficiente p/ investimento de ativação nos KPIs sem baixar 60k TX. */
+  /** Bônus + envios MKT GT — custo de ativação / payback sem baixar 60k TX. */
   const bonusTransactions = ref<CampaignTransaction[]>([])
   const agentPeriods = ref<CampaignAgentPeriod[]>([])
   const playerPeriods = ref<CampaignPlayerPeriod[]>([])
@@ -1209,7 +1213,12 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     if (txRows) {
       transactions.value = txRows.map(mapTransaction)
       transactionsLoaded.value = true
-      bonusTransactions.value = transactions.value.filter((t) => t.isBonus)
+      bonusTransactions.value = transactions.value.filter((t) =>
+        isIncentiveTransaction({
+          senderPlayerId: t.senderPlayerId,
+          isBonus: t.isBonus,
+        }),
+      )
       bonusTransactionsLoaded.value = true
     }
   }
@@ -1227,7 +1236,9 @@ export const useCampaignsStore = defineStore('campaigns', () => {
             .from('campaign_transactions')
             .select(TRANSACTION_LIST_COLUMNS)
             .eq('board_id', BOARD_ID)
-            .eq('is_bonus', true)
+            .or(
+              `is_bonus.eq.true,sender_player_id.eq.${MKT_GT_PLAYER_ID}`,
+            )
             .order('id', { ascending: true }),
         ),
       ),
@@ -1725,7 +1736,12 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         overviewKpisRpc.value = null
         loadedTxAgentIds.value = new Set()
         if (!transactionsLoaded.value) {
-          transactions.value = transactions.value.filter((t) => t.isBonus)
+          transactions.value = transactions.value.filter((t) =>
+            isIncentiveTransaction({
+              senderPlayerId: t.senderPlayerId,
+              isBonus: t.isBonus,
+            }),
+          )
         }
         void load()
         void fetchOverviewKpisRpc()

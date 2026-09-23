@@ -1,5 +1,9 @@
 import type { Campaign, CampaignPlayerPeriod } from '../types/campaigns'
 import {
+  isIncentiveTransaction,
+  sumIncentiveSent,
+} from './crmIncentiveEconomics'
+import {
   eventInCampaignWindow,
   lifetimeFromAcquisition,
   periodOverlapsCampaignWindow,
@@ -264,13 +268,17 @@ export function attributedCohortTransactions<T extends CohortTransaction>(
 export type ActivationBonusRow = CohortTransaction & {
   isBonus: boolean
   amount?: number
+  senderPlayerId?: string | null
+  /** Preferir externalTransactionId; fallback id para dedupe. */
+  externalTransactionId?: string | null
+  id?: string
 }
 
 /**
- * Bônus de ativação: transação classificada como Bônus → Receiver Player ID
- * pertence à coorte de aquisição da campanha. Não usa início/fim da campanha.
- * Se o jogador também foi adquirido por outra campanha e o bônus foi enviado
- * no Agent ID dela, aquela campanha fica com o valor (sem duplicar).
+ * Custo de ativação da campanha = incentivo atribuído à coorte:
+ * Sender MKT GT OR Bônus (união, sem duplicar a mesma TX).
+ * Se o jogador também foi adquirido por outra campanha e o envio foi no
+ * Agent ID dela, aquela campanha fica com o valor.
  */
 export function attributedActivationBonuses<T extends ActivationBonusRow>(params: {
   members: Pick<CampaignCohortMember, 'playerId'>[]
@@ -290,7 +298,14 @@ export function attributedActivationBonuses<T extends ActivationBonusRow>(params
     )
 
   return params.transactions.filter((row) => {
-    if (!row.isBonus) return false
+    if (
+      !isIncentiveTransaction({
+        senderPlayerId: row.senderPlayerId,
+        isBonus: row.isBonus,
+      })
+    ) {
+      return false
+    }
     if (!memberIds.has(row.receiverPlayerId)) return false
     if (claimedElsewhere(row.receiverPlayerId, row.agentId)) return false
     return true
@@ -298,9 +313,25 @@ export function attributedActivationBonuses<T extends ActivationBonusRow>(params
 }
 
 export function sumActivationBonuses(
-  rows: Array<{ isBonus?: boolean; amount?: number }>,
+  rows: Array<{
+    isBonus?: boolean
+    amount?: number
+    senderPlayerId?: string | null
+    externalTransactionId?: string | null
+    id?: string
+  }>,
 ): number {
-  return rows
-    .filter((row) => row.isBonus)
-    .reduce((sum, row) => sum + Math.abs(Number(row.amount) || 0), 0)
+  const incentiveRows = rows.filter((row) =>
+    isIncentiveTransaction({
+      senderPlayerId: row.senderPlayerId,
+      isBonus: row.isBonus,
+    }),
+  )
+  return sumIncentiveSent(
+    incentiveRows.map((row) => ({
+      amount: Number(row.amount) || 0,
+      externalTransactionId:
+        row.externalTransactionId ?? row.id ?? undefined,
+    })),
+  )
 }

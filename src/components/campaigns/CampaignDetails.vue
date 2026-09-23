@@ -1478,7 +1478,7 @@ watch(tableDetailsPeriod, async (period) => {
                   Transações de ativação
                 </h4>
                 <p class="text-[11px] text-text-muted">
-                  Bônus que formam o card ATIVAÇÃO desta campanha
+                  Bônus e envios MKT GT que formam o card ATIVAÇÃO desta campanha
                   ({{ formatCurrency(metrics.activationInvestment) }}).
                 </p>
                 <div v-if="activationBonusRows.length" class="overflow-x-auto">

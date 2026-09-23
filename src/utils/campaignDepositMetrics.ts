@@ -1,4 +1,5 @@
 import { safeDivide } from './campaignMetricsBridge'
+import { isIncentiveTransaction } from './crmIncentiveEconomics'
 
 export type DepositTxn = {
   receiverPlayerId: string
@@ -9,6 +10,7 @@ export type DepositTxn = {
   occurredAt: string | null
   isDeposit: boolean
   isBonus: boolean
+  senderPlayerId?: string | null
 }
 
 export type PurchasePowerMetrics = {
@@ -98,12 +100,19 @@ export function classifyTransactionFlags(params: {
 }
 
 export function sumActivationInvestment(
-  rows: Pick<DepositTxn, 'isBonus' | 'amount' | 'agentId'>[],
+  rows: Pick<DepositTxn, 'isBonus' | 'amount' | 'agentId' | 'senderPlayerId'>[],
   agentId: string | null | undefined,
 ): number {
   if (!agentId) return 0
   return rows
-    .filter((r) => r.isBonus && r.agentId === agentId)
+    .filter(
+      (r) =>
+        r.agentId === agentId &&
+        isIncentiveTransaction({
+          senderPlayerId: r.senderPlayerId,
+          isBonus: r.isBonus,
+        }),
+    )
     .reduce((s, r) => s + Math.abs(Number(r.amount) || 0), 0)
 }
 
@@ -118,7 +127,12 @@ export function buildPurchasePowerMetrics(params: {
   const { activePlayerIds, accumulatedRake } = params
 
   const deposits = params.rows.filter((r) => r.isDeposit)
-  const bonuses = (params.bonusRows ?? params.rows).filter((r) => r.isBonus)
+  const bonuses = (params.bonusRows ?? params.rows).filter((r) =>
+    isIncentiveTransaction({
+      senderPlayerId: r.senderPlayerId,
+      isBonus: r.isBonus,
+    }),
+  )
 
   const depositedVolume = deposits.reduce(
     (s, r) => s + Math.abs(Number(r.amount) || 0),
