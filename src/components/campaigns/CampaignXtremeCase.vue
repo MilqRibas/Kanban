@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { Loader2 } from '@lucide/vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
+import { Loader2, Pencil, X } from '@lucide/vue'
 import {
   fetchClubCaseInvestment,
   fetchXtremeCaseSummary,
@@ -23,7 +23,16 @@ const loadError = ref<string | null>(null)
 const saveError = ref<string | null>(null)
 const saveOk = ref(false)
 const summary = ref<XtremeCaseSummary | null>(null)
-const investment = ref('0')
+/** Valor persistido (somente leitura na UI até clicar no lápis). */
+const savedInvestment = ref('0')
+/** Draft enquanto edita. */
+const investmentDraft = ref('0')
+const editingInvestment = ref(false)
+const investmentInputEl = ref<HTMLInputElement | null>(null)
+
+const investment = computed(() =>
+  editingInvestment.value ? investmentDraft.value : savedInvestment.value,
+)
 
 const activation = computed(() => summary.value?.incentiveSent ?? 0)
 
@@ -70,7 +79,10 @@ onMounted(async () => {
       fetchClubCaseInvestment('xtreme_pro'),
       fetchXtremeCaseSummary(),
     ])
-    investment.value = String(caseRow.investment)
+    const value = String(caseRow.investment)
+    savedInvestment.value = value
+    investmentDraft.value = value
+    editingInvestment.value = false
     summary.value = snap
   } catch (err) {
     loadError.value =
@@ -80,8 +92,24 @@ onMounted(async () => {
   }
 })
 
+async function startEditInvestment() {
+  investmentDraft.value = savedInvestment.value
+  editingInvestment.value = true
+  saveOk.value = false
+  saveError.value = null
+  await nextTick()
+  investmentInputEl.value?.focus()
+  investmentInputEl.value?.select()
+}
+
+function cancelEditInvestment() {
+  investmentDraft.value = savedInvestment.value
+  editingInvestment.value = false
+  saveError.value = null
+}
+
 async function onSave() {
-  const investmentValue = parseMoneyInput(investment.value)
+  const investmentValue = parseMoneyInput(investmentDraft.value)
   if (investmentValue == null || investmentValue < 0) {
     saveError.value = 'Investimento inválido.'
     saveOk.value = false
@@ -95,7 +123,10 @@ async function onSave() {
       clubCode: 'xtreme_pro',
       investment: investmentValue,
     })
-    investment.value = String(saved.investment)
+    const value = String(saved.investment)
+    savedInvestment.value = value
+    investmentDraft.value = value
+    editingInvestment.value = false
     summary.value = await fetchXtremeCaseSummary()
     saveOk.value = true
   } catch (err) {
@@ -142,16 +173,47 @@ async function onSave() {
         </p>
 
         <div class="grid gap-2 sm:grid-cols-2">
-          <label class="block text-xs text-text-muted">
-            Investimento total
+          <div class="block text-xs text-text-muted">
+            <div class="flex items-center justify-between gap-2">
+              <span>Investimento total</span>
+              <button
+                v-if="!editingInvestment"
+                type="button"
+                class="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 text-text-muted transition-colors hover:bg-white/5 hover:text-text-primary"
+                title="Editar investimento"
+                aria-label="Editar investimento"
+                @click="startEditInvestment"
+              >
+                <Pencil :size="14" />
+              </button>
+              <button
+                v-else
+                type="button"
+                class="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 text-text-muted transition-colors hover:bg-white/5 hover:text-text-primary"
+                title="Cancelar edição"
+                aria-label="Cancelar edição"
+                :disabled="saving"
+                @click="cancelEditInvestment"
+              >
+                <X :size="14" />
+              </button>
+            </div>
             <input
-              v-model="investment"
+              v-if="editingInvestment"
+              ref="investmentInputEl"
+              v-model="investmentDraft"
               type="text"
               inputmode="decimal"
               autocomplete="off"
               class="mt-1 w-full rounded-xl border border-white/10 bg-board px-3 py-2 text-sm text-text-primary outline-none ring-accent/40 focus:ring-2"
             />
-          </label>
+            <p
+              v-else
+              class="mt-1 w-full rounded-xl border border-dashed border-white/10 bg-transparent px-3 py-2 text-sm font-medium text-text-primary"
+            >
+              {{ formatCurrency(parseMoneyInput(savedInvestment) ?? 0) }}
+            </p>
+          </div>
           <div class="block text-xs text-text-muted">
             Ativação
             <p
@@ -166,7 +228,7 @@ async function onSave() {
             </p>
           </div>
         </div>
-        <div class="flex flex-wrap items-center gap-2">
+        <div v-if="editingInvestment" class="flex flex-wrap items-center gap-2">
           <button
             type="button"
             class="inline-flex h-8 items-center rounded-lg bg-accent px-3 text-xs font-semibold text-board hover:bg-accent-hover disabled:opacity-60"
@@ -175,9 +237,18 @@ async function onSave() {
           >
             {{ saving ? 'Salvando…' : 'Salvar investimento' }}
           </button>
-          <p v-if="saveOk" class="text-xs text-emerald-300">Investimento salvo.</p>
-          <p v-else-if="saveError" class="text-xs text-rose-200">{{ saveError }}</p>
+          <button
+            type="button"
+            class="inline-flex h-8 items-center rounded-lg border border-white/10 px-3 text-xs text-text-secondary hover:bg-white/5 disabled:opacity-60"
+            :disabled="saving"
+            @click="cancelEditInvestment"
+          >
+            Cancelar
+          </button>
+          <p v-if="saveError" class="text-xs text-rose-200">{{ saveError }}</p>
         </div>
+        <p v-else-if="saveOk" class="text-xs text-emerald-300">Investimento salvo.</p>
+        <p v-else-if="saveError" class="text-xs text-rose-200">{{ saveError }}</p>
 
         <dl class="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
           <div>
