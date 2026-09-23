@@ -254,16 +254,22 @@ export function consolidateXtremeCase(params: {
   deposits: number
   investment: number
   activation: number
+  /** Custo total na UI = investimento salvo (não inclui ativação). */
   totalCost: number
+  /** Investimento + ativação (base de recuperação/payback). */
+  spendTotal: number
   rakeBruto: number
   leagueFeeRate: number
+  /** Rake bruto − investimento − ativação. */
   rakeLiquido: number
   recovery: number | null
   payback: boolean
 } {
+  const investment = Math.max(0, Number(params.investment) || 0)
+  const activation = Math.max(0, Number(params.activation) || 0)
   const rakeBruto = params.agencies.reduce((s, a) => s + a.weeklyRake, 0)
-  const rakeLiquido = rakeBruto * (1 - LEAGUE_FEE_RATE)
-  const totalCost = params.investment + params.activation
+  const spendTotal = investment + activation
+  const rakeLiquido = rakeBruto - investment - activation
   return {
     label: 'XTREME PRO',
     agencyCount: params.agencies.length,
@@ -271,14 +277,15 @@ export function consolidateXtremeCase(params: {
     players: params.agencies.reduce((s, a) => s + a.players, 0),
     activePlayers: params.agencies.reduce((s, a) => s + a.activePlayers, 0),
     deposits: params.agencies.reduce((s, a) => s + a.deposits, 0),
-    investment: params.investment,
-    activation: params.activation,
-    totalCost,
+    investment,
+    activation,
+    totalCost: investment,
+    spendTotal,
     rakeBruto,
     leagueFeeRate: LEAGUE_FEE_RATE,
     rakeLiquido,
-    recovery: totalCost > 0 ? rakeLiquido / totalCost : null,
-    payback: rakeLiquido >= totalCost && totalCost > 0,
+    recovery: spendTotal > 0 ? rakeBruto / spendTotal : null,
+    payback: spendTotal > 0 && rakeBruto >= spendTotal,
   }
 }
 

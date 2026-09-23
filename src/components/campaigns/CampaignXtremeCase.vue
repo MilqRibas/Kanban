@@ -9,7 +9,13 @@ import {
   type XtremeCaseSummary,
 } from '../../services/clubCaseApi'
 import { formatCurrency, formatNumber, formatPercent } from '../../utils/campaignFormat'
-import { consolidateXtremeCase, LEAGUE_FEE_RATE } from '../../utils/clubDimension'
+import { consolidateXtremeCase } from '../../utils/clubDimension'
+import CollapsiblePanel from './CollapsiblePanel.vue'
+
+const props = defineProps<{
+  /** null = todas as agências; lista = restringe ao filtro da visão. */
+  agentIds?: string[] | null
+}>()
 
 const loading = ref(true)
 const saving = ref(false)
@@ -21,18 +27,40 @@ const investment = ref('0')
 
 const activation = computed(() => summary.value?.incentiveSent ?? 0)
 
-const economics = computed(() => {
-  const agencies = summary.value?.agencies ?? []
-  return consolidateXtremeCase({
-    agencies,
-    investment: parseMoneyInput(investment.value) ?? 0,
-    activation: activation.value,
-  })
+const filterAgentIds = computed(() => {
+  if (!props.agentIds) return null
+  return new Set(props.agentIds)
 })
 
-const distinctPlayers = computed(() => summary.value?.players ?? 0)
-const distinctActive = computed(() => summary.value?.activePlayers ?? 0)
-const deposits = computed(() => summary.value?.deposits ?? 0)
+const filteredAgencies = computed(() => {
+  const all = summary.value?.agencies ?? []
+  const ids = filterAgentIds.value
+  if (!ids) return all
+  return all.filter((a) => a.agentId && ids.has(a.agentId))
+})
+
+const filterActive = computed(() => filterAgentIds.value != null)
+
+const economics = computed(() =>
+  consolidateXtremeCase({
+    agencies: filteredAgencies.value,
+    investment: parseMoneyInput(investment.value) ?? 0,
+    activation: activation.value,
+  }),
+)
+
+const distinctPlayers = computed(() => {
+  if (!filterActive.value) return summary.value?.players ?? 0
+  return economics.value.players
+})
+const distinctActive = computed(() => {
+  if (!filterActive.value) return summary.value?.activePlayers ?? 0
+  return economics.value.activePlayers
+})
+const deposits = computed(() => {
+  if (!filterActive.value) return summary.value?.deposits ?? 0
+  return economics.value.deposits
+})
 
 onMounted(async () => {
   loading.value = true
@@ -68,7 +96,6 @@ async function onSave() {
       investment: investmentValue,
     })
     investment.value = String(saved.investment)
-    // Recarrega Ativação do motor (pode ter mudado após import de TX)
     summary.value = await fetchXtremeCaseSummary()
     saveOk.value = true
   } catch (err) {
@@ -84,116 +111,188 @@ async function onSave() {
 </script>
 
 <template>
-  <section class="rounded-2xl border border-white/10 bg-board-elevated/60 p-3 sm:p-4">
-    <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-      <div>
-        <h3 class="text-sm font-semibold text-text-primary">Xtreme Pro</h3>
-        <p class="text-xs text-text-muted">
-          Case histórico encerrado. As agências do relatório entram num único agregado.
-          O detalhe de cada agência permanece nos fatos importados.
-        </p>
-      </div>
-      <p class="text-[11px] text-text-muted">
-        Taxa da liga {{ formatPercent(LEAGUE_FEE_RATE * 100) }}
-      </p>
-    </div>
-
-    <p v-if="loading" class="mt-3 inline-flex items-center gap-2 text-xs text-text-muted">
-      <Loader2 :size="14" class="animate-spin" />
-      Carregando case…
-    </p>
-    <p v-else-if="loadError" class="mt-3 text-xs text-rose-200">{{ loadError }}</p>
-
-    <template v-else>
-      <p
-        v-if="!summary?.hasActivity"
-        class="mt-3 rounded-xl border border-white/10 bg-board/40 px-3 py-2 text-xs text-text-muted"
-      >
-        Nenhum relatório Xtreme Pro importado. Rake, jogadores e incentivos deste clube ficam zerados até a primeira importação.
+  <CollapsiblePanel
+    title="Xtreme Pro"
+    hint="Case histórico · custo = investimento salvo · líquido = bruto − investimento − ativação"
+    :default-open="false"
+  >
+    <div class="space-y-3 px-3 pb-3 sm:px-4">
+      <p class="text-xs text-text-muted">
+        As agências do relatório entram num único agregado. O detalhe de cada agência
+        permanece nos fatos importados.
+        <span v-if="filterActive">
+          Métricas de rake/jogadores/depósitos seguem o filtro de campanhas
+          ({{ filteredAgencies.length }} de {{ summary?.agencies.length ?? 0 }} agências).
+        </span>
       </p>
 
-      <div class="mt-3 grid gap-2 sm:grid-cols-2">
-        <label class="block text-xs text-text-muted">
-          Investimento total
-          <input
-            v-model="investment"
-            type="text"
-            inputmode="decimal"
-            autocomplete="off"
-            class="mt-1 w-full rounded-xl border border-white/10 bg-board px-3 py-2 text-sm text-text-primary outline-none ring-accent/40 focus:ring-2"
-          />
-        </label>
-        <div class="block text-xs text-text-muted">
-          Ativação
-          <p
-            class="mt-1 w-full rounded-xl border border-white/10 bg-board/60 px-3 py-2 text-sm font-medium text-text-primary"
-            title="Soma automática do Incentivo Enviado Xtreme (sender 1092502 OU bônus)"
-          >
-            {{ formatCurrency(activation) }}
-          </p>
-          <p class="mt-1 text-[11px] text-text-muted">
-            Calculada pelo motor de incentivos (não editável). Diferente de Ativos
-            ({{ formatNumber(distinctActive) }} jogadores).
-          </p>
-        </div>
-      </div>
-      <div class="mt-2 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          class="inline-flex h-8 items-center rounded-lg bg-accent px-3 text-xs font-semibold text-board hover:bg-accent-hover disabled:opacity-60"
-          :disabled="saving"
-          @click="onSave"
+      <p v-if="loading" class="inline-flex items-center gap-2 text-xs text-text-muted">
+        <Loader2 :size="14" class="animate-spin" />
+        Carregando case…
+      </p>
+      <p v-else-if="loadError" class="text-xs text-rose-200">{{ loadError }}</p>
+
+      <template v-else>
+        <p
+          v-if="!summary?.hasActivity"
+          class="rounded-xl border border-white/10 bg-board/40 px-3 py-2 text-xs text-text-muted"
         >
-          {{ saving ? 'Salvando…' : 'Salvar investimento' }}
-        </button>
-        <p v-if="saveOk" class="text-xs text-emerald-300">Investimento salvo.</p>
-        <p v-else-if="saveError" class="text-xs text-rose-200">{{ saveError }}</p>
-      </div>
+          Nenhum relatório Xtreme Pro importado. Rake, jogadores e incentivos deste clube
+          ficam zerados até a primeira importação.
+        </p>
 
-      <dl class="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-        <div>
-          <dt class="text-text-muted">Custo total</dt>
-          <dd class="font-medium text-text-primary">{{ formatCurrency(economics.totalCost) }}</dd>
+        <div class="grid gap-2 sm:grid-cols-2">
+          <label class="block text-xs text-text-muted">
+            Investimento total
+            <input
+              v-model="investment"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              class="mt-1 w-full rounded-xl border border-white/10 bg-board px-3 py-2 text-sm text-text-primary outline-none ring-accent/40 focus:ring-2"
+            />
+          </label>
+          <div class="block text-xs text-text-muted">
+            Ativação
+            <p
+              class="mt-1 w-full rounded-xl border border-dashed border-white/10 bg-transparent px-3 py-2 text-sm font-medium text-text-primary"
+              title="Soma automática do Incentivo Enviado Xtreme (sender 1092502 OU bônus)"
+            >
+              {{ formatCurrency(activation) }}
+            </p>
+            <p class="mt-1 text-[11px] text-text-muted">
+              Calculada pelo motor de incentivos (somente leitura). Diferente de Ativos
+              ({{ formatNumber(distinctActive) }} jogadores).
+            </p>
+          </div>
         </div>
-        <div>
-          <dt class="text-text-muted">Jogadores</dt>
-          <dd class="font-medium text-text-primary">{{ formatNumber(distinctPlayers) }}</dd>
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            class="inline-flex h-8 items-center rounded-lg bg-accent px-3 text-xs font-semibold text-board hover:bg-accent-hover disabled:opacity-60"
+            :disabled="saving"
+            @click="onSave"
+          >
+            {{ saving ? 'Salvando…' : 'Salvar investimento' }}
+          </button>
+          <p v-if="saveOk" class="text-xs text-emerald-300">Investimento salvo.</p>
+          <p v-else-if="saveError" class="text-xs text-rose-200">{{ saveError }}</p>
         </div>
-        <div>
-          <dt class="text-text-muted">Ativos</dt>
-          <dd class="font-medium text-text-primary">{{ formatNumber(distinctActive) }}</dd>
-        </div>
-        <div>
-          <dt class="text-text-muted">Depósitos</dt>
-          <dd class="font-medium text-text-primary">{{ formatCurrency(deposits) }}</dd>
-        </div>
-        <div>
-          <dt class="text-text-muted">Rake bruto</dt>
-          <dd class="font-medium text-text-primary">{{ formatCurrency(economics.rakeBruto) }}</dd>
-        </div>
-        <div>
-          <dt class="text-text-muted">Rake líquido</dt>
-          <dd class="font-medium text-text-primary">{{ formatCurrency(economics.rakeLiquido) }}</dd>
-        </div>
-        <div>
-          <dt class="text-text-muted">Recuperação</dt>
-          <dd class="font-medium text-text-primary">
-            {{ economics.recovery == null ? '—' : formatPercent(economics.recovery * 100) }}
-          </dd>
-        </div>
-        <div>
-          <dt class="text-text-muted">Payback</dt>
-          <dd class="font-medium text-text-primary">
-            {{ economics.totalCost <= 0 ? '—' : economics.payback ? 'Atingido' : 'Ainda não' }}
-          </dd>
-        </div>
-      </dl>
 
-      <p v-if="economics.agencyCount > 0" class="mt-2 text-[11px] text-text-muted">
-        {{ economics.agencyCount }}
-        {{ economics.agencyCount === 1 ? 'agência preservada no fato' : 'agências preservadas no fato' }},
-        consolidadas como XTREME PRO.
-      </p>
-    </template>
-  </section>
+        <dl class="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+          <div>
+            <dt class="text-text-muted">Custo total</dt>
+            <dd class="font-medium text-text-primary">
+              {{ formatCurrency(economics.totalCost) }}
+            </dd>
+            <p class="mt-0.5 text-[10px] text-text-muted">= investimento salvo</p>
+          </div>
+          <div>
+            <dt class="text-text-muted">Ativação</dt>
+            <dd class="font-medium text-text-primary">
+              {{ formatCurrency(economics.activation) }}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-text-muted">Jogadores</dt>
+            <dd class="font-medium text-text-primary">{{ formatNumber(distinctPlayers) }}</dd>
+          </div>
+          <div>
+            <dt class="text-text-muted">Ativos</dt>
+            <dd class="font-medium text-text-primary">{{ formatNumber(distinctActive) }}</dd>
+          </div>
+          <div>
+            <dt class="text-text-muted">Depósitos</dt>
+            <dd class="font-medium text-text-primary">{{ formatCurrency(deposits) }}</dd>
+          </div>
+          <div>
+            <dt class="text-text-muted">Rake bruto</dt>
+            <dd class="font-medium text-text-primary">
+              {{ formatCurrency(economics.rakeBruto) }}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-text-muted">Rake líquido</dt>
+            <dd class="font-medium text-text-primary">
+              {{ formatCurrency(economics.rakeLiquido) }}
+            </dd>
+            <p class="mt-0.5 text-[10px] text-text-muted">bruto − inv. − ativação</p>
+          </div>
+          <div>
+            <dt class="text-text-muted">Recuperação</dt>
+            <dd class="font-medium text-text-primary">
+              {{
+                economics.recovery == null
+                  ? '—'
+                  : formatPercent(economics.recovery * 100)
+              }}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-text-muted">Payback</dt>
+            <dd class="font-medium text-text-primary">
+              {{
+                economics.spendTotal <= 0
+                  ? '—'
+                  : economics.payback
+                    ? 'Atingido'
+                    : 'Ainda não'
+              }}
+            </dd>
+          </div>
+        </dl>
+
+        <div
+          v-if="filteredAgencies.length > 0"
+          class="overflow-x-auto rounded-xl border border-white/10"
+        >
+          <table class="min-w-full text-left text-xs">
+            <thead class="bg-white/[0.03] text-[10px] uppercase tracking-wide text-text-muted">
+              <tr>
+                <th class="px-3 py-2 font-medium">Agência</th>
+                <th class="px-3 py-2 text-right font-medium">Rake</th>
+                <th class="px-3 py-2 text-right font-medium">Jogadores</th>
+                <th class="px-3 py-2 text-right font-medium">Ativos</th>
+                <th class="px-3 py-2 text-right font-medium">Depósitos</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(ag, idx) in filteredAgencies"
+                :key="ag.agentId"
+                class="border-t border-white/5"
+                :class="idx % 2 === 1 ? 'bg-white/[0.02]' : ''"
+              >
+                <td class="max-w-[14rem] truncate px-3 py-2 font-medium text-text-primary">
+                  {{ ag.agentName || ag.agentId }}
+                </td>
+                <td class="px-3 py-2 text-right tabular-nums text-text-secondary">
+                  {{ formatCurrency(ag.weeklyRake) }}
+                </td>
+                <td class="px-3 py-2 text-right tabular-nums text-text-secondary">
+                  {{ formatNumber(ag.players) }}
+                </td>
+                <td class="px-3 py-2 text-right tabular-nums text-text-secondary">
+                  {{ formatNumber(ag.activePlayers) }}
+                </td>
+                <td class="px-3 py-2 text-right tabular-nums text-text-secondary">
+                  {{ formatCurrency(ag.deposits) }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p v-if="economics.agencyCount > 0" class="text-[11px] text-text-muted">
+          {{ economics.agencyCount }}
+          {{
+            economics.agencyCount === 1
+              ? 'agência no recorte'
+              : 'agências no recorte'
+          }},
+          consolidadas como XTREME PRO.
+        </p>
+      </template>
+    </div>
+  </CollapsiblePanel>
 </template>

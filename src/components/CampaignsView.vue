@@ -168,7 +168,27 @@ const filteredCampaigns = computed(() => {
   })
 })
 
-const overviewKpis = computed(() => store.overviewKpis())
+const overviewKpis = computed(() => store.overviewKpis(filteredCampaigns.value))
+
+/** Só restringe agências Xtreme quando o filtro da visão está estreito. */
+const xtremeAgentIds = computed(() => {
+  const f = filters.value
+  const narrowed =
+    f.year !== 'all' ||
+    f.month !== 'all' ||
+    f.status !== 'all' ||
+    f.campaignType !== 'all' ||
+    f.nature !== 'all' ||
+    f.name.trim() !== ''
+  if (!narrowed) return null
+  return [
+    ...new Set(
+      filteredCampaigns.value
+        .map((c) => c.agentId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ]
+})
 
 const selectedCampaign = computed(() => store.selectedCampaign)
 
@@ -331,12 +351,14 @@ function onBackFromDetails() {
         <div v-else class="page-shell pb-3">
           <section v-if="screen === 'overview'" class="space-y-3">
             <p class="px-0.5 text-xs text-text-muted">
-              Recuperação e payback usam <span class="text-text-secondary">rake líquido</span>
-              (bruto − 18% taxa da liga). O rake bruto continua visível nos detalhes.
+              Nos KPIs de campanha, recuperação e payback usam
+              <span class="text-text-secondary">rake líquido</span>
+              (bruto − 18% taxa da liga). No case Xtreme Pro, o líquido é
+              <span class="text-text-secondary">bruto − investimento − ativação</span>.
             </p>
-            <CampaignXtremeCase />
             <CampaignKpiCards :kpis="overviewKpis" />
             <CampaignCharts :campaigns="filteredCampaigns" @view="onView" />
+            <CampaignXtremeCase :agent-ids="xtremeAgentIds" />
           </section>
 
           <section v-else-if="screen === 'list'" class="min-w-0 space-y-2">

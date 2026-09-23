@@ -194,7 +194,7 @@ describe('incentivo e limite por clube (fixtures)', () => {
 })
 
 describe('case Xtreme consolidado', () => {
-  it('agências A+B+C viram um agregado e payback usa rake líquido', () => {
+  it('custo total = investimento; líquido = bruto − investimento − ativação', () => {
     const result = consolidateXtremeCase({
       investment: 1000,
       activation: 200,
@@ -208,9 +208,10 @@ describe('case Xtreme consolidado', () => {
     expect(result.agencyCount).toBe(3)
     expect(result.agencies).toHaveLength(3)
     expect(result.rakeBruto).toBe(1500)
-    expect(result.rakeLiquido).toBeCloseTo(1230)
-    expect(result.totalCost).toBe(1200)
+    expect(result.totalCost).toBe(1000)
+    expect(result.spendTotal).toBe(1200)
+    expect(result.rakeLiquido).toBe(300)
     expect(result.payback).toBe(true)
-    expect(result.recovery).toBeCloseTo(1230 / 1200)
+    expect(result.recovery).toBeCloseTo(1500 / 1200)
   })
 })

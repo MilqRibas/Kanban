@@ -1018,12 +1018,14 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     )
   }
 
-  function overviewKpis(): OverviewKpis & {
+  function overviewKpis(
+    campaigns?: Campaign[],
+  ): OverviewKpis & {
     recoveringCount: number
     noDataCount: number
     averageRakePerActive: number | null
   } {
-    const list = visibleCampaigns.value.filter((c) => !c.isArchived)
+    const list = (campaigns ?? visibleCampaigns.value).filter((c) => !c.isArchived)
     let paidInvestment = 0
     let paidRake = 0
     let paidLiquid = 0
@@ -2626,6 +2628,22 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         throw new Error(
           formatSupabaseError(finalizeError, 'Falha ao finalizar o import.'),
         )
+      }
+
+      // Backfill de incentivo fora do finalize (pesado; não falha o import).
+      try {
+        const { error: backfillError } = await supabase.rpc(
+          'crm_backfill_incentive_classifications',
+          { p_board_id: BOARD_ID },
+        )
+        if (backfillError) {
+          console.warn(
+            '[campaigns:tx-commit] incentive backfill skipped',
+            formatSupabaseError(backfillError),
+          )
+        }
+      } catch (backfillErr) {
+        console.warn('[campaigns:tx-commit] incentive backfill skipped', backfillErr)
       }
 
       await load()
