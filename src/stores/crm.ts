@@ -30,7 +30,7 @@ export const useCrmStore = defineStore('crm', () => {
   const campaignFilter = ref<CrmCampaignFilter>('all')
   const incentiveAvailableFilter = ref<CrmIncentiveAvailableFilter>('all')
   const incentiveReceivedFilter = ref<CrmIncentiveReceivedFilter>('all')
-  const sort = ref<CrmPlayerSort>('last_activity_desc')
+  const sort = ref<CrmPlayerSort>('disponivel_desc')
   const clubFilter = ref<'all' | 'sx_club' | 'xtreme_pro'>('all')
   const loading = ref(false)
   const ready = ref(false)
@@ -41,6 +41,9 @@ export const useCrmStore = defineStore('crm', () => {
   const player360Loading = ref(false)
   const player360Error = ref<string | null>(null)
   const incentiveUpdating = ref(false)
+
+  let initPromise: Promise<void> | null = null
+  let loadSeq = 0
 
   const page = computed(() => Math.floor(offset.value / limit.value) + 1)
   const pageCount = computed(() =>
@@ -60,6 +63,7 @@ export const useCrmStore = defineStore('crm', () => {
 
   async function loadPlayers(options?: { resetOffset?: boolean }) {
     if (options?.resetOffset) offset.value = 0
+    const seq = ++loadSeq
     loading.value = true
     error.value = null
     try {
@@ -73,23 +77,37 @@ export const useCrmStore = defineStore('crm', () => {
         limit: limit.value,
         offset: offset.value,
       })
+      if (seq !== loadSeq) return
       rows.value = result.rows
       total.value = result.total
       limit.value = result.limit
       offset.value = result.offset
       ready.value = true
     } catch (err) {
+      if (seq !== loadSeq) return
       const message =
         err instanceof Error ? err.message : 'Falha ao carregar jogadores do CRM.'
       error.value = message
       useToastStore().error(message)
     } finally {
-      loading.value = false
+      if (seq === loadSeq) loading.value = false
     }
   }
 
-  async function init() {
-    await Promise.all([loadPlayers({ resetOffset: true }), loadFreshness()])
+  async function init(options?: { sort?: CrmPlayerSort }) {
+    if (options?.sort) sort.value = options.sort
+    if (initPromise) {
+      await initPromise
+      return
+    }
+    initPromise = (async () => {
+      await Promise.all([loadPlayers({ resetOffset: true }), loadFreshness()])
+    })()
+    try {
+      await initPromise
+    } finally {
+      initPromise = null
+    }
   }
 
   function reset() {
@@ -100,7 +118,7 @@ export const useCrmStore = defineStore('crm', () => {
     campaignFilter.value = 'all'
     incentiveAvailableFilter.value = 'all'
     incentiveReceivedFilter.value = 'all'
-    sort.value = 'last_activity_desc'
+    sort.value = 'disponivel_desc'
     loading.value = false
     ready.value = false
     error.value = null

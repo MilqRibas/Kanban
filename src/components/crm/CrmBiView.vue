@@ -24,8 +24,17 @@ const searchInput = ref('')
 const debouncedSearch = useDebouncedValue(() => searchInput.value, 250)
 
 onMounted(async () => {
-  if (!crm.ready) await crm.init()
-  if (!crm.sort.startsWith('disponivel') && !crm.sort.startsWith('limite') && !crm.sort.startsWith('enviado') && !crm.sort.startsWith('rake') && !crm.sort.startsWith('player_id')) {
+  if (!crm.ready) {
+    await crm.init({ sort: 'disponivel_desc' })
+    return
+  }
+  if (
+    !crm.sort.startsWith('disponivel') &&
+    !crm.sort.startsWith('limite') &&
+    !crm.sort.startsWith('enviado') &&
+    !crm.sort.startsWith('rake') &&
+    !crm.sort.startsWith('player_id')
+  ) {
     await crm.setSort('disponivel_desc')
   }
 })
