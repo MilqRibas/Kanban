@@ -256,12 +256,13 @@ export function consolidateXtremeCase(params: {
   activation: number
   /** Custo total na UI = investimento salvo (não inclui ativação). */
   totalCost: number
-  /** Investimento + ativação (base de recuperação/payback). */
+  /** Investimento + ativação (custo para payback: líquido ≥ 0). */
   spendTotal: number
   rakeBruto: number
   leagueFeeRate: number
   /** Rake bruto − investimento − ativação. */
   rakeLiquido: number
+  /** Recuperação = líquido ÷ investimento. */
   recovery: number | null
   payback: boolean
 } {
@@ -284,8 +285,8 @@ export function consolidateXtremeCase(params: {
     rakeBruto,
     leagueFeeRate: LEAGUE_FEE_RATE,
     rakeLiquido,
-    recovery: spendTotal > 0 ? rakeBruto / spendTotal : null,
-    payback: spendTotal > 0 && rakeBruto >= spendTotal,
+    recovery: investment > 0 ? rakeLiquido / investment : null,
+    payback: spendTotal > 0 && rakeLiquido >= 0,
   }
 }
 

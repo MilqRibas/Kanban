@@ -212,6 +212,6 @@ describe('case Xtreme consolidado', () => {
     expect(result.spendTotal).toBe(1200)
     expect(result.rakeLiquido).toBe(300)
     expect(result.payback).toBe(true)
-    expect(result.recovery).toBeCloseTo(1500 / 1200)
+    expect(result.recovery).toBeCloseTo(300 / 1000)
   })
 })

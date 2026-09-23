@@ -189,15 +189,21 @@ export function sortPeriodsChronologically<T extends { periodStart: string }>(
 
 export function buildCumulativeSeries(
   periods: WeeklyPeriodPoint[],
+  totalInvestment?: number | null,
 ): Array<WeeklyPeriodPoint & { accumulatedRake: number; recoveryRate: number | null }> {
   const sorted = sortPeriodsChronologically(periods)
+  const total =
+    totalInvestment != null && Number.isFinite(totalInvestment) && totalInvestment > 0
+      ? Number(totalInvestment)
+      : null
   let acc = 0
   return sorted.map((p) => {
     acc += Number(p.weeklyRake) || 0
+    const liquid = toLiquidRake(acc)
     return {
       ...p,
       accumulatedRake: acc,
-      recoveryRate: null as number | null,
+      recoveryRate: total != null ? (liquid / total) * 100 : null,
     }
   })
 }

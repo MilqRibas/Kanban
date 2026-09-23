@@ -36,6 +36,7 @@ import {
   formatDateTime,
 } from '../../utils/campaignFormat'
 import { campaignUsesWeeklySnapshot } from '../../utils/campaignWeeklyMetrics'
+import { toLiquidRake } from '../../utils/campaignEconomics'
 import {
   buildJourneyEdges,
   formatMetaServiceDivergenceLabel,
@@ -628,8 +629,9 @@ const evolutionRows = computed(() => {
   const totalInv = metrics.value.totalInvestment
   return sorted.map((p) => {
     acc += p.weeklyRake
+    const liquidAcc = toLiquidRake(acc)
     const recoveryRate =
-      totalInv != null && totalInv > 0 ? (acc / totalInv) * 100 : null
+      totalInv != null && totalInv > 0 ? (liquidAcc / totalInv) * 100 : null
     return {
       label: store.formatPeriodLabel(p.periodStart, p.periodEnd),
       weeklyRake: p.weeklyRake,

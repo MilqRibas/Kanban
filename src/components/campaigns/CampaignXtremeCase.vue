@@ -325,6 +325,7 @@ async function onSave() {
                   : formatPercent(economics.recovery * 100)
               }}
             </dd>
+            <p class="mt-0.5 text-[10px] text-text-muted">líquido / investimento</p>
           </div>
           <div>
             <dt class="text-text-muted">Payback</dt>

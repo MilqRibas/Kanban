@@ -3,6 +3,7 @@ import type {
   CampaignComputedStatus,
   CampaignMonthlyResult,
 } from '../types/campaigns'
+import { toLiquidRake } from './campaignEconomics'
 
 export function safeDivide(numerator: number, denominator: number): number | null {
   if (!Number.isFinite(numerator) || !Number.isFinite(denominator)) return null
@@ -55,21 +56,27 @@ export function calculateAverageRakePerActivePlayer(
   return safeDivide(accumulatedRake, activePlayers)
 }
 
+/** Recuperação legada mensal: rake líquido (−18%) ÷ (investimento + ativação). */
 export function calculateInvestmentRecovery(
   accumulatedRake: number,
   investment: number | null | undefined,
+  activationInvestment = 0,
 ): number | null {
   if (investment == null) return null
-  const rate = safeDivide(accumulatedRake, investment)
+  const total = Number(investment) + (Number(activationInvestment) || 0)
+  if (!(total > 0)) return null
+  const rate = safeDivide(toLiquidRake(accumulatedRake), total)
   return rate === null ? null : rate * 100
 }
 
 export function calculateInvestmentDifference(
   accumulatedRake: number,
   investment: number | null | undefined,
+  activationInvestment = 0,
 ): number | null {
   if (investment == null) return null
-  return accumulatedRake - investment
+  const total = Number(investment) + (Number(activationInvestment) || 0)
+  return toLiquidRake(accumulatedRake) - total
 }
 
 export type PaybackResult = {
@@ -103,7 +110,7 @@ export function calculatePaybackMonth(
 
   let accumulated = 0
   for (let i = 0; i < sorted.length; i += 1) {
-    accumulated += Number(sorted[i].monthlyRake) || 0
+    accumulated += toLiquidRake(Number(sorted[i].monthlyRake) || 0)
     if (accumulated >= investment) {
       return {
         reached: true,
@@ -131,10 +138,11 @@ export function calculateCampaignStatus(
   if (!hasImportedPeriods) return 'no_data'
   const investment = campaign.investment
   if (investment == null || investment <= 0) return 'no_return'
-  if (accumulatedRake >= investment) {
+  const liquid = toLiquidRake(accumulatedRake)
+  if (liquid >= investment) {
     return 'payback'
   }
-  if (accumulatedRake > 0 && accumulatedRake < investment) {
+  if (liquid > 0 && liquid < investment) {
     return 'recovering'
   }
   return 'no_return'

@@ -35,6 +35,17 @@ describe('weekly rake accumulation', () => {
     expect(series.map((s) => s.accumulatedRake)).toEqual([
       500, 1200, 1500, 2100, 2500,
     ])
+    expect(series.every((s) => s.recoveryRate === null)).toBe(true)
+  })
+
+  it('builds cumulative liquid recovery when total investment is provided', () => {
+    const weeks = [
+      { periodStart: '2026-07-06', periodEnd: '2026-07-12', weeklyRake: 500 },
+      { periodStart: '2026-07-13', periodEnd: '2026-07-19', weeklyRake: 700 },
+    ]
+    const series = buildCumulativeSeries(weeks, 1200)
+    expect(series[0].recoveryRate).toBeCloseTo((500 * 0.82) / 1200 * 100, 5)
+    expect(series[1].recoveryRate).toBeCloseTo((1200 * 0.82) / 1200 * 100, 5)
   })
 
   it('records payback on the first week that crosses investment (liquid) and keeps it', () => {
