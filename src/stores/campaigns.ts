@@ -1073,8 +1073,12 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     averageRakePerActive: number | null
   } {
     const list = (campaigns ?? visibleCampaigns.value).filter((c) => !c.isArchived)
-    // Snapshot RPC: overview sem filtro (ou lista completa) antes dos períodos locais.
-    if (!periodsLoaded.value && overviewKpisRpc.value) {
+    // Snapshot RPC só enquanto períodos OU bônus ainda não chegaram
+    // (ativação/payback precisam dos bônus; rake precisa dos períodos).
+    if (
+      overviewKpisRpc.value &&
+      (!periodsLoaded.value || !bonusTransactionsLoaded.value)
+    ) {
       const allVisible = visibleCampaigns.value.filter((c) => !c.isArchived)
       if (!campaigns || list.length === allVisible.length) {
         return overviewKpisRpc.value
@@ -1224,7 +1228,6 @@ export const useCampaignsStore = defineStore('campaigns', () => {
             .select(TRANSACTION_LIST_COLUMNS)
             .eq('board_id', BOARD_ID)
             .eq('is_bonus', true)
-            .or('club_code.is.null,club_code.neq.xtreme_pro')
             .order('id', { ascending: true }),
         ),
       ),
@@ -1387,7 +1390,8 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     return true
   }
 
-  /** TX só do agente da campanha (+ janela desde startDate). */
+  /** TX do agente da campanha (como a atribuição exige). Sem teto de fim —
+   *  janela fica a cargo do client (coorte / acquiredAt). */
   async function ensureCampaignTransactions(
     campaign: Pick<Campaign, 'id' | 'agentId' | 'startDate' | 'endDate'>,
   ) {
@@ -1405,12 +1409,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         .order('id', { ascending: true })
       if (campaign.startDate) {
         q = q.or(
-          `occurred_at.gte.${campaign.startDate},period_start.gte.${campaign.startDate}`,
-        )
-      }
-      if (campaign.endDate) {
-        q = q.or(
-          `occurred_at.lte.${campaign.endDate}T23:59:59,period_start.lte.${campaign.endDate}`,
+          `occurred_at.gte.${campaign.startDate},period_start.gte.${campaign.startDate},occurred_at.is.null`,
         )
       }
       return asRangeQuery(q)
@@ -1755,13 +1754,16 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     }
     try {
       await load({ includeTransactions: false, deferPeriods: true })
+      // Bônus antes do ready final: ativação entra no payback (como antes).
+      await ensureBonusTransactionsLoaded()
       void fetchOverviewKpisRpc()
+      // Períodos SX em background — métricas locais substituem o RPC ao chegar.
+      void ensurePeriodsLoaded()
     } finally {
       ready.value = true
       loading.value = false
     }
     subscribeRealtime()
-    void ensureBonusTransactionsLoaded()
     const broken = transactionImports.value.filter(
       (i) =>
         i.status === 'completed' &&

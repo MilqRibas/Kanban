@@ -59,15 +59,22 @@ const emit = defineEmits<{
 
 const auth = useAuthStore()
 const store = useCampaignsStore()
+
+async function hydrateCampaignData() {
+  await Promise.all([
+    store.ensurePeriodsLoaded(),
+    store.ensureBonusTransactionsLoaded(),
+  ])
+  await store.ensureCampaignTransactions(props.campaign)
+}
+
 onMounted(() => {
-  void store.ensurePeriodsLoaded()
-  void store.ensureBonusTransactionsLoaded()
-  void store.ensureCampaignTransactions(props.campaign)
+  void hydrateCampaignData()
 })
 watch(
   () => props.campaign.id,
   () => {
-    void store.ensureCampaignTransactions(props.campaign)
+    void hydrateCampaignData()
   },
 )
 const menuOpen = ref(false)
