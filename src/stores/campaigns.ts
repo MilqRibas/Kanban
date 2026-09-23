@@ -146,6 +146,8 @@ function toNullableNumber(value: unknown): number | null {
 /** PostgREST default max_rows is 1000 — .limit(N) does not bypass it. */
 const PAGE_SIZE = 1000
 const HARD_ROW_CAP = 200_000
+/** Páginas em paralelo para não serializar 60+ requests de TX. */
+const PAGE_CONCURRENCY = 4
 
 async function fetchAllPaged(
   build: () => {
@@ -158,12 +160,25 @@ async function fetchAllPaged(
   const all: Record<string, unknown>[] = []
   let from = 0
   while (from < HARD_ROW_CAP) {
-    const { data, error } = await build().range(from, from + PAGE_SIZE - 1)
-    if (error) return { data: all, error }
-    const rows = (data ?? []) as Record<string, unknown>[]
-    all.push(...rows)
-    if (rows.length < PAGE_SIZE) break
-    from += PAGE_SIZE
+    const starts: number[] = []
+    for (let i = 0; i < PAGE_CONCURRENCY && from + i * PAGE_SIZE < HARD_ROW_CAP; i += 1) {
+      starts.push(from + i * PAGE_SIZE)
+    }
+    const results = await Promise.all(
+      starts.map((start) => build().range(start, start + PAGE_SIZE - 1)),
+    )
+    let hitEnd = false
+    for (const { data, error } of results) {
+      if (error) return { data: all, error }
+      const rows = (data ?? []) as Record<string, unknown>[]
+      all.push(...rows)
+      if (rows.length < PAGE_SIZE) {
+        hitEnd = true
+        break
+      }
+    }
+    if (hitEnd) break
+    from += PAGE_CONCURRENCY * PAGE_SIZE
   }
   return { data: all, error: null }
 }
@@ -555,6 +570,8 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   const imports = ref<CampaignReportImport[]>([])
   const transactionImports = ref<CampaignTransactionImport[]>([])
   const transactions = ref<CampaignTransaction[]>([])
+  /** Só bônus — suficiente p/ investimento de ativação nos KPIs sem baixar 60k TX. */
+  const bonusTransactions = ref<CampaignTransaction[]>([])
   const agentPeriods = ref<CampaignAgentPeriod[]>([])
   const playerPeriods = ref<CampaignPlayerPeriod[]>([])
   const cohortPlayers = ref<CampaignCohortPlayer[]>([])
@@ -564,6 +581,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   const importing = ref(false)
   const ready = ref(false)
   const transactionsLoaded = ref(false)
+  const bonusTransactionsLoaded = ref(false)
   const error = ref<string | null>(null)
   const showArchived = ref(false)
 
@@ -571,6 +589,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   let suppressRealtimeUntil = 0
   let reloadTimer: ReturnType<typeof setTimeout> | null = null
   let transactionsLoadPromise: Promise<void> | null = null
+  let bonusLoadPromise: Promise<void> | null = null
 
   const selectedCampaign = computed(
     () =>
@@ -841,10 +860,14 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   function activationBonusesFor(
     campaign: Pick<Campaign, 'id' | 'agentId' | 'startDate' | 'endDate'>,
   ) {
+    // Visão geral usa só bônus (leve). Detalhe carrega o histórico completo.
+    const pool = transactionsLoaded.value
+      ? transactions.value
+      : bonusTransactions.value
     return attributedActivationBonuses({
       members: cohortMembersFor(campaign),
       campaignAgentId: campaign.agentId,
-      transactions: transactions.value,
+      transactions: pool,
       competing: competingActivationCampaigns(campaign.id),
     })
   }
@@ -1134,7 +1157,50 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     if (txRows) {
       transactions.value = txRows.map(mapTransaction)
       transactionsLoaded.value = true
+      bonusTransactions.value = transactions.value.filter((t) => t.isBonus)
+      bonusTransactionsLoaded.value = true
     }
+  }
+
+  async function loadBonusTransactions() {
+    const [txImportsRes, bonusesRes] = await Promise.all([
+      supabase
+        .from('campaign_transaction_imports')
+        .select('*')
+        .eq('board_id', BOARD_ID)
+        .order('period_start', { ascending: false }),
+      fetchAllPaged(() =>
+        asRangeQuery(
+          supabase
+            .from('campaign_transactions')
+            .select(TRANSACTION_LIST_COLUMNS)
+            .eq('board_id', BOARD_ID)
+            .eq('is_bonus', true)
+            .order('id', { ascending: true }),
+        ),
+      ),
+    ])
+    const firstError = txImportsRes.error || bonusesRes.error
+    if (firstError) {
+      error.value = firstError.message
+      useToastStore().error(firstError.message)
+      return
+    }
+    transactionImports.value = (txImportsRes.data ?? []).map((row) =>
+      mapTransactionImport(row as Record<string, unknown>),
+    )
+    bonusTransactions.value = bonusesRes.data.map(mapTransaction)
+    bonusTransactionsLoaded.value = true
+  }
+
+  async function ensureBonusTransactionsLoaded() {
+    if (bonusTransactionsLoaded.value || transactionsLoaded.value) return
+    if (!bonusLoadPromise) {
+      bonusLoadPromise = loadBonusTransactions().finally(() => {
+        bonusLoadPromise = null
+      })
+    }
+    await bonusLoadPromise
   }
 
   async function loadTransactionsAndImports() {
@@ -1232,7 +1298,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   }
 
   async function load(options: { includeTransactions?: boolean } = {}) {
-    const includeTransactions = options.includeTransactions !== false
+    const includeTransactions = options.includeTransactions === true
     loading.value = true
     error.value = null
 
@@ -1422,8 +1488,10 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       const mode = pendingReload
       reloadTimer = null
       if (Date.now() < suppressRealtimeUntil) return
-      if (mode === 'tx') void loadTransactionsAndImports()
-      else if (mode === 'periods') void loadPeriods()
+      if (mode === 'tx') {
+        if (transactionsLoaded.value) void loadTransactionsAndImports()
+        else void loadBonusTransactions()
+      } else if (mode === 'periods') void loadPeriods()
       else void load()
     }, 700)
   }
@@ -1443,7 +1511,8 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     await load({ includeTransactions: false })
     subscribeRealtime()
     ready.value = true
-    void ensureTransactionsLoaded()
+    // KPIs de ativação precisam só de bônus (~milhares), não das 60k TX.
+    void ensureBonusTransactionsLoaded()
     // Imports antigos com AGENTES=0 são irrecuperáveis (IDs trocados) — limpa para reimport.
     const broken = transactionImports.value.filter(
       (i) =>
@@ -1466,8 +1535,11 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     imports.value = []
     transactionImports.value = []
     transactions.value = []
+    bonusTransactions.value = []
     transactionsLoaded.value = false
+    bonusTransactionsLoaded.value = false
     transactionsLoadPromise = null
+    bonusLoadPromise = null
     agentPeriods.value = []
     playerPeriods.value = []
     cohortPlayers.value = []
@@ -2646,7 +2718,11 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         console.warn('[campaigns:tx-commit] incentive backfill skipped', backfillErr)
       }
 
-      await load()
+      await load({ includeTransactions: false })
+      transactionsLoaded.value = false
+      transactions.value = []
+      bonusTransactionsLoaded.value = false
+      await loadBonusTransactions()
 
       const affected = campaigns.value.filter(
         (c) => c.agentId && uniqueAgents.includes(c.agentId),
