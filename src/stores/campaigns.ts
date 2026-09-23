@@ -146,8 +146,8 @@ function toNullableNumber(value: unknown): number | null {
 /** PostgREST default max_rows is 1000 — .limit(N) does not bypass it. */
 const PAGE_SIZE = 1000
 const HARD_ROW_CAP = 200_000
-/** Páginas em paralelo para não serializar 60+ requests de TX. */
-const PAGE_CONCURRENCY = 4
+/** Páginas em paralelo para não serializar dezenas de requests. */
+const PAGE_CONCURRENCY = 6
 
 async function fetchAllPaged(
   build: () => {
@@ -209,6 +209,16 @@ function asRangeQuery(query: unknown): RangeQuery {
 
 const TRANSACTION_LIST_COLUMNS =
   'id, board_id, import_id, external_transaction_id, receiver_player_id, receiver_nickname, sender_player_id, agent_id, agent_nickname, occurred_at, period_start, period_end, origin, transaction_type, amount, chips_send_out, chips_claimback, system_status, order_status, is_deposit, is_bonus, created_at'
+
+/** Colunas mínimas p/ KPIs/coorte — evita baixar gains/hands/etc. */
+const PLAYER_PERIOD_COLUMNS =
+  'id, board_id, import_id, agent_id, player_id, player_name, nickname, period_start, period_end, weekly_rake, club_code'
+
+const AGENT_PERIOD_COLUMNS =
+  'id, board_id, import_id, agent_id, agent_name, period_start, period_end, weekly_rake, gains, hands, players_rake_sum, unique_players, reconciliation_diff, club_code, slot_name, created_at'
+
+const COHORT_COLUMNS =
+  'id, board_id, campaign_id, player_id, acquired_at, source_agent_id, first_seen_week, last_seen_week, current_agent_id, created_at, updated_at'
 
 function collapseParsedReport(parsed: ParsedReport): ParsedReport {
   const agents = aggregateAgentsById(parsed.agents)
@@ -1149,6 +1159,23 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     )
   }
 
+  /**
+   * Períodos de campanha SX: exclui Xtreme (tem RPC própria no case).
+   * Corta ~14k linhas do load da visão geral.
+   */
+  function pagedSxPeriodsSelect(table: string, columns: string) {
+    return fetchAllPaged(() =>
+      asRangeQuery(
+        supabase
+          .from(table)
+          .select(columns)
+          .eq('board_id', BOARD_ID)
+          .or('club_code.is.null,club_code.neq.xtreme_pro')
+          .order('id', { ascending: true }),
+      ),
+    )
+  }
+
   function applyTransactionImports(
     rows: Record<string, unknown>[],
     txRows: Record<string, unknown>[] | null,
@@ -1176,6 +1203,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
             .select(TRANSACTION_LIST_COLUMNS)
             .eq('board_id', BOARD_ID)
             .eq('is_bonus', true)
+            .or('club_code.is.null,club_code.neq.xtreme_pro')
             .order('id', { ascending: true }),
         ),
       ),
@@ -1226,9 +1254,9 @@ export const useCampaignsStore = defineStore('campaigns', () => {
 
   async function loadPeriods() {
     const [agentPeriodsRes, playerPeriodsRes, cohortRes] = await Promise.all([
-      pagedBoardSelect('campaign_agent_periods'),
-      pagedBoardSelect('campaign_player_periods'),
-      pagedBoardSelect('campaign_cohort_players'),
+      pagedSxPeriodsSelect('campaign_agent_periods', AGENT_PERIOD_COLUMNS),
+      pagedSxPeriodsSelect('campaign_player_periods', PLAYER_PERIOD_COLUMNS),
+      pagedBoardSelect('campaign_cohort_players', COHORT_COLUMNS),
     ])
     const firstError =
       agentPeriodsRes.error || playerPeriodsRes.error || cohortRes.error
@@ -1297,8 +1325,11 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     await transactionsLoadPromise
   }
 
-  async function load(options: { includeTransactions?: boolean } = {}) {
+  async function load(
+    options: { includeTransactions?: boolean; deferPeriods?: boolean } = {},
+  ) {
     const includeTransactions = options.includeTransactions === true
+    const deferPeriods = options.deferPeriods === true
     loading.value = true
     error.value = null
 
@@ -1310,9 +1341,6 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       importsRes,
       txImportsRes,
       transactionsRes,
-      agentPeriodsRes,
-      playerPeriodsRes,
-      cohortRes,
     ] = await Promise.all([
       supabase
         .from('campaigns')
@@ -1348,26 +1376,20 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       includeTransactions
         ? pagedBoardSelect('campaign_transactions', TRANSACTION_LIST_COLUMNS)
         : Promise.resolve({ data: null, error: null }),
-      pagedBoardSelect('campaign_agent_periods'),
-      pagedBoardSelect('campaign_player_periods'),
-      pagedBoardSelect('campaign_cohort_players'),
     ])
 
-    const firstError =
+    const shellError =
       campaignsRes.error ||
       monthlyRes.error ||
       historyRes.error ||
       agentsRes.error ||
       importsRes.error ||
       txImportsRes.error ||
-      (includeTransactions ? transactionsRes.error : null) ||
-      agentPeriodsRes.error ||
-      playerPeriodsRes.error ||
-      cohortRes.error
+      (includeTransactions ? transactionsRes.error : null)
 
-    if (firstError) {
-      error.value = firstError.message
-      useToastStore().error(firstError.message)
+    if (shellError) {
+      error.value = shellError.message
+      useToastStore().error(shellError.message)
       loading.value = false
       return
     }
@@ -1392,11 +1414,17 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       (txImportsRes.data ?? []) as Record<string, unknown>[],
       includeTransactions && transactionsRes.data ? transactionsRes.data : null,
     )
-    agentPeriods.value = agentPeriodsRes.data.map(mapAgentPeriod)
-    playerPeriods.value = playerPeriodsRes.data.map(mapPlayerPeriod)
-    cohortPlayers.value = cohortRes.data.map(mapCohortPlayer)
 
     loading.value = false
+
+    if (deferPeriods) {
+      void loadPeriods().then(() => {
+        void reconcilePersistedCohorts()
+      })
+      return
+    }
+
+    await loadPeriods()
     void reconcilePersistedCohorts()
   }
 
@@ -1508,12 +1536,16 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   }
 
   async function init() {
-    await load({ includeTransactions: false })
+    loading.value = true
+    error.value = null
+    try {
+      await load({ includeTransactions: false, deferPeriods: true })
+    } finally {
+      ready.value = true
+      loading.value = false
+    }
     subscribeRealtime()
-    ready.value = true
-    // KPIs de ativação precisam só de bônus (~milhares), não das 60k TX.
     void ensureBonusTransactionsLoaded()
-    // Imports antigos com AGENTES=0 são irrecuperáveis (IDs trocados) — limpa para reimport.
     const broken = transactionImports.value.filter(
       (i) =>
         i.status === 'completed' &&
