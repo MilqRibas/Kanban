@@ -2898,7 +2898,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         order_status: t.orderStatus,
         is_deposit: t.isDeposit,
         is_bonus: t.isBonus,
-        raw: t.raw,
+        raw: null,
         created_at: now,
       }))
 

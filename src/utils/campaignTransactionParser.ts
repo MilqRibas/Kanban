@@ -37,7 +37,8 @@ export type ParsedTransactionRow = {
   clubName: string | null
   /** sx_club | xtreme_pro. Null se a coluna não resolver. */
   clubCode: ClubCode | null
-  raw: Record<string, unknown>
+  /** Não persistido — campos tipados bastam (evita ~1 KB/linha no banco). */
+  raw: Record<string, unknown> | null
 }
 
 export type ParsedTransactionReport = {
@@ -658,16 +659,6 @@ export async function parseTransactionReportBuffer(
     const clubName = toText(col('clubName', row))
     const clubCode = resolveClubCode(clubName)
 
-    const raw: Record<string, unknown> = {}
-    header.map.forEach((idx, key) => {
-      raw[key] = row[idx]
-    })
-    // Preserva TODAS as colunas originais do XLSX (evita perda silenciosa de Sender etc.)
-    for (const h of header.allHeaders) {
-      if (!h.raw) continue
-      raw[`col:${h.raw}`] = row[h.idx]
-    }
-
     transactions.push({
       externalTransactionId,
       receiverPlayerId,
@@ -689,7 +680,8 @@ export async function parseTransactionReportBuffer(
       isBonus: flags.isBonus,
       clubName,
       clubCode,
-      raw,
+      // Colunas tipadas bastam; raw jsonb inchava o banco (~1 KB/linha).
+      raw: null,
     })
   }
 

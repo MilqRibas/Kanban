@@ -183,7 +183,7 @@ describe('transaction parser — real Suprema headers', () => {
       [1, 10, 20, '03/08/2026', '10:00:00', 'SX 24 Horas', '-', 100, 'Completed', 'ABC'],
     ])
     const parsed = await parseTransactionReportBuffer(buffer, 'file.xlsx')
-    expect(parsed.transactions[0].raw['col:Conta misteriosa']).toBe('ABC')
+    expect(parsed.transactions[0].raw).toBeNull()
     expect(parsed.warnings.some((w) => w.code === 'unmapped_headers')).toBe(true)
     expect(parsed.warnings.some((w) => w.code === 'missing_sender_column')).toBe(true)
   })
