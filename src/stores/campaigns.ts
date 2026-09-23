@@ -1761,6 +1761,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       loading.value = false
     }
     subscribeRealtime()
+    void ensureBonusTransactionsLoaded()
     const broken = transactionImports.value.filter(
       (i) =>
         i.status === 'completed' &&

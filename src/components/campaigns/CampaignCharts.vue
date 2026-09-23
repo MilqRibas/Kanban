@@ -17,6 +17,7 @@ const emit = defineEmits<{
 const store = useCampaignsStore()
 onMounted(() => {
   void store.ensurePeriodsLoaded()
+  void store.ensureBonusTransactionsLoaded()
 })
 
 const rows = computed(() => {

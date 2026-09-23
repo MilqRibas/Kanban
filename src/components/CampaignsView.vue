@@ -101,12 +101,10 @@ watch(area, async (next) => {
   }
 })
 
-/** Lista/Comparativo precisam de períodos SX ao entrar; overview usa RPC + charts pedem períodos. */
+/** Lista/Comparativo: períodos SX + bônus (ativação entra no payback). */
 watch(screen, (next) => {
   if (next === 'list' || next === 'comparison') {
     void store.ensurePeriodsLoaded()
-  }
-  if (next === 'comparison') {
     void store.ensureBonusTransactionsLoaded()
   }
 })
