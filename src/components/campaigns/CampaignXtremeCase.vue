@@ -41,14 +41,37 @@ const filterAgentIds = computed(() => {
   return new Set(props.agentIds)
 })
 
-const filteredAgencies = computed(() => {
+/** Agências Xtreme que batem com o filtro de campanhas. */
+const matchedAgencies = computed(() => {
   const all = summary.value?.agencies ?? []
   const ids = filterAgentIds.value
-  if (!ids) return all
+  if (!ids) return null
   return all.filter((a) => a.agentId && ids.has(a.agentId))
 })
 
-const filterActive = computed(() => filterAgentIds.value != null)
+/**
+ * Se o filtro de campanhas (ex.: natureza Orgânica) não cruza nenhuma agência
+ * do relatório Xtreme, não zerar o case — o filtro não se aplica a este clube.
+ */
+const filteredAgencies = computed(() => {
+  const all = summary.value?.agencies ?? []
+  const matched = matchedAgencies.value
+  if (matched == null) return all
+  if (matched.length === 0) return all
+  return matched
+})
+
+const filterActive = computed(() => {
+  const matched = matchedAgencies.value
+  if (matched == null) return false
+  const total = summary.value?.agencies.length ?? 0
+  return matched.length > 0 && matched.length < total
+})
+
+const filterIgnored = computed(() => {
+  const matched = matchedAgencies.value
+  return matched != null && matched.length === 0
+})
 
 const economics = computed(() =>
   consolidateXtremeCase({
@@ -154,6 +177,10 @@ async function onSave() {
         <span v-if="filterActive">
           Métricas de rake/jogadores/depósitos seguem o filtro de campanhas
           ({{ filteredAgencies.length }} de {{ summary?.agencies.length ?? 0 }} agências).
+        </span>
+        <span v-else-if="filterIgnored">
+          O filtro atual de campanhas não cruza agências Xtreme — exibindo o case completo
+          ({{ summary?.agencies.length ?? 0 }} agências).
         </span>
       </p>
 

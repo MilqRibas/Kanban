@@ -1122,26 +1122,41 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       if (m.status === 'no_data') noDataCount += 1
     }
 
+    const onlyOrganic =
+      list.length > 0 &&
+      list.every((c) => (c.acquisitionNature ?? 'PAID') === 'ORGANIC')
+
     const activationRate =
       totalCaptured > 0 ? (totalActive / totalCaptured) * 100 : null
     const recoveryRate =
       paidInvestment > 0 ? (paidLiquid / paidInvestment) * 100 : null
     const costPerActive =
       paidActive > 0 && paidInvestment > 0 ? paidInvestment / paidActive : null
-    const averageRakePerActive = paidActive > 0 ? paidRake / paidActive : null
+    // Filtro só orgânico: o card principal deve mostrar o rake orgânico (não 0).
+    const displayedRake = onlyOrganic ? organicRake : paidRake
+    const averageRakePerActive =
+      onlyOrganic
+        ? totalActive > 0
+          ? organicRake / totalActive
+          : null
+        : paidActive > 0
+          ? paidRake / paidActive
+          : null
 
     return {
-      totalInvestment: paidInvestment,
-      totalAccumulatedRake: paidRake,
-      organicAccumulatedRake: organicRake,
+      totalInvestment: onlyOrganic ? 0 : paidInvestment,
+      totalAccumulatedRake: displayedRake,
+      organicAccumulatedRake: onlyOrganic ? 0 : organicRake,
       totalCaptured,
       totalActive,
       activationRate,
-      recoveryRate,
-      paybackCount,
-      averagePaybackDays: averagePaybackDays(paybackDaySamples),
-      costPerActive,
-      recoveringCount,
+      recoveryRate: onlyOrganic ? null : recoveryRate,
+      paybackCount: onlyOrganic ? 0 : paybackCount,
+      averagePaybackDays: onlyOrganic
+        ? null
+        : averagePaybackDays(paybackDaySamples),
+      costPerActive: onlyOrganic ? null : costPerActive,
+      recoveringCount: onlyOrganic ? 0 : recoveringCount,
       noDataCount,
       averageRakePerActive,
     }
