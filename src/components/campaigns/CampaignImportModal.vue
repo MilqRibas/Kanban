@@ -400,7 +400,9 @@ async function confirmImport() {
           })
           if (!committed) {
             item.status = 'error'
-            item.error = 'Falha ao processar as transações.'
+            item.error =
+              store.error ||
+              'Falha ao processar as transações.'
             failed += 1
             continue
           }
@@ -662,6 +664,17 @@ const footerCommitLabel = computed(() => {
                 <li>{{ item.txPreview.parsed.bonusesCount }} bônus</li>
                 <li>{{ item.txPreview.parsed.uniqueAgentIds.length }} agências</li>
               </ul>
+
+              <div
+                v-if="importKind === 'transactions' && item.txPreview?.parsed.debug"
+                class="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 font-mono text-[10px] leading-relaxed text-amber-100"
+              >
+                <div>Parser version: {{ item.txPreview.parsed.debug.parserVersion }}</div>
+                <div>Period source: {{ item.txPreview.parsed.debug.periodSource }}</div>
+                <div>Detected min: {{ item.txPreview.parsed.debug.detectedMin ?? '—' }}</div>
+                <div>Detected max: {{ item.txPreview.parsed.debug.detectedMax ?? '—' }}</div>
+                <div>Rows: {{ item.txPreview.parsed.debug.rowsParsed }}</div>
+              </div>
 
               <div
                 v-if="itemHasConflict(item) && !batchFinished && item.status !== 'done'"

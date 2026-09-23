@@ -27,6 +27,12 @@ import {
   findRakeImportConflicts,
   resolveRakeImportClub,
 } from '../utils/rakeImportConflict'
+import {
+  chooseTransactionBatchSize,
+  chunkArray,
+  formatSupabaseError,
+  jsonByteLength,
+} from '../utils/transactionImportBatch'
 import { useAuthStore } from './auth'
 import { useToastStore } from './toast'
 import {
@@ -537,6 +543,8 @@ export type CommitTransactionResult = {
   replaced: boolean
   affectedCampaignIds: string[]
   recognizedHeaders: Record<string, string>
+  batchesUsed: number
+  payloadBytesEstimate: number
 }
 
 export const useCampaignsStore = defineStore('campaigns', () => {
@@ -2450,7 +2458,10 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     }
 
     importing.value = true
-    quietRealtime(8000)
+    quietRealtime(Math.min(120_000, 8_000 + parsed.transactions.length))
+
+    const importId = createTransactionImportId()
+    let began = false
 
     try {
       const playerLinks = playerPeriods.value.map((p) => ({
@@ -2482,7 +2493,6 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       const replacedIds =
         conflict && replace ? conflict.existingImportIds : []
       const replacedImportId = replacedIds[0] ?? null
-      const importId = createTransactionImportId()
       const now = new Date().toISOString()
 
       const uniqueAgents = [
@@ -2515,7 +2525,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         period_end: parsed.period.end,
         imported_at: now,
         imported_by: auth.memberId,
-        status: 'completed',
+        status: 'processing',
         transactions_count: resolvedRows.length,
         deposits_count: depositsCount,
         bonuses_count: bonusesCount,
@@ -2566,15 +2576,57 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         created_at: now,
       }))
 
-      const { error: rpcError } = await supabase.rpc(
-        'commit_campaign_transactions',
+      const payloadBytesEstimate = jsonByteLength({
+        p_import: importRow,
+        p_transactions: txRows,
+      })
+      const batchSize = chooseTransactionBatchSize(txRows[0] ?? {}, txRows.length)
+      const batches = chunkArray(txRows, batchSize)
+
+      const { error: beginError } = await supabase.rpc(
+        'begin_campaign_transaction_import',
         {
           p_import: importRow,
-          p_transactions: txRows,
           p_replace_import_ids: replacedIds,
         },
       )
-      if (rpcError) throw new Error(rpcError.message)
+      if (beginError) {
+        throw new Error(formatSupabaseError(beginError, 'Falha ao criar o import.'))
+      }
+      began = true
+
+      for (let i = 0; i < batches.length; i += 1) {
+        const batch = batches[i]!
+        const { error: appendError } = await supabase.rpc(
+          'append_campaign_transactions',
+          {
+            p_board_id: BOARD_ID,
+            p_import_id: importId,
+            p_transactions: batch,
+            p_batch_index: i + 1,
+            p_batch_total: batches.length,
+          },
+        )
+        if (appendError) {
+          throw new Error(
+            `Falha ao salvar lote ${i + 1} de ${batches.length}. ${formatSupabaseError(appendError)}`,
+          )
+        }
+      }
+
+      const { error: finalizeError } = await supabase.rpc(
+        'finalize_campaign_transaction_import',
+        {
+          p_board_id: BOARD_ID,
+          p_import_id: importId,
+          p_status: 'completed',
+        },
+      )
+      if (finalizeError) {
+        throw new Error(
+          formatSupabaseError(finalizeError, 'Falha ao finalizar o import.'),
+        )
+      }
 
       await load()
 
@@ -2596,6 +2648,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
             depositsCount,
             bonusesCount,
             agentsCount: uniqueAgents.length,
+            batchesUsed: batches.length,
           },
         )
       }
@@ -2623,10 +2676,31 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         replaced: Boolean(conflict && replace),
         affectedCampaignIds: affected.map((c) => c.id),
         recognizedHeaders: parsed.recognizedHeaders,
+        batchesUsed: batches.length,
+        payloadBytesEstimate,
       }
     } catch (err) {
+      if (began) {
+        try {
+          await supabase.rpc('finalize_campaign_transaction_import', {
+            p_board_id: BOARD_ID,
+            p_import_id: importId,
+            p_status: 'failed',
+          })
+        } catch {
+          /* best-effort mark failed */
+        }
+      }
       const message =
-        err instanceof Error ? err.message : 'Falha ao processar transações.'
+        err instanceof Error ? err.message : 'Falha ao processar as transações.'
+      console.error('[campaigns:tx-commit]', {
+        operation: 'commitTransactionReport',
+        board: BOARD_ID,
+        importId,
+        filename,
+        transactions: parsed.transactions.length,
+        error: err,
+      })
       error.value = message
       if (!params.quiet) toast.error(message)
       return null

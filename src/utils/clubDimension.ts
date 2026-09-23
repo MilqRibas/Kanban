@@ -34,6 +34,9 @@ const NAME_TO_CODE: Record<string, ClubCode> = {
   'xtreme pro': 'xtreme_pro',
   xtremepro: 'xtreme_pro',
   'xtreme-pro': 'xtreme_pro',
+  // Slot / Nome do clube real Suprema
+  'sx | xtreme pro': 'xtreme_pro',
+  'sx|xtreme pro': 'xtreme_pro',
 }
 
 export function normalizeClubLabel(value: unknown): string {
@@ -45,11 +48,14 @@ export function normalizeClubLabel(value: unknown): string {
     .toLowerCase()
 }
 
-/** Só nomes conhecidos. ID numérico (ex. 57906) não vira clube. */
+/** Só nomes conhecidos. ID numérico (ex. 57906 / 32443) não vira clube. */
 export function resolveClubCode(value: unknown): ClubCode | null {
   const key = normalizeClubLabel(value)
   if (!key) return null
-  return NAME_TO_CODE[key] ?? null
+  if (NAME_TO_CODE[key]) return NAME_TO_CODE[key]
+  // "SX | XTREME PRO", "Clube Xtreme Pro", etc. — xtreme tem prioridade sobre "sx"
+  if (/\bxtreme\b/.test(key)) return 'xtreme_pro'
+  return null
 }
 
 export function isClubCode(value: unknown): value is ClubCode {

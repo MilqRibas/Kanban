@@ -55,6 +55,14 @@ export type ParsedTransactionReport = {
     withoutAgentId: number
     withoutOccurredAt: number
   }
+  /** Diagnóstico temporário — provar qual parser está rodando na UI. */
+  debug: {
+    parserVersion: 'TX_PERIOD_FROM_ROWS_V2'
+    periodSource: 'ROW_MIN_MAX' | 'FILENAME' | 'INFERRED_TODAY'
+    detectedMin: string | null
+    detectedMax: string | null
+    rowsParsed: number
+  }
 }
 
 const DEV = typeof import.meta !== 'undefined' && Boolean(import.meta.env?.DEV)
@@ -444,7 +452,16 @@ export function mondaySundayContaining(isoDate: string): ParsedTransactionPeriod
   return { start, end, label }
 }
 
-function parsePeriodFromFilename(name: string): ParsedTransactionPeriod | null {
+/**
+ * Só aceita intervalo explícito de datas no nome (ex. 01-08-2026_07-08-2026).
+ * Rejeita timestamp de exportação Suprema: "22-09-2026-16-01-41"
+ * (hora-minuto-segundo não é período).
+ */
+export function parsePeriodFromFilename(name: string): ParsedTransactionPeriod | null {
+  // Export Suprema: ... DD-MM-YYYY-HH-MM-SS.xlsx → não é período
+  if (/\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{1,2}/.test(name)) {
+    return null
+  }
   const match = name.match(
     /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4}).*?(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/,
   )
@@ -456,10 +473,28 @@ function parsePeriodFromFilename(name: string): ParsedTransactionPeriod | null {
   const start = toIso(match[1], match[2], match[3])
   const end = toIso(match[4], match[5], match[6])
   if (Number.isNaN(Date.parse(start)) || Number.isNaN(Date.parse(end))) return null
+  if (end < start) return null
+  // Segundo "ano" com 2 dígitos e < 32 tende a ser dia/hora, não ano
+  if (match[6].length === 2 && Number(match[6]) < 32 && match[3].length === 4) {
+    return null
+  }
   return {
     start,
     end,
     label: `${match[1].padStart(2, '0')}/${match[2].padStart(2, '0')}/${match[3]} a ${match[4].padStart(2, '0')}/${match[5].padStart(2, '0')}/${match[6]}`,
+  }
+}
+
+function periodFromDates(dates: string[]): ParsedTransactionPeriod | null {
+  if (dates.length === 0) return null
+  const start = dates[0]!
+  const end = dates[dates.length - 1]!
+  const fmt = (iso: string) =>
+    `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
+  return {
+    start,
+    end,
+    label: `${fmt(start)} a ${fmt(end)}`,
   }
 }
 
@@ -667,28 +702,34 @@ export async function parseTransactionReportBuffer(
     ...new Set(transactions.map((t) => t.receiverPlayerId)),
   ].sort()
 
-  // Período do lote: só organização/auditoria — preferir filename ou range das datas reais
+  // Período do lote: MIN/MAX das datas reais nas linhas.
+  // Filename só como fallback — timestamp de exportação NÃO é período.
   const realDates = transactions
     .map((t) => t.occurredAt?.slice(0, 10))
     .filter((d): d is string => Boolean(d))
     .sort()
 
-  let period =
-    parsePeriodFromFilename(filename) ??
-    (realDates.length > 0
-      ? {
-          start: realDates[0],
-          end: realDates[realDates.length - 1],
-          label: `${realDates[0]} a ${realDates[realDates.length - 1]}`,
-        }
-      : null)
+  let periodSource: ParsedTransactionReport['debug']['periodSource'] = 'INFERRED_TODAY'
+  let period = periodFromDates(realDates)
+  if (period) {
+    periodSource = 'ROW_MIN_MAX'
+  } else {
+    period = parsePeriodFromFilename(filename)
+    if (period) periodSource = 'FILENAME'
+  }
 
   if (!period) {
     const today = new Date().toISOString().slice(0, 10)
     period = mondaySundayContaining(today)
+    periodSource = 'INFERRED_TODAY'
     warnings.push({
       code: 'period_inferred',
       message: 'Período do lote inferido pela data atual (sem datas nas linhas).',
+    })
+  } else if (periodSource === 'ROW_MIN_MAX') {
+    warnings.push({
+      code: 'period_from_rows',
+      message: `Período derivado das datas das transações (${period.label}), não do nome do arquivo.`,
     })
   }
 
@@ -719,6 +760,13 @@ export async function parseTransactionReportBuffer(
       rowsSkipped,
       withoutAgentId,
       withoutOccurredAt,
+    },
+    debug: {
+      parserVersion: 'TX_PERIOD_FROM_ROWS_V2',
+      periodSource,
+      detectedMin: realDates[0] ?? null,
+      detectedMax: realDates.length ? realDates[realDates.length - 1]! : null,
+      rowsParsed: transactions.length,
     },
   }
 }

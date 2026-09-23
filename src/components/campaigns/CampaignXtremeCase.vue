@@ -18,14 +18,15 @@ const saveError = ref<string | null>(null)
 const saveOk = ref(false)
 const summary = ref<XtremeCaseSummary | null>(null)
 const investment = ref('0')
-const activation = ref('0')
+
+const activation = computed(() => summary.value?.incentiveSent ?? 0)
 
 const economics = computed(() => {
   const agencies = summary.value?.agencies ?? []
   return consolidateXtremeCase({
     agencies,
     investment: parseMoneyInput(investment.value) ?? 0,
-    activation: parseMoneyInput(activation.value) ?? 0,
+    activation: activation.value,
   })
 })
 
@@ -42,7 +43,6 @@ onMounted(async () => {
       fetchXtremeCaseSummary(),
     ])
     investment.value = String(caseRow.investment)
-    activation.value = String(caseRow.activationCost)
     summary.value = snap
   } catch (err) {
     loadError.value =
@@ -54,14 +54,8 @@ onMounted(async () => {
 
 async function onSave() {
   const investmentValue = parseMoneyInput(investment.value)
-  const activationValue = parseMoneyInput(activation.value)
   if (investmentValue == null || investmentValue < 0) {
     saveError.value = 'Investimento inválido.'
-    saveOk.value = false
-    return
-  }
-  if (activationValue == null || activationValue < 0) {
-    saveError.value = 'Ativação inválida.'
     saveOk.value = false
     return
   }
@@ -72,10 +66,10 @@ async function onSave() {
     const saved = await saveClubCaseInvestment({
       clubCode: 'xtreme_pro',
       investment: investmentValue,
-      activationCost: activationValue,
     })
     investment.value = String(saved.investment)
-    activation.value = String(saved.activationCost)
+    // Recarrega Ativação do motor (pode ter mudado após import de TX)
+    summary.value = await fetchXtremeCaseSummary()
     saveOk.value = true
   } catch (err) {
     saveOk.value = false
@@ -129,16 +123,19 @@ async function onSave() {
             class="mt-1 w-full rounded-xl border border-white/10 bg-board px-3 py-2 text-sm text-text-primary outline-none ring-accent/40 focus:ring-2"
           />
         </label>
-        <label class="block text-xs text-text-muted">
+        <div class="block text-xs text-text-muted">
           Ativação
-          <input
-            v-model="activation"
-            type="text"
-            inputmode="decimal"
-            autocomplete="off"
-            class="mt-1 w-full rounded-xl border border-white/10 bg-board px-3 py-2 text-sm text-text-primary outline-none ring-accent/40 focus:ring-2"
-          />
-        </label>
+          <p
+            class="mt-1 w-full rounded-xl border border-white/10 bg-board/60 px-3 py-2 text-sm font-medium text-text-primary"
+            title="Soma automática do Incentivo Enviado Xtreme (sender 1092502 OU bônus)"
+          >
+            {{ formatCurrency(activation) }}
+          </p>
+          <p class="mt-1 text-[11px] text-text-muted">
+            Calculada pelo motor de incentivos (não editável). Diferente de Ativos
+            ({{ formatNumber(distinctActive) }} jogadores).
+          </p>
+        </div>
       </div>
       <div class="mt-2 flex flex-wrap items-center gap-2">
         <button
