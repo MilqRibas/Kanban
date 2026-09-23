@@ -165,9 +165,8 @@ function selectTab(tab: NavTab) {
   emit('update:activeTab', tab)
 }
 
-function openExternal(href: string) {
+function closeMoreMenu() {
   moreOpen.value = false
-  window.open(href, '_blank', 'noopener,noreferrer')
 }
 
 function onDocPointerDown(event: PointerEvent) {
@@ -255,18 +254,20 @@ onBeforeUnmount(() => {
           <span v-if="item.showLabel !== false" class="hidden sm:inline">{{ item.label }}</span>
         </button>
 
-        <!-- Link externo (SX Player) — mesmo markup das abas -->
-        <button
+        <!-- Link externo (SX Player) — <a> real evita bloqueio de popup -->
+        <a
           v-else
-          type="button"
+          :href="item.href"
+          target="_blank"
+          rel="noopener noreferrer"
           :aria-label="item.label"
           :title="item.label"
           class="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl px-2.5 py-2 text-xs text-text-secondary transition-all duration-300 ease-out hover:bg-surface hover:text-text-primary sm:gap-2 sm:px-3.5 sm:py-2.5 sm:text-sm"
-          @click="openExternal(item.href)"
+          @click="closeMoreMenu"
         >
           <component :is="item.icon" :size="17" :stroke-width="2" />
           <span class="hidden sm:inline">{{ item.label }}</span>
-        </button>
+        </a>
       </template>
 
       <div v-if="showMoreMenu" class="relative">
@@ -316,7 +317,7 @@ onBeforeUnmount(() => {
               target="_blank"
               rel="noopener noreferrer"
               class="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
-              @click.prevent="openExternal(item.href)"
+              @click="closeMoreMenu"
             >
               <component :is="item.icon" :size="16" :stroke-width="2" />
               {{ item.label }}
