@@ -192,6 +192,28 @@ async function fetchAllPaged(
   return { data: all, error: null }
 }
 
+/** Página seguinte por id (evita OFFSET, que varre as linhas puladas e estoura timeout). */
+async function fetchAllByIdCursor(
+  build: (afterId: string | null) => PromiseLike<{
+    data: unknown[] | null
+    error: { message: string } | null
+  }>,
+): Promise<{ data: Record<string, unknown>[]; error: { message: string } | null }> {
+  const all: Record<string, unknown>[] = []
+  let afterId: string | null = null
+  while (all.length < HARD_ROW_CAP) {
+    const { data, error } = await build(afterId)
+    if (error) return { data: all, error }
+    const rows = (data ?? []) as Record<string, unknown>[]
+    all.push(...rows)
+    if (rows.length < PAGE_SIZE) break
+    const lastId = String(rows[rows.length - 1]?.id ?? '')
+    if (!lastId || lastId === afterId) break
+    afterId = lastId
+  }
+  return { data: all, error: null }
+}
+
 async function insertInChunks(
   table: string,
   rows: Record<string, unknown>[],
@@ -1238,27 +1260,30 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     }
   }
 
+  function incentivePage(afterId: string | null, kind: 'bonus' | 'mkt') {
+    let query = supabase
+      .from('campaign_transactions')
+      .select(TRANSACTION_LIST_COLUMNS)
+      .eq('board_id', BOARD_ID)
+    query =
+      kind === 'bonus'
+        ? query.eq('is_bonus', true)
+        : query.eq('sender_player_id', MKT_GT_PLAYER_ID)
+    if (afterId) query = query.gt('id', afterId)
+    return query.order('id', { ascending: true }).limit(PAGE_SIZE)
+  }
+
   async function loadBonusTransactions() {
-    const [txImportsRes, bonusesRes] = await Promise.all([
+    const [txImportsRes, bonusRows, mktRows] = await Promise.all([
       supabase
         .from('campaign_transaction_imports')
         .select('*')
         .eq('board_id', BOARD_ID)
         .order('period_start', { ascending: false }),
-      fetchAllPaged(() =>
-        asRangeQuery(
-          supabase
-            .from('campaign_transactions')
-            .select(TRANSACTION_LIST_COLUMNS)
-            .eq('board_id', BOARD_ID)
-            .or(
-              `is_bonus.eq.true,sender_player_id.eq.${MKT_GT_PLAYER_ID}`,
-            )
-            .order('id', { ascending: true }),
-        ),
-      ),
+      fetchAllByIdCursor((afterId) => incentivePage(afterId, 'bonus')),
+      fetchAllByIdCursor((afterId) => incentivePage(afterId, 'mkt')),
     ])
-    const firstError = txImportsRes.error || bonusesRes.error
+    const firstError = txImportsRes.error || bonusRows.error || mktRows.error
     if (firstError) {
       error.value = firstError.message
       useToastStore().error(firstError.message)
@@ -1267,7 +1292,12 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     transactionImports.value = (txImportsRes.data ?? []).map((row) =>
       mapTransactionImport(row as Record<string, unknown>),
     )
-    bonusTransactions.value = bonusesRes.data.map(mapTransaction)
+    const byId = new Map<string, Record<string, unknown>>()
+    for (const row of [...bonusRows.data, ...mktRows.data]) {
+      const id = String(row.id ?? '')
+      if (id) byId.set(id, row)
+    }
+    bonusTransactions.value = [...byId.values()].map(mapTransaction)
     bonusTransactionsLoaded.value = true
   }
 
