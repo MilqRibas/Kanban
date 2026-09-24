@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
+  BarChart3,
   CalendarDays,
   Columns3,
   Ellipsis,
@@ -34,6 +35,10 @@ const emit = defineEmits<{
 const auth = useAuthStore()
 
 const SX_PLAYER_URL = 'https://sxplayer.vercel.app/admin'
+const TRAFFIC_REPORT_URL = 'https://dash-performance-trafego.vercel.app/'
+
+type ExternalId = 'sx-player' | 'trafego'
+type FooterNavId = NavTab | ExternalId
 
 type TabItem = {
   kind: 'tab'
@@ -56,7 +61,7 @@ type ExternalItem = {
 
 type FooterItem = TabItem | ExternalItem
 
-/** Ordem visual: HUB (+) por último; SX PLAYER antes do HUB. */
+/** Ordem visual: HUB (+) por último; links externos antes do HUB. */
 const ALL_ITEMS: FooterItem[] = [
   { kind: 'tab', id: 'agenda', label: 'Agenda', icon: CalendarDays },
   { kind: 'tab', id: 'campaigns', label: 'Campanhas', icon: Megaphone },
@@ -70,6 +75,13 @@ const ALL_ITEMS: FooterItem[] = [
     label: 'SX Player',
     href: SX_PLAYER_URL,
     icon: Star,
+  },
+  {
+    kind: 'external',
+    id: 'trafego',
+    label: 'Tráfego',
+    href: TRAFFIC_REPORT_URL,
+    icon: BarChart3,
   },
   {
     kind: 'tab',
@@ -90,16 +102,17 @@ const items = computed(() => {
 })
 
 /** Abas principais no mobile (resto vai em "Mais") */
-const PRIMARY_IDS: Array<NavTab | 'sx-player'> = [
+const PRIMARY_IDS: FooterNavId[] = [
   'agenda',
   'board',
   'daily',
   'notes',
   'campaigns',
   'sx-player',
+  'trafego',
   'hub',
 ]
-const MORE_IDS: Array<NavTab | 'sx-player'> = ['community']
+const MORE_IDS: FooterNavId[] = ['community']
 
 const navRef = ref<HTMLElement | null>(null)
 const pillRef = ref<HTMLElement | null>(null)
@@ -113,7 +126,9 @@ function itemKey(item: FooterItem) {
 const primaryItems = computed(() => {
   const visible = items.value
   if (!useMoreMenu.value) return visible
-  const primary = visible.filter((item) => PRIMARY_IDS.includes(itemKey(item) as NavTab | 'sx-player'))
+  const primary = visible.filter((item) =>
+    PRIMARY_IDS.includes(itemKey(item) as FooterNavId),
+  )
   if (primary.length === 0) return visible
   return primary
 })
@@ -121,9 +136,11 @@ const primaryItems = computed(() => {
 const moreItems = computed(() => {
   if (!useMoreMenu.value) return []
   const visible = items.value
-  const primary = visible.filter((item) => PRIMARY_IDS.includes(itemKey(item) as NavTab | 'sx-player'))
+  const primary = visible.filter((item) =>
+    PRIMARY_IDS.includes(itemKey(item) as FooterNavId),
+  )
   if (primary.length === 0) return []
-  return visible.filter((item) => MORE_IDS.includes(itemKey(item) as NavTab | 'sx-player'))
+  return visible.filter((item) => MORE_IDS.includes(itemKey(item) as FooterNavId))
 })
 
 const moreActive = computed(() =>
