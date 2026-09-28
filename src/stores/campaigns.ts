@@ -1281,19 +1281,27 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   }
 
   async function loadBonusTransactions() {
-    const [txImportsRes, bonusRows, mktRows] = await Promise.all([
-      supabase
-        .from('campaign_transaction_imports')
-        .select('*')
-        .eq('board_id', BOARD_ID)
-        .order('period_start', { ascending: false }),
-      fetchAllByIdCursor((afterId) => incentivePage(afterId, 'bonus')),
-      fetchAllByIdCursor((afterId) => incentivePage(afterId, 'mkt')),
-    ])
-    const firstError = txImportsRes.error || bonusRows.error || mktRows.error
-    if (firstError) {
-      error.value = firstError.message
-      useToastStore().error(firstError.message)
+    const txImportsRes = await supabase
+      .from('campaign_transaction_imports')
+      .select('*')
+      .eq('board_id', BOARD_ID)
+      .order('period_start', { ascending: false })
+    if (txImportsRes.error) {
+      console.warn('[campaigns] tx imports', txImportsRes.error.message)
+      return
+    }
+    const bonusRows = await fetchAllByIdCursor((afterId) =>
+      incentivePage(afterId, 'bonus'),
+    )
+    if (bonusRows.error) {
+      console.warn('[campaigns] bonus page', bonusRows.error.message)
+      return
+    }
+    const mktRows = await fetchAllByIdCursor((afterId) =>
+      incentivePage(afterId, 'mkt'),
+    )
+    if (mktRows.error) {
+      console.warn('[campaigns] mkt page', mktRows.error.message)
       return
     }
     transactionImports.value = (txImportsRes.data ?? []).map((row) =>
@@ -1348,8 +1356,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     const firstError =
       agentPeriodsRes.error || playerPeriodsRes.error || cohortRes.error
     if (firstError) {
-      error.value = firstError.message
-      useToastStore().error(firstError.message)
+      console.warn('[campaigns] periods', firstError.message)
       return
     }
     agentPeriods.value = agentPeriodsRes.data.map(mapAgentPeriod)
@@ -1822,11 +1829,10 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     }
     try {
       await load({ includeTransactions: false, deferPeriods: true })
-      // Bônus antes do ready final: ativação entra no payback (como antes).
-      await ensureBonusTransactionsLoaded()
-      void fetchOverviewKpisRpc()
-      // Períodos SX em background — métricas locais substituem o RPC ao chegar.
-      void ensurePeriodsLoaded()
+      // KPIs primeiro: a função cabe no timeout dela. Bônus e períodos
+      // só depois, em série, para não cancelar a consulta mais curta.
+      await fetchOverviewKpisRpc()
+      void ensureBonusTransactionsLoaded().then(() => ensurePeriodsLoaded())
     } finally {
       ready.value = true
       loading.value = false
