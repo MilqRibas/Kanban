@@ -371,8 +371,33 @@ function onBackFromDetails() {
               (bruto − 18% taxa da liga). No case Xtreme Pro, o líquido é
               <span class="text-text-secondary">bruto − investimento − ativação</span>.
             </p>
-            <CampaignKpiCards :kpis="overviewKpis" />
-            <CampaignCharts :campaigns="filteredCampaigns" @view="onView" />
+            <div
+              v-if="!store.metricsSettled"
+              class="panel-glass space-y-4 rounded-2xl p-4"
+            >
+              <p class="inline-flex items-center gap-2 text-sm text-text-secondary">
+                <Loader2 :size="16" class="animate-spin text-accent" />
+                Consolidando rake, ativação e recuperação…
+              </p>
+              <div class="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-9">
+                <div
+                  v-for="n in 9"
+                  :key="n"
+                  class="h-16 animate-pulse rounded-xl bg-white/5"
+                />
+              </div>
+              <div class="space-y-2">
+                <div
+                  v-for="n in 6"
+                  :key="`row-${n}`"
+                  class="h-12 animate-pulse rounded-xl bg-white/5"
+                />
+              </div>
+            </div>
+            <template v-else>
+              <CampaignKpiCards :kpis="overviewKpis" />
+              <CampaignCharts :campaigns="filteredCampaigns" @view="onView" />
+            </template>
             <CampaignXtremeCase :agent-ids="xtremeAgentIds" />
           </section>
 
@@ -387,7 +412,15 @@ function onBackFromDetails() {
               </p>
             </div>
 
+            <div
+              v-if="!store.metricsSettled"
+              class="panel-glass flex items-center gap-2 rounded-2xl px-4 py-8 text-sm text-text-secondary"
+            >
+              <Loader2 :size="16" class="animate-spin text-accent" />
+              Consolidando campanhas…
+            </div>
             <CampaignTable
+              v-else
               :campaigns="filteredCampaigns"
               @view="onView"
               @edit="onEdit"
@@ -395,7 +428,14 @@ function onBackFromDetails() {
           </section>
 
           <section v-else-if="screen === 'comparison'">
-            <CampaignComparison :campaigns="filteredCampaigns" />
+            <div
+              v-if="!store.metricsSettled"
+              class="panel-glass flex items-center gap-2 rounded-2xl px-4 py-8 text-sm text-text-secondary"
+            >
+              <Loader2 :size="16" class="animate-spin text-accent" />
+              Consolidando campanhas…
+            </div>
+            <CampaignComparison v-else :campaigns="filteredCampaigns" />
           </section>
 
           <section v-else>

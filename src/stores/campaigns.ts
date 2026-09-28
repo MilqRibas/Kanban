@@ -631,6 +631,8 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   const transactionsLoaded = ref(false)
   const bonusTransactionsLoaded = ref(false)
   const periodsLoaded = ref(false)
+  /** Visão geral só revela números depois de bônus + períodos (ou da tentativa). */
+  const metricsSettled = ref(false)
   /** Agentes cujo histórico TX já foi baixado sob demanda. */
   const loadedTxAgentIds = ref(new Set<string>())
   /** KPIs vindos da RPC (overview rápido antes dos períodos locais). */
@@ -1822,6 +1824,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
   async function init() {
     loading.value = true
     error.value = null
+    metricsSettled.value = false
     const hadCache = hydrateShellCache()
     if (hadCache) {
       ready.value = true
@@ -1832,7 +1835,11 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       // KPIs primeiro: a função cabe no timeout dela. Bônus e períodos
       // só depois, em série, para não cancelar a consulta mais curta.
       await fetchOverviewKpisRpc()
-      void ensureBonusTransactionsLoaded().then(() => ensurePeriodsLoaded())
+      void ensureBonusTransactionsLoaded()
+        .then(() => ensurePeriodsLoaded())
+        .finally(() => {
+          metricsSettled.value = true
+        })
     } finally {
       ready.value = true
       loading.value = false
@@ -1864,6 +1871,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     transactionsLoaded.value = false
     bonusTransactionsLoaded.value = false
     periodsLoaded.value = false
+    metricsSettled.value = false
     overviewKpisRpc.value = null
     loadedTxAgentIds.value = new Set()
     transactionsLoadPromise = null
@@ -3462,6 +3470,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     ensurePeriodsLoaded,
     ensureBonusTransactionsLoaded,
     periodsLoaded,
+    metricsSettled,
     open,
     close,
     setShowArchived,
