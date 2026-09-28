@@ -84,22 +84,39 @@ watch(importKind, () => {
 })
 
 watch(importClub, async () => {
-  if (importKind.value !== 'rake' || !queue.value.length || batchRunning.value) return
+  if (!queue.value.length || batchRunning.value) return
   parsing.value = true
   try {
     for (const item of queue.value) {
       if (item.status === 'done' || item.status === 'importing') continue
-      const preview = await store.previewReport(item.file, importClub.value)
-      if (!preview) {
-        item.status = 'error'
-        item.error = 'Não foi possível revalidar o arquivo com o clube selecionado.'
-        item.rakePreview = null
-        continue
+      if (importKind.value === 'rake') {
+        const preview = await store.previewReport(item.file, importClub.value)
+        if (!preview) {
+          item.status = 'error'
+          item.error = 'Não foi possível revalidar o arquivo com o clube selecionado.'
+          item.rakePreview = null
+          continue
+        }
+        item.rakePreview = preview
+        item.replaceConfirmed = false
+        item.error = null
+        item.status = preview.conflict ? 'needs_replace' : 'ready'
+      } else {
+        const preview = await store.previewTransactionReport(
+          item.file,
+          importClub.value,
+        )
+        if (!preview) {
+          item.status = 'error'
+          item.error = 'Não foi possível revalidar o arquivo com o clube selecionado.'
+          item.txPreview = null
+          continue
+        }
+        item.txPreview = preview
+        item.replaceConfirmed = false
+        item.error = null
+        item.status = preview.conflict ? 'needs_replace' : 'ready'
       }
-      item.rakePreview = preview
-      item.replaceConfirmed = false
-      item.error = null
-      item.status = preview.conflict ? 'needs_replace' : 'ready'
     }
     flagIntraBatchConflicts()
     replaceAllConflicts.value = false
@@ -193,7 +210,7 @@ async function onFileChange(event: Event) {
           item.status = preview.conflict ? 'needs_replace' : 'ready'
         }
       } else {
-        const preview = await store.previewTransactionReport(file)
+        const preview = await store.previewTransactionReport(file, importClub.value)
         if (!preview) {
           item.status = 'error'
           item.error = 'Não foi possível validar o arquivo de transações.'
@@ -215,12 +232,16 @@ async function onFileChange(event: Event) {
 }
 
 function itemPeriodKey(item: QueueItem): string | null {
-  const period =
-    importKind.value === 'rake'
-      ? item.rakePreview?.parsed.period
-      : item.txPreview?.parsed.period
+  if (importKind.value === 'rake') {
+    const period = item.rakePreview?.parsed.period
+    if (!period) return null
+    const club = item.rakePreview?.conflict?.clubCode ?? importClub.value
+    return `${club}_${period.start}_${period.end}`
+  }
+  const period = item.txPreview?.parsed.period
   if (!period) return null
-  return `${period.start}_${period.end}`
+  const club = item.txPreview?.clubCode ?? importClub.value
+  return `${club}_${period.start}_${period.end}`
 }
 
 /** Arquivos do mesmo período no lote: o segundo em diante precisa de replace. */
@@ -377,7 +398,7 @@ async function confirmImport() {
           lastResult = committed
           emit('imported', committed)
         } else {
-          const fresh = await store.previewTransactionReport(item.file)
+          const fresh = await store.previewTransactionReport(item.file, importClub.value)
           if (!fresh) {
             item.status = 'error'
             item.error = 'Falha ao revalidar o arquivo antes do commit.'
@@ -684,7 +705,7 @@ const footerCommitLabel = computed(() => {
                   {{
                     importKind === 'rake'
                       ? 'Já existem dados deste período e clube (mesmo Slot name).'
-                      : 'Já existem transações deste período (ou import inválido).'
+                      : 'Já existem transações deste período neste clube (ou import inválido deste clube).'
                   }}
                 </p>
                 <label class="mt-2 flex items-center gap-2">

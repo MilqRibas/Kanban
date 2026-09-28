@@ -177,6 +177,8 @@ export interface CampaignTransactionImport {
   summary: Record<string, unknown> | null
   replacedImportId: string | null
   createdAt: string
+  /** NULL = lote SX legado (antes da coluna). */
+  clubCode?: string | null
   kind?: 'transactions'
 }
 

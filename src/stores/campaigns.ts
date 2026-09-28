@@ -28,6 +28,10 @@ import {
   resolveRakeImportClub,
 } from '../utils/rakeImportConflict'
 import {
+  findTransactionImportConflicts,
+  resolveTransactionImportClub,
+} from '../utils/transactionImportConflict'
+import {
   chooseTransactionBatchSize,
   chunkArray,
   formatSupabaseError,
@@ -400,6 +404,7 @@ function mapTransactionImport(row: Record<string, unknown>): CampaignTransaction
     summary: (row.summary as Record<string, unknown> | null) ?? null,
     replacedImportId: (row.replaced_import_id as string | null) ?? null,
     createdAt: String(row.created_at),
+    clubCode: (row.club_code as string | null) ?? null,
     kind: 'transactions',
   }
 }
@@ -582,6 +587,8 @@ export type TransactionReportPreview = {
   parsed: ParsedTransactionReport
   filename: string
   conflict: ImportConflict | null
+  /** Clube efetivo do lote (coluna do arquivo ou seletor). */
+  clubCode: string | null
 }
 
 export type CommitTransactionResult = {
@@ -2784,27 +2791,21 @@ export const useCampaignsStore = defineStore('campaigns', () => {
 
   async function previewTransactionReport(
     file: File,
+    clubCode?: ClubCode | null,
   ): Promise<TransactionReportPreview | null> {
     const toast = useToastStore()
     try {
       const parsed = await parseTransactionReportFile(file)
-      const broken = transactionImports.value.filter(
-        (i) =>
-          i.status === 'completed' &&
-          i.transactionsCount > 0 &&
-          i.agentsCount === 0,
-      )
-      const existing = transactionImports.value.filter(
-        (i) =>
-          i.status === 'completed' &&
-          i.periodStart === parsed.period.start &&
-          i.periodEnd === parsed.period.end,
-      )
-      const replaceCandidates = [
-        ...new Map(
-          [...existing, ...broken].map((i) => [i.id, i]),
-        ).values(),
-      ]
+      const incomingClub = resolveTransactionImportClub({
+        rowClubCodes: parsed.transactions.map((row) => row.clubCode),
+        importClub: clubCode,
+      })
+      const replaceCandidates = findTransactionImportConflicts({
+        periodStart: parsed.period.start,
+        periodEnd: parsed.period.end,
+        incomingClub,
+        existingImports: transactionImports.value,
+      })
       const conflict: ImportConflict | null =
         replaceCandidates.length > 0
           ? {
@@ -2812,12 +2813,14 @@ export const useCampaignsStore = defineStore('campaigns', () => {
               periodEnd: parsed.period.end,
               existingImportIds: replaceCandidates.map((e) => e.id),
               affectedAgentIds: parsed.uniqueAgentIds,
+              clubCode: incomingClub,
             }
           : null
       return {
         parsed,
         filename: file.name,
         conflict,
+        clubCode: incomingClub,
       }
     } catch (err) {
       const message =
@@ -2934,6 +2937,7 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         },
         replaced_import_id: replacedImportId,
         created_at: now,
+        club_code: preview.clubCode ?? params.clubCode ?? null,
       }
 
       const txRows = resolvedRows.map((t) => ({
