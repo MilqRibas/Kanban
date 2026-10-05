@@ -11,4 +11,5 @@ export const GAME_TYPE_LABELS: Record<string, string> = {
   MTT: 'Torneio',
   SNG: 'Sit And Go',
   RODEO: 'Rodeo',
+  SPIN: 'Spin',
 }

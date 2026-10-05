@@ -42,6 +42,7 @@ import {
   readCampaignsShellCache,
   writeCampaignsShellCache,
 } from '../utils/campaignsShellCache'
+import { consolidatedRake } from '../utils/campaignEconomics'
 import {
   isIncentiveTransaction,
   MKT_GT_PLAYER_ID,
@@ -59,6 +60,7 @@ import {
 import {
   buildCampaignWeeklyMetrics,
   buildGameProfile,
+  campaignGameProfileRows,
   buildRakeHealth,
   accumulatePlayerRake,
   activationRakeThreshold,
@@ -247,10 +249,10 @@ const TRANSACTION_LIST_COLUMNS =
 
 /** Colunas mínimas p/ KPIs/coorte — evita baixar gains/hands/etc. */
 const PLAYER_PERIOD_COLUMNS =
-  'id, board_id, import_id, agent_id, player_id, player_name, nickname, period_start, period_end, weekly_rake, club_code'
+  'id, board_id, import_id, agent_id, player_id, player_name, nickname, period_start, period_end, weekly_rake, spin_stake, spin_gains, spin_profit, spin_fee, club_code'
 
 const AGENT_PERIOD_COLUMNS =
-  'id, board_id, import_id, agent_id, agent_name, period_start, period_end, weekly_rake, gains, hands, players_rake_sum, unique_players, reconciliation_diff, club_code, slot_name, created_at'
+  'id, board_id, import_id, agent_id, agent_name, period_start, period_end, weekly_rake, spin_stake, spin_gains, spin_profit, spin_fee, gains, hands, players_rake_sum, unique_players, reconciliation_diff, club_code, slot_name, created_at'
 
 const COHORT_COLUMNS =
   'id, board_id, campaign_id, player_id, acquired_at, source_agent_id, first_seen_week, last_seen_week, current_agent_id, created_at, updated_at'
@@ -446,7 +448,9 @@ function mapAgentPeriod(row: Record<string, unknown>): CampaignAgentPeriod {
     agentName: String(row.agent_name ?? ''),
     periodStart: String(row.period_start),
     periodEnd: String(row.period_end),
-    weeklyRake: toNumber(row.weekly_rake),
+    taxaTotal: toNumber(row.weekly_rake),
+    taxaSpin: toNumber(row.spin_fee),
+    weeklyRake: consolidatedRake(toNumber(row.weekly_rake), toNumber(row.spin_fee)),
     gains: toNumber(row.gains),
     hands: toNumber(row.hands),
     playersRakeSum: toNumber(row.players_rake_sum),
@@ -469,7 +473,9 @@ function mapPlayerPeriod(row: Record<string, unknown>): CampaignPlayerPeriod {
     nickname: String(row.nickname ?? ''),
     periodStart: String(row.period_start),
     periodEnd: String(row.period_end),
-    weeklyRake: toNumber(row.weekly_rake),
+    taxaTotal: toNumber(row.weekly_rake),
+    taxaSpin: toNumber(row.spin_fee),
+    weeklyRake: consolidatedRake(toNumber(row.weekly_rake), toNumber(row.spin_fee)),
     gains: toNumber(row.gains),
     hands: toNumber(row.hands),
     clubCode: (row.club_code as string | null) ?? null,
@@ -1084,19 +1090,14 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     const acquiredAtByPlayer = new Map(
       cohortMembersFor(campaign).map((m) => [m.playerId, m.acquiredAt]),
     )
-    const filtered = tableRows.filter((r) => {
-      if (r.agentId !== campaign.agentId) return false
-      const acquiredAt = acquiredAtByPlayer.get(r.playerId)
-      if (!acquiredAt || r.periodStart < acquiredAt) return false
-      if (periodStart && r.periodStart !== periodStart) return false
-      return true
-    })
     return buildGameProfile(
-      filtered.map((r) => ({
-        gameType: r.gameType,
-        playerId: r.playerId,
-        rake: r.rake,
-      })),
+      campaignGameProfileRows({
+        tables: tableRows,
+        playerPeriods: playerPeriods.value,
+        agentId: campaign.agentId,
+        acquiredAtByPlayer,
+        periodStart,
+      }),
     )
   }
 
@@ -2529,6 +2530,10 @@ export const useCampaignsStore = defineStore('campaigns', () => {
           period_start: a.period.start,
           period_end: a.period.end,
           weekly_rake: a.weeklyRake,
+          spin_stake: a.spinStake,
+          spin_gains: a.spinGains,
+          spin_profit: a.spinProfit,
+          spin_fee: a.spinFee,
           gains: a.gains,
           hands: a.hands,
           players_rake_sum: reco?.playersRakeSum ?? 0,
@@ -2551,6 +2556,10 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         period_start: p.period.start,
         period_end: p.period.end,
         weekly_rake: p.weeklyRake,
+        spin_stake: p.spinStake,
+        spin_gains: p.spinGains,
+        spin_profit: p.spinProfit,
+        spin_fee: p.spinFee,
         gains: p.gains,
         hands: p.hands,
         club_code: reportClub,
@@ -2586,7 +2595,9 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         const incoming = parsed.agents.filter((a) => a.agentId === agent.agentId)
         const accumulated = sumWeeklyRake([
           ...kept.map((p) => ({ weeklyRake: p.weeklyRake })),
-          ...incoming.map((a) => ({ weeklyRake: a.weeklyRake })),
+          ...incoming.map((a) => ({
+            weeklyRake: consolidatedRake(a.weeklyRake, a.spinFee),
+          })),
         ])
         const starts = [
           ...kept.map((p) => p.periodStart),
@@ -2619,7 +2630,9 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         )
         const accumulated = sumWeeklyRake([
           ...kept.map((p) => ({ weeklyRake: p.weeklyRake })),
-          ...incoming.map((p) => ({ weeklyRake: p.weeklyRake })),
+          ...incoming.map((p) => ({
+            weeklyRake: consolidatedRake(p.weeklyRake, p.spinFee),
+          })),
         ])
         const starts = [
           ...kept.map((p) => p.periodStart),

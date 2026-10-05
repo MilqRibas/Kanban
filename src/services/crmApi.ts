@@ -208,8 +208,8 @@ export async function fetchCrmPlayer360(
       ? (raw.gameProfile as Record<string, unknown>[]).map((g) => ({
           gameType: String(g.gameType ?? 'OUTRO'),
           rake: asNumber(g.rake),
-          hands: asNumber(g.hands),
-          rows: asNumber(g.rows),
+          hands: g.hands == null ? null : asNumber(g.hands),
+          rows: g.rows == null ? null : asNumber(g.rows),
         }))
       : [],
     transactions: {

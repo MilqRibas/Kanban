@@ -496,7 +496,9 @@ watch(
                 <span class="text-text-primary">{{ g.gameType }}</span>
                 <span class="tabular-nums text-text-secondary">
                   {{ formatCurrency(g.rake) }}
-                  <span class="text-text-muted">· {{ formatNumber(g.hands) }} mãos</span>
+                  <span v-if="g.hands != null" class="text-text-muted">
+                    · {{ formatNumber(g.hands) }} mãos
+                  </span>
                 </span>
               </li>
             </ul>

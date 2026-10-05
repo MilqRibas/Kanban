@@ -5,6 +5,18 @@ import type { AcquisitionNature } from '../types/campaigns'
 /** Espelho da taxa da liga usada no CRM (fonte única: crmIncentiveEconomics). */
 export { LEAGUE_FEE_RATE }
 
+/**
+ * Taxa Total do relatório não inclui Taxa Spin.
+ * Rake gerado = Taxa Total + Taxa Spin.
+ * Relatório antigo, sem a coluna: Taxa Spin = 0, e o resultado continua igual à Taxa Total.
+ */
+export function consolidatedRake(
+  taxaTotal: number | null | undefined,
+  taxaSpin?: number | null,
+): number {
+  return (Number(taxaTotal) || 0) + (Number(taxaSpin) || 0)
+}
+
 /** Taxa da liga sobre rake bruto confirmado. */
 export function toLeagueFee(rakeBruto: number): number {
   const n = Number(rakeBruto) || 0

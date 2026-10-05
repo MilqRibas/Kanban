@@ -3,6 +3,7 @@ import {
   calculateRecoveryRate,
   calculateEconomicStatus,
   calculateWeeklyPaybackAgainstTotal,
+  consolidatedRake,
   resolveTotalInvestment,
   hasCampaignInvestment,
   toLeagueFee,
@@ -11,6 +12,32 @@ import {
 } from './campaignEconomics'
 import { classifyTransactionFlags, resolveHistoricalAgentId } from './campaignDepositMetrics'
 import { buildCampaignWeeklyMetrics } from './campaignWeeklyMetrics'
+
+describe('consolidated rake = taxa total + taxa spin', () => {
+  it('keeps taxa total when spin is absent or zero', () => {
+    expect(consolidatedRake(10, 0)).toBe(10)
+    expect(consolidatedRake(10)).toBe(10)
+    expect(consolidatedRake(10, null)).toBe(10)
+  })
+
+  it('counts spin-only rake', () => {
+    expect(consolidatedRake(0, 10)).toBe(10)
+  })
+
+  it('adds both sources once', () => {
+    expect(consolidatedRake(5, 10)).toBe(15)
+    expect(consolidatedRake(78.65, 7.2)).toBeCloseTo(85.85)
+  })
+
+  it('keeps zero when both sources are zero', () => {
+    expect(consolidatedRake(0, 0)).toBe(0)
+  })
+
+  it('still applies the 18% league fee on the consolidated gross', () => {
+    expect(toLiquidRake(consolidatedRake(80, 25))).toBeCloseTo(105 * 0.82)
+    expect(LEAGUE_FEE_RATE).toBe(0.18)
+  })
+})
 
 describe('league fee / liquid rake', () => {
   it('uses 18% league fee', () => {

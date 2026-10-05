@@ -402,6 +402,62 @@ export type GameProfileResult = {
   totalRake: number
 }
 
+/** Taxa Spin do período do jogador. Linha de mesa Tipo=SPIN não entra de novo. */
+export function campaignGameProfileRows(params: {
+  tables: Array<{
+    agentId: string
+    playerId: string
+    periodStart: string
+    gameType: string
+    rake: number
+  }>
+  playerPeriods: Array<{
+    agentId: string
+    playerId: string
+    periodStart: string
+    taxaSpin?: number | null
+  }>
+  agentId: string | null | undefined
+  acquiredAtByPlayer: Map<string, string>
+  periodStart?: string | null
+}): Array<{ gameType: string; playerId: string; rake: number }> {
+  const agentId = params.agentId
+  if (!agentId) return []
+
+  const inWindow = (playerId: string, periodStart: string) => {
+    const acquiredAt = params.acquiredAtByPlayer.get(playerId)
+    if (!acquiredAt || periodStart < acquiredAt) return false
+    if (params.periodStart && periodStart !== params.periodStart) return false
+    return true
+  }
+
+  const tables = params.tables
+    .filter((row) => {
+      if (row.agentId !== agentId) return false
+      if ((row.gameType || '').toUpperCase() === 'SPIN') return false
+      return inWindow(row.playerId, row.periodStart)
+    })
+    .map((row) => ({
+      gameType: row.gameType,
+      playerId: row.playerId,
+      rake: row.rake,
+    }))
+
+  const spin = params.playerPeriods
+    .filter((row) => {
+      if (row.agentId !== agentId) return false
+      if (!(Number(row.taxaSpin) || 0)) return false
+      return inWindow(row.playerId, row.periodStart)
+    })
+    .map((row) => ({
+      gameType: 'SPIN',
+      playerId: row.playerId,
+      rake: Number(row.taxaSpin) || 0,
+    }))
+
+  return [...tables, ...spin]
+}
+
 export function buildGameProfile(
   rows: Array<{ gameType: string; playerId: string; rake: number }>,
 ): GameProfileResult {
@@ -415,7 +471,7 @@ export function buildGameProfile(
   }
 
   const totalRake = [...byType.values()].reduce((s, b) => s + b.rake, 0)
-  const order = ['RG', 'MTT', 'SNG', 'RODEO']
+  const order = ['RG', 'MTT', 'SNG', 'RODEO', 'SPIN']
   const codes = [
     ...order.filter((c) => byType.has(c)),
     ...[...byType.keys()].filter((c) => !order.includes(c)).sort(),

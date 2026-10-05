@@ -1,3 +1,4 @@
+import { consolidatedRake } from './campaignEconomics'
 import { RECONCILIATION } from './campaignThresholds'
 import { resolveClubCode, type ClubCode } from './clubDimension'
 import {
@@ -12,6 +13,7 @@ export const GAME_TYPE_LABELS: Record<string, string> = {
   MTT: 'Torneio',
   SNG: 'Sit And Go',
   RODEO: 'Rodeo',
+  SPIN: 'Spin',
 }
 
 export type ParsedPeriod = {
@@ -29,7 +31,16 @@ export type ParsedAgentRow = {
   client: string | null
   period: ParsedPeriod
   gains: number
+  /** Taxa Total do relatório. Não inclui Taxa Spin. */
   weeklyRake: number
+  /** Stake Spin. 0 se a coluna não existir. */
+  spinStake: number
+  /** Ganhos Spin. 0 se a coluna não existir. */
+  spinGains: number
+  /** Profit Spin. 0 se a coluna não existir. */
+  spinProfit: number
+  /** Taxa Spin. 0 se a coluna não existir. */
+  spinFee: number
   hands: number
 }
 
@@ -40,7 +51,13 @@ export type ParsedPlayerRow = {
   nickname: string
   period: ParsedPeriod
   gains: number
+  /** Taxa Total do relatório. Não inclui Taxa Spin. */
   weeklyRake: number
+  spinStake: number
+  spinGains: number
+  spinProfit: number
+  /** Taxa Spin. 0 se a coluna não existir. */
+  spinFee: number
   hands: number
 }
 
@@ -199,6 +216,10 @@ export function aggregateAgentsById(agents: ParsedAgentRow[]): ParsedAgentRow[] 
       continue
     }
     prev.weeklyRake += agent.weeklyRake
+    prev.spinStake += agent.spinStake
+    prev.spinGains += agent.spinGains
+    prev.spinProfit += agent.spinProfit
+    prev.spinFee += agent.spinFee
     prev.gains += agent.gains
     prev.hands += agent.hands
     if (agent.agentName) prev.agentName = agent.agentName
@@ -217,6 +238,10 @@ export function aggregatePlayersById(players: ParsedPlayerRow[]): ParsedPlayerRo
       continue
     }
     prev.weeklyRake += player.weeklyRake
+    prev.spinStake += player.spinStake
+    prev.spinGains += player.spinGains
+    prev.spinProfit += player.spinProfit
+    prev.spinFee += player.spinFee
     prev.gains += player.gains
     prev.hands += player.hands
     if (player.playerName) prev.playerName = player.playerName
@@ -282,23 +307,27 @@ export function buildAgentReconciliations(
 ): AgentReconciliation[] {
   return agents.map((agent) => {
     const agentPlayers = players.filter((p) => p.agentId === agent.agentId)
-    const playersRakeSum = agentPlayers.reduce((s, p) => s + p.weeklyRake, 0)
+    const officialRake = consolidatedRake(agent.weeklyRake, agent.spinFee)
+    const playersRakeSum = agentPlayers.reduce(
+      (s, p) => s + consolidatedRake(p.weeklyRake, p.spinFee),
+      0,
+    )
     const uniquePlayers = new Set(agentPlayers.map((p) => p.playerId)).size
-    const diff = agent.weeklyRake - playersRakeSum
+    const diff = officialRake - playersRakeSum
     const diffPct =
-      agent.weeklyRake === 0
+      officialRake === 0
         ? playersRakeSum === 0
           ? 0
           : null
-        : (diff / agent.weeklyRake) * 100
+        : (diff / officialRake) * 100
     return {
       agentId: agent.agentId,
       agentName: agent.agentName,
-      officialRake: agent.weeklyRake,
+      officialRake,
       playersRakeSum,
       diff,
       diffPct,
-      conciliated: isRakeConciliated(agent.weeklyRake, playersRakeSum),
+      conciliated: isRakeConciliated(officialRake, playersRakeSum),
       uniquePlayers,
     }
   })
@@ -329,6 +358,10 @@ function parseAgentsSheet(matrix: unknown[][]): {
   const iTaxa = col(map, 'taxa total', 'taxatotal')
   const iGanhos = col(map, 'ganhos')
   const iHands = col(map, 'hands', 'maos', 'mãos')
+  const iSpinStake = col(map, 'stake spin')
+  const iSpinGains = col(map, 'ganhos spin')
+  const iSpinProfit = col(map, 'profit spin')
+  const iSpinFee = col(map, 'taxa spin')
   const iLiga = col(map, 'liga')
   const iSlot = col(map, 'slot')
   const iSlotName = col(map, 'slot name', 'slotname')
@@ -364,6 +397,10 @@ function parseAgentsSheet(matrix: unknown[][]): {
       period: parsed,
       gains: iGanhos >= 0 ? toNumber(row[iGanhos]) : 0,
       weeklyRake: toNumber(row[iTaxa]),
+      spinStake: iSpinStake >= 0 ? toNumber(row[iSpinStake]) : 0,
+      spinGains: iSpinGains >= 0 ? toNumber(row[iSpinGains]) : 0,
+      spinProfit: iSpinProfit >= 0 ? toNumber(row[iSpinProfit]) : 0,
+      spinFee: iSpinFee >= 0 ? toNumber(row[iSpinFee]) : 0,
       hands: iHands >= 0 ? Math.trunc(toNumber(row[iHands])) : 0,
     })
     if (iClub >= 0) {
@@ -446,6 +483,10 @@ function parseBlockedSheet(
       const iTaxa = col(headerMap, 'taxa total', 'taxatotal')
       const iGanhos = col(headerMap, 'ganhos')
       const iHands = col(headerMap, 'hands', 'maos', 'mãos')
+      const iSpinStake = col(headerMap, 'stake spin')
+      const iSpinGains = col(headerMap, 'ganhos spin')
+      const iSpinProfit = col(headerMap, 'profit spin')
+      const iSpinFee = col(headerMap, 'taxa spin')
       if (iTaxa < 0) {
         return {
           players: [],
@@ -462,6 +503,10 @@ function parseBlockedSheet(
         period: currentPeriod,
         gains: iGanhos >= 0 ? toNumber(row[iGanhos]) : 0,
         weeklyRake: toNumber(row[iTaxa]),
+        spinStake: iSpinStake >= 0 ? toNumber(row[iSpinStake]) : 0,
+        spinGains: iSpinGains >= 0 ? toNumber(row[iSpinGains]) : 0,
+        spinProfit: iSpinProfit >= 0 ? toNumber(row[iSpinProfit]) : 0,
+        spinFee: iSpinFee >= 0 ? toNumber(row[iSpinFee]) : 0,
         hands: iHands >= 0 ? Math.trunc(toNumber(row[iHands])) : 0,
       })
     } else {

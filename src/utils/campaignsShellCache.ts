@@ -1,7 +1,7 @@
 /** Cache leve do shell de campanhas (sessionStorage). */
 
 const CACHE_PREFIX = 'sx.campaigns.shell'
-const CACHE_VERSION = 1
+const CACHE_VERSION = 2
 
 export type CampaignsShellCache = {
   v: number

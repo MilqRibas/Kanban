@@ -9,7 +9,9 @@ import {
   eventInCampaignWindow,
   filterPeriodsForCampaign,
   periodOverlapsCampaignWindow,
+  buildGameProfile,
   campaignDateWindow,
+  campaignGameProfileRows,
   campaignUsesWeeklySnapshot,
   sanitizeCampaignEndDate,
   sumWeeklyRake,
@@ -247,5 +249,139 @@ describe('campaign acquisition window', () => {
         endDate: '0226-07-05',
       }),
     ).toEqual({ start: '2026-06-01', end: '2026-07-05' })
+  })
+})
+
+describe('game profile includes spin rake', () => {
+  function profile(rows: Array<{ gameType: string; rake: number }>) {
+    return buildGameProfile(
+      rows.map((row, index) => ({
+        gameType: row.gameType,
+        playerId: `p${index}`,
+        rake: row.rake,
+      })),
+    )
+  }
+
+  function shares(rows: Array<{ gameType: string; rake: number }>) {
+    return Object.fromEntries(
+      profile(rows).slices.map((slice) => [
+        slice.code,
+        Math.round((slice.rakeShare ?? 0) * 100),
+      ]),
+    )
+  }
+
+  it('keeps the previous split when spin is zero', () => {
+    const result = profile([
+      { gameType: 'RG', rake: 800 },
+      { gameType: 'MTT', rake: 200 },
+    ])
+    expect(shares([
+      { gameType: 'RG', rake: 800 },
+      { gameType: 'MTT', rake: 200 },
+    ])).toEqual({ RG: 80, MTT: 20 })
+    expect(result.predominantLabel).toBe('Ring Game — 80% do rake')
+    expect(result.slices.map((slice) => slice.code)).not.toContain('SPIN')
+  })
+
+  it('puts spin in the same denominator', () => {
+    const result = profile([
+      { gameType: 'RG', rake: 400 },
+      { gameType: 'MTT', rake: 300 },
+      { gameType: 'SNG', rake: 100 },
+      { gameType: 'SPIN', rake: 200 },
+    ])
+    expect(shares([
+      { gameType: 'RG', rake: 400 },
+      { gameType: 'MTT', rake: 300 },
+      { gameType: 'SNG', rake: 100 },
+      { gameType: 'SPIN', rake: 200 },
+    ])).toEqual({ RG: 40, MTT: 30, SNG: 10, SPIN: 20 })
+    expect(result.slices.reduce((sum, slice) => sum + (slice.rakeShare ?? 0), 0)).toBeCloseTo(1)
+    expect(result.predominantLabel).toBe('Perfil misto')
+    expect(result.slices.map((slice) => slice.code)).toEqual(['RG', 'MTT', 'SNG', 'SPIN'])
+  })
+
+  it('lets spin be predominant at the same 45% cut', () => {
+    const result = profile([
+      { gameType: 'RG', rake: 300 },
+      { gameType: 'MTT', rake: 100 },
+      { gameType: 'SPIN', rake: 600 },
+    ])
+    expect(result.predominantLabel).toBe('Spin — 60% do rake')
+  })
+
+  it('treats spin-only rake as a full profile', () => {
+    const result = profile([{ gameType: 'SPIN', rake: 500 }])
+    expect(result.predominantLabel).toBe('Spin — 100% do rake')
+    expect(result.slices[0]?.label).toBe('Spin')
+  })
+
+  it('keeps RG predominant at exactly 45%', () => {
+    const result = profile([
+      { gameType: 'RG', rake: 45 },
+      { gameType: 'MTT', rake: 25 },
+      { gameType: 'SPIN', rake: 30 },
+    ])
+    expect(shares([
+      { gameType: 'RG', rake: 45 },
+      { gameType: 'MTT', rake: 25 },
+      { gameType: 'SPIN', rake: 30 },
+    ])).toEqual({ RG: 45, MTT: 25, SPIN: 30 })
+    expect(result.predominantLabel).toBe('Ring Game — 45% do rake')
+  })
+
+  it('uses only spin inside the campaign window and ignores a SPIN table row', () => {
+    const acquiredAtByPlayer = new Map([['p1', '2026-05-01']])
+    const rows = campaignGameProfileRows({
+      agentId: 'agent-1',
+      acquiredAtByPlayer,
+      tables: [
+        {
+          agentId: 'agent-1',
+          playerId: 'p1',
+          periodStart: '2026-05-04',
+          gameType: 'RG',
+          rake: 400,
+        },
+        {
+          agentId: 'agent-1',
+          playerId: 'p1',
+          periodStart: '2026-05-04',
+          gameType: 'SPIN',
+          rake: 500,
+        },
+      ],
+      playerPeriods: [
+        {
+          agentId: 'agent-1',
+          playerId: 'p1',
+          periodStart: '2026-04-20',
+          taxaSpin: 400,
+        },
+        {
+          agentId: 'agent-1',
+          playerId: 'p1',
+          periodStart: '2026-05-04',
+          taxaSpin: 100,
+        },
+        {
+          agentId: 'other',
+          playerId: 'p1',
+          periodStart: '2026-05-04',
+          taxaSpin: 999,
+        },
+      ],
+    })
+    const result = buildGameProfile(rows)
+    expect(rows.filter((row) => row.gameType === 'SPIN')).toEqual([
+      { gameType: 'SPIN', playerId: 'p1', rake: 100 },
+    ])
+    expect(result.predominantLabel).toBe('Ring Game — 80% do rake')
+    expect(result.slices.map((slice) => [slice.code, slice.rake])).toEqual([
+      ['RG', 400],
+      ['SPIN', 100],
+    ])
   })
 })

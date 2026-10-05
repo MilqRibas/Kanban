@@ -217,7 +217,12 @@ export interface CampaignAgentPeriod {
   agentName: string
   periodStart: string
   periodEnd: string
+  /** Rake gerado: Taxa Total + Taxa Spin. Relatório antigo equivale à Taxa Total. */
   weeklyRake: number
+  /** Taxa Total original do relatório, sem Taxa Spin. */
+  taxaTotal: number
+  /** Taxa Spin original do relatório. 0 quando a coluna não existia. */
+  taxaSpin: number
   gains: number
   hands: number
   playersRakeSum: number
@@ -238,7 +243,12 @@ export interface CampaignPlayerPeriod {
   nickname: string
   periodStart: string
   periodEnd: string
+  /** Rake gerado: Taxa Total + Taxa Spin. Relatório antigo equivale à Taxa Total. */
   weeklyRake: number
+  /** Taxa Total original do relatório, sem Taxa Spin. */
+  taxaTotal: number
+  /** Taxa Spin original do relatório. 0 quando a coluna não existia. */
+  taxaSpin: number
   gains: number
   hands: number
   clubCode: string | null

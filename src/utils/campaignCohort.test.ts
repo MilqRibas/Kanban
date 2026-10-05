@@ -10,9 +10,11 @@ import {
   sumActivationBonuses,
   sumCohortRake,
 } from './campaignCohort'
+import { consolidatedRake } from './campaignEconomics'
 import {
   activationRakeThreshold,
   countActivePlayers,
+  playerMeetsActivation,
 } from './campaignWeeklyMetrics'
 
 const sps = {
@@ -758,5 +760,45 @@ describe('activation bonuses from transaction reports', () => {
       competing: [],
     })
     expect(sumActivationBonuses(rows)).toBe(40)
+  })
+})
+
+describe('spin follows the existing campaign attribution window', () => {
+  const player = {
+    playerId: 'p1',
+    agentId: 'A',
+    playerName: 'Jogador',
+    nickname: 'j',
+  }
+
+  it('adds taxa spin only inside the same attributable weeks', () => {
+    const periods = [
+      {
+        ...player,
+        periodStart: '2026-09-01',
+        periodEnd: '2026-09-07',
+        weeklyRake: consolidatedRake(0, 100),
+      },
+      {
+        ...player,
+        periodStart: '2026-09-21',
+        periodEnd: '2026-09-27',
+        weeklyRake: consolidatedRake(80, 25),
+      },
+    ]
+    expect(
+      sumCohortRake([{ playerId: 'p1', acquiredAt: '2026-09-21' }], periods, 'A'),
+    ).toBe(105)
+  })
+
+  it('counts a spin-only player toward the existing rake minimum', () => {
+    expect(playerMeetsActivation(consolidatedRake(3, 4), 5)).toBe(true)
+    expect(playerMeetsActivation(consolidatedRake(0, 30), 0)).toBe(true)
+    expect(
+      countActivePlayers(
+        [{ playerId: 'p1', weeklyRake: consolidatedRake(0, 30) }],
+        0,
+      ),
+    ).toBe(1)
   })
 })

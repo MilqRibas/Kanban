@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { consolidatedRake } from './campaignEconomics'
 import {
   aggregatePlayersById,
   extractAgentIdFromBlockHeader,
   isValidAgentId,
+  parseAgentReportWorkbook,
   parsePeriodLabel,
 } from './campaignReportParser'
 
@@ -42,6 +44,10 @@ describe('agent report format', () => {
         period,
         gains: 10,
         weeklyRake: 3.08,
+        spinStake: 0,
+        spinGains: 0,
+        spinProfit: 0,
+        spinFee: 1,
         hands: 20,
       },
       {
@@ -52,11 +58,92 @@ describe('agent report format', () => {
         period,
         gains: -5,
         weeklyRake: 1.5,
+        spinStake: 0,
+        spinGains: 0,
+        spinProfit: 0,
+        spinFee: 2,
         hands: 8,
       },
     ])
     expect(rows).toHaveLength(1)
     expect(rows[0].weeklyRake).toBeCloseTo(4.58)
+    expect(rows[0].spinFee).toBeCloseTo(3)
     expect(rows[0].hands).toBe(28)
+  })
+})
+
+function reportSheets(options: {
+  agentSpin?: boolean
+  playerSpin?: boolean
+  taxaTotal?: number
+  taxaSpin?: number
+}): Map<string, unknown[][]> {
+  const taxaTotal = options.taxaTotal ?? 78.65
+  const taxaSpin = options.taxaSpin ?? 7.2
+  const agentHeader = [
+    'Agent ID',
+    'Agent name',
+    'Semana',
+    'Ganhos',
+    'Taxa total',
+    'Hands',
+  ]
+  const agentRow: unknown[] = ['1641800', 'CPP01', '28/09/2026 à 04/10/2026', 10, taxaTotal, 4]
+  if (options.agentSpin) {
+    agentHeader.push('Stake Spin', 'Ganhos Spin', 'Profit Spin', 'Taxa Spin')
+    agentRow.push(20, 5, -2, taxaSpin)
+  }
+  const playerHeader = ['Player ID', 'Player Name', 'Nickname', 'Ganhos', 'Taxa Total', 'Hands']
+  const playerRow: unknown[] = ['99', 'Jogador', 'nick', 1, taxaTotal, 4]
+  if (options.playerSpin) {
+    playerHeader.push('Stake Spin', 'Ganhos Spin', 'Profit Spin', 'Taxa Spin')
+    playerRow.push(20, 5, -2, taxaSpin)
+  }
+  return new Map([
+    ['Agentes', [agentHeader, agentRow]],
+    [
+      'Jogadores',
+      [
+        ['Semana: 28/09/2026 à 04/10/2026'],
+        ['Liga: 128 Slot: 57906 Agente: 1641800 - CPP01'],
+        playerHeader,
+        playerRow,
+      ],
+    ],
+    [
+      'Detalhes de mesa',
+      [
+        ['Semana: 28/09/2026 à 04/10/2026'],
+        ['Liga: 128 Slot: 57906 Agente: 1641800 - CPP01'],
+        ['Player ID', 'Tipo', 'Taxa Total'],
+        ['99', 'RG', 1],
+      ],
+    ],
+  ])
+}
+
+describe('spin columns', () => {
+  it('keeps taxa total distinct and reads taxa spin', () => {
+    const parsed = parseAgentReportWorkbook(
+      reportSheets({ agentSpin: true, playerSpin: true }),
+    )
+    expect(parsed.agents[0]?.weeklyRake).toBeCloseTo(78.65)
+    expect(parsed.agents[0]?.spinFee).toBeCloseTo(7.2)
+    expect(parsed.players[0]?.weeklyRake).toBeCloseTo(78.65)
+    expect(parsed.players[0]?.spinFee).toBeCloseTo(7.2)
+    expect(parsed.players[0]?.spinStake).toBeCloseTo(20)
+    expect(
+      consolidatedRake(parsed.players[0]?.weeklyRake, parsed.players[0]?.spinFee),
+    ).toBeCloseTo(85.85)
+  })
+
+  it('accepts an old report without spin columns as taxa spin zero', () => {
+    const parsed = parseAgentReportWorkbook(
+      reportSheets({ agentSpin: false, playerSpin: false, taxaTotal: 10 }),
+    )
+    expect(parsed.agents[0]?.weeklyRake).toBe(10)
+    expect(parsed.agents[0]?.spinFee).toBe(0)
+    expect(parsed.players[0]?.spinFee).toBe(0)
+    expect(consolidatedRake(parsed.agents[0]?.weeklyRake, parsed.agents[0]?.spinFee)).toBe(10)
   })
 })

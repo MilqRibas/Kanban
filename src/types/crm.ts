@@ -94,8 +94,9 @@ export type CrmPlayer360Week = {
 export type CrmPlayer360GameSlice = {
   gameType: string
   rake: number
-  hands: number
-  rows: number
+  /** Null quando a modalidade não tem mãos (Spin). */
+  hands: number | null
+  rows: number | null
 }
 
 export type CrmPlayer360Tx = {
