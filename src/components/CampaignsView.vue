@@ -21,6 +21,7 @@ import CrmPipelinesView from './crm/CrmPipelinesView.vue'
 import CrmBiView from './crm/CrmBiView.vue'
 import SegmentsView from './segments/SegmentsView.vue'
 import { buildSearchHaystack, matchesSearch } from '../utils/search'
+import { sumSlotWeeklyRake } from '../utils/campaignWeeklyMetrics'
 import type { Campaign } from '../types/campaigns'
 
 type EcosystemArea = 'campaigns' | 'segments' | 'crm' | 'bi'
@@ -184,6 +185,38 @@ const filteredCampaigns = computed(() => {
 })
 
 const overviewKpis = computed(() => store.overviewKpis(filteredCampaigns.value))
+
+const slotMonthNames = [
+  '',
+  'Janeiro',
+  'Fevereiro',
+  'Março',
+  'Abril',
+  'Maio',
+  'Junho',
+  'Julho',
+  'Agosto',
+  'Setembro',
+  'Outubro',
+  'Novembro',
+  'Dezembro',
+]
+
+const slotRake = computed(() =>
+  sumSlotWeeklyRake(store.agentPeriods, {
+    year: filters.value.year,
+    month: filters.value.month,
+  }),
+)
+
+const slotPeriodLabel = computed(() => {
+  const year = filters.value.year
+  const month = filters.value.month
+  if (year === 'all' && month === 'all') return 'Todas as semanas'
+  if (year === 'all') return slotMonthNames[month] ?? ''
+  if (month === 'all') return String(year)
+  return `${slotMonthNames[month]} ${year}`
+})
 
 /** Só restringe agências Xtreme quando o filtro da visão está estreito. */
 const xtremeAgentIds = computed(() => {
@@ -370,6 +403,7 @@ function onBackFromDetails() {
               <span class="text-text-secondary">rake líquido</span>
               (bruto − 18% taxa da liga). No case Xtreme Pro, o líquido é
               <span class="text-text-secondary">bruto − investimento − ativação</span>.
+              Rake do slot é o SX Club inteiro no mês do filtro, pela semana em que o relatório começa.
             </p>
             <div
               v-if="!store.metricsSettled"
@@ -379,9 +413,9 @@ function onBackFromDetails() {
                 <Loader2 :size="16" class="animate-spin text-accent" />
                 Consolidando rake, ativação e recuperação…
               </p>
-              <div class="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-9">
+              <div class="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-10">
                 <div
-                  v-for="n in 9"
+                  v-for="n in 10"
                   :key="n"
                   class="h-16 animate-pulse rounded-xl bg-white/5"
                 />
@@ -395,7 +429,11 @@ function onBackFromDetails() {
               </div>
             </div>
             <template v-else>
-              <CampaignKpiCards :kpis="overviewKpis" />
+              <CampaignKpiCards
+                :kpis="overviewKpis"
+                :slot-rake="slotRake"
+                :slot-period-label="slotPeriodLabel"
+              />
               <CampaignCharts :campaigns="filteredCampaigns" @view="onView" />
             </template>
             <CampaignXtremeCase :agent-ids="xtremeAgentIds" />

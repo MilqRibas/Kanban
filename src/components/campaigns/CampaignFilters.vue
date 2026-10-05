@@ -163,7 +163,10 @@ const selectClass =
       v-show="expanded"
       class="mt-2.5 grid grid-cols-2 gap-2 border-t border-border-subtle/60 pt-2.5 md:grid-cols-4 xl:grid-cols-6"
     >
-      <label class="flex flex-col gap-1 text-[11px] text-text-muted">
+      <label
+        class="flex flex-col gap-1 text-[11px] text-text-muted"
+        title="Filtra as campanhas pelo ano de aquisição e o card Rake do slot pelas semanas que começam nesse ano."
+      >
         Ano
         <select
           class="w-full"
@@ -185,7 +188,10 @@ const selectClass =
         </select>
       </label>
 
-      <label class="flex flex-col gap-1 text-[11px] text-text-muted">
+      <label
+        class="flex flex-col gap-1 text-[11px] text-text-muted"
+        title="Filtra as campanhas pelo mês de aquisição e o card Rake do slot pela semana que começa nesse mês."
+      >
         Mês
         <select
           class="w-full"

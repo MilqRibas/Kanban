@@ -181,6 +181,24 @@ export function sumWeeklyRake(
   return periods.reduce((sum, p) => sum + (Number(p.weeklyRake) || 0), 0)
 }
 
+/**
+ * Rake do slot no mês civil da segunda-feira da semana.
+ * A semana inteira entra nesse mês; não há rateio por dia.
+ */
+export function sumSlotWeeklyRake(
+  periods: Array<{ periodStart: string; weeklyRake: number }>,
+  filter: { year: number | 'all'; month: number | 'all' },
+): number {
+  return periods.reduce((sum, period) => {
+    const day = period.periodStart.slice(0, 10)
+    const year = Number(day.slice(0, 4))
+    const month = Number(day.slice(5, 7))
+    if (filter.year !== 'all' && year !== filter.year) return sum
+    if (filter.month !== 'all' && month !== filter.month) return sum
+    return sum + (Number(period.weeklyRake) || 0)
+  }, 0)
+}
+
 export function sortPeriodsChronologically<T extends { periodStart: string }>(
   periods: T[],
 ): T[] {

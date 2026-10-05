@@ -14,6 +14,7 @@ import {
   campaignGameProfileRows,
   campaignUsesWeeklySnapshot,
   sanitizeCampaignEndDate,
+  sumSlotWeeklyRake,
   sumWeeklyRake,
 } from './campaignWeeklyMetrics'
 
@@ -249,6 +250,33 @@ describe('campaign acquisition window', () => {
         endDate: '0226-07-05',
       }),
     ).toEqual({ start: '2026-06-01', end: '2026-07-05' })
+  })
+})
+
+describe('slot rake follows the month of the week start', () => {
+  const periods = [
+    { periodStart: '2026-08-31', weeklyRake: 100 },
+    { periodStart: '2026-09-07', weeklyRake: 400 },
+    { periodStart: '2026-09-14', weeklyRake: 250 },
+    { periodStart: '2026-09-07', weeklyRake: 50 },
+  ]
+
+  it('sums every agency week once when no month is selected', () => {
+    expect(sumSlotWeeklyRake(periods, { year: 'all', month: 'all' })).toBe(800)
+  })
+
+  it('keeps a week that crosses into the next month in the month it starts', () => {
+    expect(sumSlotWeeklyRake(periods, { year: 2026, month: 9 })).toBe(700)
+    expect(sumSlotWeeklyRake(periods, { year: 2026, month: 8 })).toBe(100)
+  })
+
+  it('does not drop a week that belongs to an agency without a campaign', () => {
+    expect(
+      sumSlotWeeklyRake(
+        [{ periodStart: '2026-09-07', weeklyRake: 500 }],
+        { year: 2026, month: 9 },
+      ),
+    ).toBe(500)
   })
 })
 

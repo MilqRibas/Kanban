@@ -10,6 +10,7 @@ import {
   TrendingUp,
   Users,
   UserCheck,
+  Layers,
 } from '@lucide/vue'
 import type { OverviewKpis } from '../../utils/campaignMetrics'
 import { LEAGUE_FEE_RATE } from '../../utils/crmIncentiveEconomics'
@@ -17,6 +18,8 @@ import { formatCurrency, formatNumber, formatPercent } from '../../utils/campaig
 
 defineProps<{
   kpis: OverviewKpis
+  slotRake: number
+  slotPeriodLabel: string
 }>()
 
 const cards: {
@@ -107,7 +110,24 @@ function display(value: number | null, format: (typeof cards)[number]['format'])
 </script>
 
 <template>
-  <div class="grid grid-cols-2 gap-1.5 sm:gap-2 md:grid-cols-3 xl:grid-cols-9">
+  <div class="grid grid-cols-2 gap-1.5 sm:gap-2 md:grid-cols-3 xl:grid-cols-10">
+    <div
+      class="panel-glass rounded-xl px-2.5 py-2 ring-1 ring-accent/40 sm:px-3 sm:py-2.5"
+      title="Todo o rake do SX Club nas semanas do mês, com ou sem campanha. A semana entra no mês em que começa. Inclui Taxa Spin."
+    >
+      <div class="flex items-center gap-1.5 text-text-muted">
+        <Layers :size="12" class="shrink-0 text-accent" />
+        <span class="truncate text-[10px] font-medium uppercase tracking-wide">
+          Rake do slot
+        </span>
+      </div>
+      <p class="mt-1 text-sm font-semibold tabular-nums leading-tight text-text-primary sm:text-base lg:text-lg">
+        {{ formatCurrency(slotRake) }}
+      </p>
+      <p class="mt-0.5 truncate text-[10px] text-text-muted">
+        {{ slotPeriodLabel }}
+      </p>
+    </div>
     <div
       v-for="card in cards"
       :key="card.key"
