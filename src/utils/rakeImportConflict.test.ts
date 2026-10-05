@@ -92,6 +92,10 @@ describe('aggregateAgentsById com slot', () => {
         gains: 0,
         weeklyRake: 100,
         hands: 1,
+        spinStake: 0,
+        spinGains: 0,
+        spinProfit: 0,
+        spinFee: 0,
       },
       {
         agentId: '10',
@@ -104,6 +108,10 @@ describe('aggregateAgentsById com slot', () => {
         gains: 0,
         weeklyRake: 50,
         hands: 1,
+        spinStake: 0,
+        spinGains: 0,
+        spinProfit: 0,
+        spinFee: 0,
       },
     ]
     const aggregated = aggregateAgentsById(rows)

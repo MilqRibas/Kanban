@@ -212,10 +212,11 @@ const slotRake = computed(() =>
 const slotPeriodLabel = computed(() => {
   const year = filters.value.year
   const month = filters.value.month
-  if (year === 'all' && month === 'all') return 'Todas as semanas'
-  if (year === 'all') return slotMonthNames[month] ?? ''
+  if (month === 'all' && year === 'all') return 'Todas as semanas'
   if (month === 'all') return String(year)
-  return `${slotMonthNames[month]} ${year}`
+  const name = slotMonthNames[month] ?? ''
+  if (year === 'all') return name
+  return `${name} ${year}`
 })
 
 /** Só restringe agências Xtreme quando o filtro da visão está estreito. */
