@@ -11,9 +11,14 @@ import {
   CAMPAIGN_TYPE_OPTIONS,
 } from '../../types/campaigns'
 
+export type CampaignPeriodMode = 'month' | 'custom'
+
 export type CampaignFiltersState = {
+  periodMode: CampaignPeriodMode
   year: number | 'all'
   month: number | 'all'
+  dateFrom: string
+  dateTo: string
   status: CampaignComputedStatus | 'all'
   name: string
   campaignType: string | 'all'
@@ -64,8 +69,12 @@ const local = computed({
 
 const activeFilterCount = computed(() => {
   let count = 0
-  if (local.value.year !== 'all') count += 1
-  if (local.value.month !== 'all') count += 1
+  if (local.value.periodMode === 'custom') {
+    if (local.value.dateFrom || local.value.dateTo) count += 1
+  } else {
+    if (local.value.year !== 'all') count += 1
+    if (local.value.month !== 'all') count += 1
+  }
   if (local.value.status !== 'all') count += 1
   if (local.value.campaignType !== 'all') count += 1
   if (local.value.nature !== 'all') count += 1
@@ -81,8 +90,11 @@ function patch(partial: Partial<CampaignFiltersState>) {
 function clearFilters() {
   nameDraft.value = ''
   emit('update:modelValue', {
+    periodMode: 'month',
     year: 'all',
     month: 'all',
+    dateFrom: '',
+    dateTo: '',
     status: 'all',
     name: '',
     campaignType: 'all',
@@ -159,10 +171,40 @@ const selectClass =
       </button>
     </div>
 
-    <div
-      v-show="expanded"
-      class="mt-2.5 grid grid-cols-2 gap-2 border-t border-border-subtle/60 pt-2.5 md:grid-cols-4 xl:grid-cols-6"
-    >
+    <div class="mt-2.5 flex flex-wrap items-end gap-2 rounded-xl border border-accent/40 bg-accent/10 px-2.5 py-2">
+      <div class="flex flex-col gap-1">
+        <span class="text-[11px] font-medium uppercase tracking-wide text-accent">
+          Período
+        </span>
+        <div class="inline-flex rounded-xl border border-border-subtle bg-surface p-0.5">
+          <button
+            type="button"
+            class="rounded-[10px] px-2.5 py-1 text-xs"
+            :class="
+              local.periodMode !== 'custom'
+                ? 'bg-accent text-board'
+                : 'text-text-secondary hover:text-text-primary'
+            "
+            @click="patch({ periodMode: 'month' })"
+          >
+            Mês
+          </button>
+          <button
+            type="button"
+            class="rounded-[10px] px-2.5 py-1 text-xs"
+            :class="
+              local.periodMode === 'custom'
+                ? 'bg-accent text-board'
+                : 'text-text-secondary hover:text-text-primary'
+            "
+            @click="patch({ periodMode: 'custom' })"
+          >
+            Data personalizada
+          </button>
+        </div>
+      </div>
+
+      <template v-if="local.periodMode !== 'custom'">
       <label
         class="flex flex-col gap-1 text-[11px] text-text-muted"
         title="Filtra as campanhas pelo ano de aquisição e o card Rake do slot pelas semanas que começam nesse ano."
@@ -212,7 +254,45 @@ const selectClass =
           </option>
         </select>
       </label>
+      </template>
 
+      <template v-else>
+        <label class="flex flex-col gap-1 text-[11px] text-text-muted">
+          Data inicial
+          <input
+            type="date"
+            class="w-full"
+            :class="selectClass"
+            :value="local.dateFrom"
+            @input="patch({ dateFrom: ($event.target as HTMLInputElement).value })"
+          />
+        </label>
+        <label
+          class="flex flex-col gap-1 text-[11px] text-text-muted"
+          title="Entram só as semanas de relatório que começam e terminam dentro do intervalo. Não há rake por dia."
+        >
+          Data final
+          <input
+            type="date"
+            class="w-full"
+            :class="selectClass"
+            :value="local.dateTo"
+            @input="patch({ dateTo: ($event.target as HTMLInputElement).value })"
+          />
+        </label>
+      </template>
+      <p
+        v-if="local.periodMode === 'custom'"
+        class="w-full text-[11px] text-text-secondary"
+      >
+        Só entram semanas inteiras do relatório, de segunda a domingo.
+      </p>
+    </div>
+
+    <div
+      v-show="expanded"
+      class="mt-2.5 grid grid-cols-2 gap-2 border-t border-border-subtle/60 pt-2.5 md:grid-cols-4 xl:grid-cols-6"
+    >
       <label class="flex flex-col gap-1 text-[11px] text-text-muted">
         Natureza
         <select

@@ -14,6 +14,7 @@ import {
   campaignGameProfileRows,
   campaignUsesWeeklySnapshot,
   sanitizeCampaignEndDate,
+  slotWeeksInsideRange,
   sumSlotWeeklyRake,
   sumWeeklyRake,
 } from './campaignWeeklyMetrics'
@@ -277,6 +278,26 @@ describe('slot rake follows the month of the week start', () => {
         { year: 2026, month: 9 },
       ),
     ).toBe(500)
+  })
+
+  it('keeps only whole weeks inside a custom range', () => {
+    const weeks = [
+      { periodStart: '2026-08-31', periodEnd: '2026-09-06', weeklyRake: 100 },
+      { periodStart: '2026-09-07', periodEnd: '2026-09-13', weeklyRake: 400 },
+      { periodStart: '2026-09-14', periodEnd: '2026-09-20', weeklyRake: 250 },
+    ]
+    const inside = slotWeeksInsideRange(weeks, {
+      from: '2026-09-05',
+      to: '2026-09-20',
+    })
+    expect(inside.map((week) => week.periodStart)).toEqual([
+      '2026-09-07',
+      '2026-09-14',
+    ])
+    expect(inside.reduce((sum, week) => sum + week.weeklyRake, 0)).toBe(650)
+    expect(
+      slotWeeksInsideRange(weeks, { from: '2026-09-20', to: '2026-09-05' }),
+    ).toEqual([])
   })
 })
 

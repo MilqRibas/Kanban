@@ -21,7 +21,7 @@ import CrmPipelinesView from './crm/CrmPipelinesView.vue'
 import CrmBiView from './crm/CrmBiView.vue'
 import SegmentsView from './segments/SegmentsView.vue'
 import { buildSearchHaystack, matchesSearch } from '../utils/search'
-import { sumSlotWeeklyRake } from '../utils/campaignWeeklyMetrics'
+import { slotWeeksInsideRange, sumSlotWeeklyRake } from '../utils/campaignWeeklyMetrics'
 import type { Campaign } from '../types/campaigns'
 
 type EcosystemArea = 'campaigns' | 'segments' | 'crm' | 'bi'
@@ -52,13 +52,34 @@ const importOpen = ref(false)
 const editingId = ref<string | null>(null)
 
 const filters = ref<CampaignFiltersState>({
+  periodMode: 'month',
   year: 'all',
   month: 'all',
+  dateFrom: '',
+  dateTo: '',
   status: 'all',
   name: '',
   campaignType: 'all',
   nature: 'all',
 })
+
+function activeCustomRange(state: CampaignFiltersState) {
+  if (state.periodMode !== 'custom') return null
+  if (!state.dateFrom || !state.dateTo || state.dateFrom > state.dateTo) return null
+  return { from: state.dateFrom, to: state.dateTo }
+}
+
+function campaignAcquisitionDay(campaign: Campaign) {
+  if (campaign.startDate) return campaign.startDate.slice(0, 10)
+  const month = String(campaign.acquisitionMonth).padStart(2, '0')
+  return `${campaign.acquisitionYear}-${month}-01`
+}
+
+function formatFilterDay(iso: string) {
+  const [year, month, day] = iso.slice(0, 10).split('-')
+  if (!year || !month || !day) return iso
+  return `${day}/${month}/${year}`
+}
 
 const areaTabs: { id: EcosystemArea; label: string; icon: typeof ContactRound }[] = [
   { id: 'campaigns', label: 'Campanhas', icon: Megaphone },
@@ -147,16 +168,24 @@ const campaignSearchIndex = computed(() => {
 const filteredCampaigns = computed(() => {
   const nameQuery = filters.value.name
   const statusFilter = filters.value.status
+  const range = activeCustomRange(filters.value)
   return store.campaigns.filter((campaign) => {
     if (!store.showArchived && campaign.isArchived) return false
-    if (filters.value.year !== 'all' && campaign.acquisitionYear !== filters.value.year) {
-      return false
-    }
-    if (
-      filters.value.month !== 'all' &&
-      campaign.acquisitionMonth !== filters.value.month
-    ) {
-      return false
+    if (filters.value.periodMode === 'custom') {
+      if (range) {
+        const day = campaignAcquisitionDay(campaign)
+        if (day < range.from || day > range.to) return false
+      }
+    } else {
+      if (filters.value.year !== 'all' && campaign.acquisitionYear !== filters.value.year) {
+        return false
+      }
+      if (
+        filters.value.month !== 'all' &&
+        campaign.acquisitionMonth !== filters.value.month
+      ) {
+        return false
+      }
     }
     if (
       filters.value.campaignType !== 'all' &&
@@ -202,14 +231,40 @@ const slotMonthNames = [
   'Dezembro',
 ]
 
-const slotRake = computed(() =>
-  sumSlotWeeklyRake(store.agentPeriods, {
+const slotRake = computed(() => {
+  if (filters.value.periodMode === 'custom') {
+    const from = filters.value.dateFrom
+    const to = filters.value.dateTo
+    if (from && to && from > to) return 0
+    const range = activeCustomRange(filters.value)
+    if (!range) {
+      return sumSlotWeeklyRake(store.agentPeriods, { year: 'all', month: 'all' })
+    }
+    return slotWeeksInsideRange(store.agentPeriods, range).reduce(
+      (sum, period) => sum + (Number(period.weeklyRake) || 0),
+      0,
+    )
+  }
+  return sumSlotWeeklyRake(store.agentPeriods, {
     year: filters.value.year,
     month: filters.value.month,
-  }),
-)
+  })
+})
 
 const slotPeriodLabel = computed(() => {
+  if (filters.value.periodMode === 'custom') {
+    const from = filters.value.dateFrom
+    const to = filters.value.dateTo
+    if (!from || !to) return 'Informe as duas datas'
+    if (from > to) return 'Data inicial depois da final'
+    const weeks = new Set(
+      slotWeeksInsideRange(store.agentPeriods, { from, to }).map(
+        (period) => period.periodStart.slice(0, 10),
+      ),
+    )
+    const count = weeks.size
+    return `${formatFilterDay(from)} – ${formatFilterDay(to)} · ${count} ${count === 1 ? 'semana' : 'semanas'}`
+  }
   const year = filters.value.year
   const month = filters.value.month
   if (month === 'all' && year === 'all') return 'Todas as semanas'
@@ -222,9 +277,9 @@ const slotPeriodLabel = computed(() => {
 /** Só restringe agências Xtreme quando o filtro da visão está estreito. */
 const xtremeAgentIds = computed(() => {
   const f = filters.value
+  const customReady = activeCustomRange(f) != null
   const narrowed =
-    f.year !== 'all' ||
-    f.month !== 'all' ||
+    (f.periodMode === 'custom' ? customReady : f.year !== 'all' || f.month !== 'all') ||
     f.status !== 'all' ||
     f.campaignType !== 'all' ||
     f.nature !== 'all' ||
@@ -404,7 +459,7 @@ function onBackFromDetails() {
               <span class="text-text-secondary">rake líquido</span>
               (bruto − 18% taxa da liga). No case Xtreme Pro, o líquido é
               <span class="text-text-secondary">bruto − investimento − ativação</span>.
-              Rake do slot é o SX Club inteiro no mês do filtro, pela semana em que o relatório começa.
+              Rake do slot é o SX Club inteiro no período escolhido. No modo personalizado entram só as semanas inteiras entre as duas datas.
             </p>
             <div
               v-if="!store.metricsSettled"

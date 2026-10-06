@@ -199,6 +199,20 @@ export function sumSlotWeeklyRake(
   }, 0)
 }
 
+/** Semana importada só entra se começar e terminar dentro do intervalo. */
+export function slotWeeksInsideRange<
+  T extends { periodStart: string; periodEnd?: string | null },
+>(periods: T[], range: { from: string; to: string }): T[] {
+  const from = range.from.slice(0, 10)
+  const to = range.to.slice(0, 10)
+  if (!from || !to || from > to) return []
+  return periods.filter((period) => {
+    const start = period.periodStart.slice(0, 10)
+    const end = (period.periodEnd || start).slice(0, 10)
+    return start >= from && end <= to
+  })
+}
+
 export function sortPeriodsChronologically<T extends { periodStart: string }>(
   periods: T[],
 ): T[] {
