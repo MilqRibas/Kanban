@@ -28,7 +28,7 @@ export const useAuthStore = defineStore('auth', () => {
   const isCampaignsOnly = computed(() => appRole.value === 'campaigns')
   const allowedTabs = computed(() =>
     isCampaignsOnly.value
-      ? (['campaigns'] as const)
+      ? (['campaigns', 'crm'] as const)
       : ([
           'agenda',
           'board',
@@ -37,6 +37,7 @@ export const useAuthStore = defineStore('auth', () => {
           'hub',
           'community',
           'campaigns',
+          'crm',
         ] as const),
   )
 

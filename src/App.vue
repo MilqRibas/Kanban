@@ -38,13 +38,12 @@ const NAV_TABS: readonly NavTab[] = [
   'hub',
   'community',
   'campaigns',
+  'crm',
 ]
 
 function readStoredTab(): NavTab {
   try {
     const raw = localStorage.getItem(TAB_STORAGE_KEY)
-    // Legado: CRM era aba top-level — agora vive dentro de Campanhas.
-    if (raw === 'crm') return 'campaigns'
     if (raw && (NAV_TABS as readonly string[]).includes(raw)) {
       return raw as NavTab
     }
@@ -85,6 +84,7 @@ const tabViews: Record<NavTab, Component> = {
   hub: markRaw(HubView),
   community: markRaw(HubView),
   campaigns: markRaw(CampaignsView),
+  crm: markRaw(CampaignsView),
 }
 
 const auth = useAuthStore()
@@ -163,7 +163,7 @@ async function ensureTabData(tab: NavTab) {
     await Promise.all([community.init(), hubSections.init()])
     hubReady.value = true
   }
-  if (tab === 'campaigns' && !campaignsReady.value) {
+  if ((tab === 'campaigns' || tab === 'crm') && !campaignsReady.value) {
     await campaigns.init()
     campaignsReady.value = true
   }
@@ -204,7 +204,7 @@ watch(
     if (!profileReady) return
 
     if (campaignsOnly) {
-      if (activeTab.value !== 'campaigns') {
+      if (activeTab.value !== 'campaigns' && activeTab.value !== 'crm') {
         activeTab.value = 'campaigns'
       }
       boardBootstrapping.value = true
@@ -312,7 +312,9 @@ watch(activeTab, async (tab) => {
                   ? { entry: 'conteudo' }
                   : activeTab === 'hub'
                     ? { entry: 'home' }
-                    : {}
+                    : activeTab === 'crm'
+                      ? { entry: 'crm' }
+                      : {}
               "
               class="tab-panel flex min-h-0 w-full flex-1 flex-col"
             />

@@ -4,6 +4,7 @@ import {
   BarChart3,
   CalendarDays,
   Columns3,
+  ContactRound,
   Ellipsis,
   ListChecks,
   Megaphone,
@@ -23,6 +24,7 @@ export type NavTab =
   | 'hub'
   | 'community'
   | 'campaigns'
+  | 'crm'
 
 const props = defineProps<{
   activeTab: NavTab
@@ -65,6 +67,7 @@ type FooterItem = TabItem | ExternalItem
 const ALL_ITEMS: FooterItem[] = [
   { kind: 'tab', id: 'agenda', label: 'Agenda', icon: CalendarDays },
   { kind: 'tab', id: 'campaigns', label: 'Campanhas', icon: Megaphone },
+  { kind: 'tab', id: 'crm', label: 'CRM', icon: ContactRound },
   { kind: 'tab', id: 'community', label: 'Comunidade', icon: Users },
   { kind: 'tab', id: 'notes', label: 'Notas', icon: NotebookPen },
   { kind: 'tab', id: 'board', label: 'Quadro', icon: Columns3 },
@@ -108,6 +111,7 @@ const PRIMARY_IDS: FooterNavId[] = [
   'daily',
   'notes',
   'campaigns',
+  'crm',
   'sx-player',
   'trafego',
   'hub',

@@ -25,6 +25,14 @@ import { slotWeeksInsideRange, sumSlotWeeklyRake } from '../utils/campaignWeekly
 import type { Campaign } from '../types/campaigns'
 
 type EcosystemArea = 'campaigns' | 'segments' | 'crm' | 'bi'
+
+const props = withDefaults(
+  defineProps<{
+    /** crm = atalho do menu inferior, já na área de pipelines. */
+    entry?: 'campaigns' | 'crm'
+  }>(),
+  { entry: 'campaigns' },
+)
 type CampaignScreen = 'overview' | 'list' | 'comparison' | 'imports'
 
 /** Torneio no filtro também encontra legado Outro + campaign_type_other. */
@@ -45,7 +53,7 @@ const crm = useCrmStore()
 const segments = useSegmentsStore()
 const pipelines = usePipelinesStore()
 const bootstrapping = ref(false)
-const area = ref<EcosystemArea>('campaigns')
+const area = ref<EcosystemArea>(props.entry === 'crm' ? 'crm' : 'campaigns')
 const screen = ref<CampaignScreen>('overview')
 const formOpen = ref(false)
 const importOpen = ref(false)
@@ -108,6 +116,10 @@ onMounted(async () => {
     } finally {
       bootstrapping.value = false
     }
+  }
+  if (area.value === 'crm') {
+    if (!crm.ready) await crm.init()
+    if (!pipelines.ready) await pipelines.init()
   }
 })
 

@@ -17,6 +17,12 @@ import type { NavTab } from './AppFooter.vue'
 const board = useBoardStore()
 const auth = useAuthStore()
 const activeTab = inject<Ref<NavTab>>('activeTab', ref('board'))
+const sectionTitle = computed(() => {
+  if (activeTab.value === 'crm') return 'CRM'
+  if (auth.isCampaignsOnly || activeTab.value === 'campaigns') return 'Campanhas'
+  if (activeTab.value === 'agenda') return 'Agenda'
+  return board.title
+})
 const showBoardChrome = computed(
   () =>
     !auth.isCampaignsOnly &&
@@ -105,13 +111,7 @@ onBeforeUnmount(() => {
       />
       <div class="h-6 w-px bg-white/15" />
       <h1 class="truncate text-base font-semibold tracking-tight text-text-primary">
-        {{
-          auth.isCampaignsOnly || activeTab === 'campaigns'
-            ? 'Campanhas'
-            : activeTab === 'agenda'
-              ? 'Agenda'
-              : board.title
-        }}
+        {{ sectionTitle }}
       </h1>
       <button
         v-if="showBoardChrome"
@@ -256,11 +256,7 @@ onBeforeUnmount(() => {
               }}
             </p>
             <p class="truncate text-sm font-semibold text-text-primary">
-              {{
-                auth.isCampaignsOnly || activeTab === 'campaigns'
-                  ? 'Campanhas'
-                  : board.title
-              }}
+              {{ sectionTitle }}
             </p>
           </div>
 

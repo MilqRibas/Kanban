@@ -125,17 +125,23 @@ function visibleEntries(stageId: string): PipelineEntry[] {
     .sort((a, b) => compareLeadsByNextContact(a, b))
 }
 
-function contactLabel(entry: PipelineEntry) {
+function contactChip(entry: PipelineEntry) {
   if (!entry.nextContactAt) return 'Sem data'
-  const day = formatIsoDay(entry.nextContactAt)
-  return nextContactRank(entry.nextContactAt) === 0 ? `Atrasado ${day}` : day
+  const [, month, day] = entry.nextContactAt.slice(0, 10).split('-')
+  return month && day ? `${day}/${month}` : formatIsoDay(entry.nextContactAt)
 }
 
-function contactClass(entry: PipelineEntry) {
+function contactChipClass(entry: PipelineEntry) {
   const rank = nextContactRank(entry.nextContactAt)
-  if (rank === 0) return 'text-rose-300'
-  if (rank === 1) return 'text-amber-200/90'
-  return 'text-text-secondary'
+  if (rank === 0) return 'bg-rose-500/15 text-rose-200'
+  if (rank === 1) return 'bg-amber-400/10 text-amber-200/90'
+  return 'bg-white/10 text-text-secondary'
+}
+
+function contactChipTitle(entry: PipelineEntry) {
+  if (!entry.nextContactAt) return 'Sem próximo contato'
+  const day = formatIsoDay(entry.nextContactAt)
+  return nextContactRank(entry.nextContactAt) === 0 ? `Atrasado · ${day}` : day
 }
 
 function eventLabel(event: PipelineEvent) {
@@ -420,42 +426,51 @@ async function onDeletePipeline(id: string, name: string) {
               >
                 <template #item="{ element: entry }">
                   <div
-                    class="flex overflow-hidden rounded-xl border border-white/10 bg-board-elevated/80 transition-colors hover:border-accent/40"
+                    class="flex overflow-hidden rounded-lg border border-white/10 bg-board-elevated/80 transition-colors hover:border-accent/40"
                     :class="!entry.stillMatchesSegment ? 'opacity-60' : ''"
                   >
                     <button
                       type="button"
-                      class="lead-handle flex w-7 shrink-0 cursor-grab items-center justify-center text-text-muted hover:bg-white/5 hover:text-text-primary active:cursor-grabbing"
+                      class="lead-handle flex w-6 shrink-0 cursor-grab items-start justify-center pt-2 text-text-muted hover:bg-white/5 hover:text-text-primary active:cursor-grabbing"
                       aria-label="Arrastar lead"
                     >
-                      <GripVertical :size="14" />
+                      <GripVertical :size="13" />
                     </button>
                     <button
                       type="button"
-                      class="min-w-0 flex-1 px-2 py-2 text-left"
+                      class="min-w-0 flex-1 py-1.5 pr-2 text-left"
                       @click="openLead(entry)"
                     >
-                      <p class="truncate text-sm font-medium text-text-primary">
-                        {{ cardTitle(entry) }}
-                      </p>
-                      <p v-if="cardHasDistinctName(entry)" class="font-mono text-[10px] text-text-muted">
+                      <span class="flex items-center gap-1.5">
+                        <span class="min-w-0 flex-1 truncate text-[13px] font-medium leading-5 text-text-primary">
+                          {{ cardTitle(entry) }}
+                        </span>
+                        <span
+                          class="shrink-0 rounded px-1 py-px text-[10px] font-medium leading-4"
+                          :class="contactChipClass(entry)"
+                          :title="contactChipTitle(entry)"
+                        >
+                          {{ contactChip(entry) }}
+                        </span>
+                      </span>
+                      <span
+                        v-if="cardHasDistinctName(entry)"
+                        class="block truncate font-mono text-[10px] leading-4 text-text-muted"
+                      >
                         {{ entry.playerId }}
-                      </p>
-                      <p class="mt-1 text-[11px] font-medium" :class="contactClass(entry)">
-                        {{ contactLabel(entry) }}
-                      </p>
-                      <p
+                      </span>
+                      <span
                         v-if="entry.notes"
-                        class="mt-1 line-clamp-2 text-[11px] text-text-secondary"
+                        class="mt-0.5 block truncate text-[11px] leading-4 text-text-secondary"
                       >
                         {{ entry.notes }}
-                      </p>
-                      <p
+                      </span>
+                      <span
                         v-if="!entry.stillMatchesSegment"
-                        class="mt-0.5 text-[10px] text-amber-300/90"
+                        class="mt-0.5 block text-[10px] leading-4 text-amber-300/90"
                       >
                         Fora do segmento
-                      </p>
+                      </span>
                     </button>
                   </div>
                 </template>
@@ -474,113 +489,119 @@ async function onDeletePipeline(id: string, name: string) {
           </div>
         </div>
 
-        <div
-          v-if="selectedLead"
-          class="fixed inset-0 z-40 flex justify-end bg-black/50"
-          role="presentation"
-          @click.self="closeLead"
-        >
-          <aside
-            class="flex h-full w-full max-w-md flex-col border-l border-white/10 bg-board p-4 shadow-2xl"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="lead-panel-title"
+        <Teleport to="body">
+          <div
+            v-if="selectedLead"
+            class="fixed inset-0 z-[70] flex justify-end bg-black/50"
+            role="presentation"
+            @click.self="closeLead"
           >
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <p id="lead-panel-title" class="truncate text-base font-semibold text-text-primary">
-                  {{ cardTitle(selectedLead) }}
-                </p>
-                <p class="font-mono text-xs text-text-muted">
-                  {{ selectedLead.playerId }}
-                  <span v-if="stageName(selectedLead.stageId)">
-                    · {{ stageName(selectedLead.stageId) }}
-                  </span>
-                </p>
-              </div>
-              <button
-                type="button"
-                class="inline-flex size-8 items-center justify-center rounded-lg text-text-muted hover:bg-white/5 hover:text-text-primary"
-                aria-label="Fechar lead"
-                @click="closeLead"
-              >
-                <X :size="16" />
-              </button>
-            </div>
-
-            <label class="mt-4 flex flex-col gap-1.5 text-xs text-text-muted">
-              Próximo contato
-              <input
-                v-model="contactDraft"
-                type="date"
-                class="h-10 rounded-xl border border-white/10 bg-board-elevated px-3 text-sm text-text-primary outline-none focus:border-accent/60"
-                @change="saveNextContact"
-              />
-              <span class="text-[11px]">
-                Sem data ou atrasado, o lead sobe no topo da coluna.
-              </span>
-            </label>
-
-            <label class="mt-4 flex flex-col gap-1.5 text-xs text-text-muted">
-              Observação
-              <textarea
-                v-model="notesDraft"
-                rows="5"
-                class="w-full resize-y rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary outline-none focus:border-accent/60"
-                placeholder="O que foi combinado com este lead"
-                @input="notesStatus = 'idle'"
-                @blur="saveLeadNotes"
-              />
-              <span class="text-[11px]">
-                {{
-                  notesStatus === 'saving'
-                    ? 'Salvando…'
-                    : notesStatus === 'saved'
-                      ? 'Observação salva'
-                      : 'Salva ao sair do campo ou ao fechar'
-                }}
-              </span>
-            </label>
-
-            <div class="mt-4 min-h-0 flex-1 overflow-y-auto">
-              <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                Histórico
-              </p>
-              <p
-                v-if="store.leadEvents.length === 0"
-                class="mt-2 text-xs text-text-muted"
-              >
-                Nenhuma movimentação registrada.
-              </p>
-              <ol v-else class="mt-2 space-y-2">
-                <li
-                  v-for="event in store.leadEvents"
-                  :key="event.id"
-                  class="rounded-xl border border-white/10 bg-board-elevated/70 px-3 py-2"
+            <aside
+              class="flex h-dvh w-full max-w-md flex-col border-l border-white/10 bg-board shadow-2xl"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="lead-panel-title"
+            >
+              <div class="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 px-4 py-3">
+                <div class="min-w-0">
+                  <p id="lead-panel-title" class="truncate text-base font-semibold text-text-primary">
+                    {{ cardTitle(selectedLead) }}
+                  </p>
+                  <p class="font-mono text-xs text-text-muted">
+                    {{ selectedLead.playerId }}
+                    <span v-if="stageName(selectedLead.stageId)">
+                      · {{ stageName(selectedLead.stageId) }}
+                    </span>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  class="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-text-muted hover:bg-white/5 hover:text-text-primary"
+                  aria-label="Fechar lead"
+                  @click="closeLead"
                 >
-                  <p class="text-sm text-text-primary">{{ eventLabel(event) }}</p>
-                  <p class="text-[11px] text-text-muted">
-                    {{ formatDateTime(event.occurredAt) }}
+                  <X :size="16" />
+                </button>
+              </div>
+
+              <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
+                <label class="flex flex-col gap-1.5 text-xs text-text-muted">
+                  Próximo contato
+                  <input
+                    v-model="contactDraft"
+                    type="date"
+                    class="h-10 w-full rounded-xl border border-white/10 bg-board-elevated px-3 text-sm text-text-primary outline-none focus:border-accent/60"
+                    @change="saveNextContact"
+                  />
+                  <span class="text-[11px]">
+                    Sem data ou atrasado, o lead sobe no topo da coluna.
+                  </span>
+                </label>
+
+                <label class="flex flex-col gap-1.5 text-xs text-text-muted">
+                  Observação
+                  <textarea
+                    v-model="notesDraft"
+                    rows="4"
+                    class="w-full resize-y rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary outline-none focus:border-accent/60"
+                    placeholder="O que foi combinado com este lead"
+                    @input="notesStatus = 'idle'"
+                    @blur="saveLeadNotes"
+                  />
+                  <span class="text-[11px]">
+                    {{
+                      notesStatus === 'saving'
+                        ? 'Salvando…'
+                        : notesStatus === 'saved'
+                          ? 'Observação salva'
+                          : 'Salva ao sair do campo ou ao fechar'
+                    }}
+                  </span>
+                </label>
+
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                    Histórico
                   </p>
                   <p
-                    v-if="event.eventType === 'note' && event.note"
-                    class="mt-1 line-clamp-3 text-xs text-text-secondary"
+                    v-if="store.leadEvents.length === 0"
+                    class="mt-2 text-xs text-text-muted"
                   >
-                    {{ event.note }}
+                    Nenhuma movimentação registrada.
                   </p>
-                </li>
-              </ol>
-            </div>
+                  <ol v-else class="mt-2 space-y-2">
+                    <li
+                      v-for="event in store.leadEvents"
+                      :key="event.id"
+                      class="rounded-xl border border-white/10 bg-board-elevated/70 px-3 py-2"
+                    >
+                      <p class="text-sm text-text-primary">{{ eventLabel(event) }}</p>
+                      <p class="text-[11px] text-text-muted">
+                        {{ formatDateTime(event.occurredAt) }}
+                      </p>
+                      <p
+                        v-if="event.eventType === 'note' && event.note"
+                        class="mt-1 text-xs text-text-secondary"
+                      >
+                        {{ event.note }}
+                      </p>
+                    </li>
+                  </ol>
+                </div>
+              </div>
 
-            <button
-              type="button"
-              class="mt-4 inline-flex h-9 items-center justify-center rounded-xl border border-white/10 bg-board-elevated px-3 text-sm text-text-primary hover:bg-surface"
-              @click="saveLeadNotes(); player360.open(selectedLead.playerId)"
-            >
-              Abrir ficha do jogador
-            </button>
-          </aside>
-        </div>
+              <div class="shrink-0 border-t border-white/10 px-4 py-3">
+                <button
+                  type="button"
+                  class="inline-flex h-9 w-full items-center justify-center rounded-xl border border-white/10 bg-board-elevated px-3 text-sm text-text-primary hover:bg-surface"
+                  @click="saveLeadNotes(); player360.open(selectedLead.playerId)"
+                >
+                  Abrir ficha do jogador
+                </button>
+              </div>
+            </aside>
+          </div>
+        </Teleport>
       </template>
 
       <template v-else>
