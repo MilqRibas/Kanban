@@ -2,18 +2,22 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import {
   addPipelineStage,
+  addPlayerToPipeline,
   createPipeline,
   deletePipeline,
   listPipelines,
+  listPipelineLeadEvents,
   loadPipelineBoard,
   movePipelineEntry,
   renamePipelineStage,
   reorderPipelineStages,
   syncPipelineFromSegment,
   updatePipeline,
+  updatePipelineEntryNextContact,
+  updatePipelineEntryNotes,
 } from '../services/pipelinesApi'
 import { listSegments } from '../services/segmentsApi'
-import type { Pipeline, PipelineBoard, PipelineEntry } from '../types/pipelines'
+import type { Pipeline, PipelineBoard, PipelineEntry, PipelineEvent } from '../types/pipelines'
 import type { SegmentDefinition } from '../types/segments'
 import { useAuthStore } from './auth'
 import { useToastStore } from './toast'
@@ -21,6 +25,7 @@ import { useToastStore } from './toast'
 export const usePipelinesStore = defineStore('pipelines', () => {
   const rows = ref<Pipeline[]>([])
   const board = ref<PipelineBoard | null>(null)
+  const leadEvents = ref<PipelineEvent[]>([])
   const loading = ref(false)
   const boardLoading = ref(false)
   const ready = ref(false)
@@ -136,9 +141,75 @@ export const usePipelinesStore = defineStore('pipelines', () => {
   function applyColumnEntries(stageId: string, entries: PipelineEntry[]) {
     const current = board.value
     if (!current) return
-    const other = current.entries.filter((e) => e.stageId !== stageId)
-    const next = entries.map((e) => ({ ...e, stageId }))
-    current.entries = [...other, ...next]
+    const incomingIds = new Set(entries.map((entry) => entry.id))
+    const kept = current.entries.filter(
+      (entry) => entry.stageId !== stageId && !incomingIds.has(entry.id),
+    )
+    const seen = new Set<string>()
+    const next: PipelineEntry[] = []
+    for (const entry of entries) {
+      if (seen.has(entry.id)) continue
+      seen.add(entry.id)
+      next.push({ ...entry, stageId })
+    }
+    current.entries = [...kept, ...next]
+  }
+
+  async function saveEntryNotes(entryId: string, notes: string) {
+    const entry = board.value?.entries.find((item) => item.id === entryId)
+    if (!entry) return
+    const next = notes.trim() || null
+    if ((entry.notes ?? null) === next) return
+    const prev = entry.notes ?? null
+    entry.notes = next
+    try {
+      const auth = useAuthStore()
+      await updatePipelineEntryNotes({
+        entryId,
+        pipelineId: entry.pipelineId,
+        playerId: entry.playerId,
+        notes,
+        actorId: auth.memberId ?? null,
+      })
+      await loadLeadEvents(entry.pipelineId, entry.playerId)
+    } catch (err) {
+      entry.notes = prev
+      const message =
+        err instanceof Error ? err.message : 'Falha ao salvar a observação.'
+      useToastStore().error(message)
+    }
+  }
+
+  async function saveNextContact(entryId: string, nextContactAt: string | null) {
+    const entry = board.value?.entries.find((item) => item.id === entryId)
+    if (!entry) return
+    const next = nextContactAt || null
+    if ((entry.nextContactAt ?? null) === next) return
+    const prev = entry.nextContactAt ?? null
+    entry.nextContactAt = next
+    try {
+      await updatePipelineEntryNextContact({ entryId, nextContactAt: next })
+    } catch (err) {
+      entry.nextContactAt = prev
+      const message =
+        err instanceof Error ? err.message : 'Falha ao salvar o próximo contato.'
+      useToastStore().error(message)
+    }
+  }
+
+  async function loadLeadEvents(pipelineId: string, playerId: string) {
+    leadEvents.value = await listPipelineLeadEvents(pipelineId, playerId)
+  }
+
+  async function addPlayerFromBase(pipelineId: string, playerId: string) {
+    const auth = useAuthStore()
+    const result = await addPlayerToPipeline({
+      pipelineId,
+      playerId,
+      actorId: auth.memberId ?? null,
+    })
+    if (board.value?.pipeline.id === pipelineId) await loadBoard(pipelineId)
+    return result
   }
 
   async function syncFromSegment(definition?: SegmentDefinition) {
@@ -260,11 +331,13 @@ export const usePipelinesStore = defineStore('pipelines', () => {
 
   function closeBoard() {
     board.value = null
+    leadEvents.value = []
   }
 
   function reset() {
     rows.value = []
     board.value = null
+    leadEvents.value = []
     loading.value = false
     boardLoading.value = false
     ready.value = false
@@ -275,6 +348,7 @@ export const usePipelinesStore = defineStore('pipelines', () => {
   return {
     rows,
     board,
+    leadEvents,
     loading,
     boardLoading,
     ready,
@@ -287,6 +361,10 @@ export const usePipelinesStore = defineStore('pipelines', () => {
     createFromSegment,
     moveCard,
     applyColumnEntries,
+    saveEntryNotes,
+    saveNextContact,
+    loadLeadEvents,
+    addPlayerFromBase,
     syncFromSegment,
     addStage,
     renameStage,

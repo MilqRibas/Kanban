@@ -30,6 +30,8 @@ export type PipelineEntry = {
   enteredAt: string
   leftAt: string | null
   stillMatchesSegment: boolean
+  notes: string | null
+  nextContactAt: string | null
   nickname?: string | null
   name?: string | null
   incentiveAvailable?: number | null
@@ -41,4 +43,14 @@ export type PipelineBoard = {
   entries: PipelineEntry[]
 }
 
-export type PipelineEventType = 'entered' | 'moved' | 'left' | 'sync'
+export type PipelineEventType = 'entered' | 'moved' | 'left' | 'sync' | 'note'
+
+export type PipelineEvent = {
+  id: string
+  playerId: string
+  eventType: string
+  fromStageId: string | null
+  toStageId: string | null
+  occurredAt: string
+  note: string | null
+}

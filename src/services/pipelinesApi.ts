@@ -3,6 +3,7 @@ import type {
   Pipeline,
   PipelineBoard,
   PipelineEntry,
+  PipelineEvent,
   PipelineStage,
 } from '../types/pipelines'
 import type { SegmentDefinition } from '../types/segments'
@@ -58,6 +59,8 @@ function mapEntry(raw: Record<string, unknown>): PipelineEntry {
     enteredAt: String(raw.entered_at ?? ''),
     leftAt: asString(raw.left_at),
     stillMatchesSegment: Boolean(raw.still_matches_segment ?? true),
+    notes: asString(raw.notes),
+    nextContactAt: asString(raw.next_contact_at)?.slice(0, 10) ?? null,
   }
 }
 
@@ -195,7 +198,7 @@ export async function loadPipelineBoard(pipelineId: string): Promise<PipelineBoa
   const { data: entriesRaw, error: entryErr } = await supabase
     .from('crm_pipeline_entries')
     .select(
-      'id, board_id, pipeline_id, stage_id, player_id, entered_at, left_at, still_matches_segment',
+      'id, board_id, pipeline_id, stage_id, player_id, entered_at, left_at, still_matches_segment, notes, next_contact_at',
     )
     .eq('pipeline_id', pipelineId)
     .is('left_at', null)
@@ -213,37 +216,62 @@ export async function loadPipelineBoard(pipelineId: string): Promise<PipelineBoa
 
   const stages = (stagesRaw ?? []).map((s) => mapStage(s as Record<string, unknown>))
   const entries = (entriesRaw ?? []).map((e) => mapEntry(e as Record<string, unknown>))
+  await enrichPipelineEntries(entries)
 
-  // Enrich entries with nick / incentive from preview facts when possible (lightweight list RPC)
-  if (entries.length) {
-    const playerIds = entries.map((e) => e.playerId)
-    const { data: listData } = await supabase.rpc('crm_list_players', {
-      p_board_id: BOARD_ID,
-      p_search: null,
-      p_campaign_filter: 'all',
-      p_sort: 'player_id_asc',
-      p_limit: Math.min(Math.max(playerIds.length, 50), 500),
-      p_offset: 0,
-      p_incentive_available_filter: 'all',
-      p_incentive_received_filter: 'all',
-    })
-    const payload = (listData ?? {}) as Record<string, unknown>
-    const rows = Array.isArray(payload.rows) ? payload.rows : []
-    const byId = new Map<string, Record<string, unknown>>()
-    for (const row of rows) {
-      const r = row as Record<string, unknown>
-      byId.set(String(r.playerId ?? ''), r)
-    }
-    for (const entry of entries) {
-      const r = byId.get(entry.playerId)
-      if (!r) continue
-      entry.nickname = asString(r.nickname)
-      entry.name = asString(r.name)
-      entry.incentiveAvailable = asNumber(r.incentivoDisponivel)
+  return { pipeline, stages, entries }
+}
+
+async function enrichPipelineEntries(entries: PipelineEntry[]): Promise<void> {
+  const playerIds = [...new Set(entries.map((entry) => entry.playerId).filter(Boolean))]
+  if (!playerIds.length) return
+
+  const names = new Map<string, { name: string | null; nickname: string | null }>()
+  for (let i = 0; i < playerIds.length; i += 100) {
+    const chunk = playerIds.slice(i, i + 100)
+    const { data } = await supabase
+      .from('campaign_players')
+      .select('player_id, name, nickname')
+      .eq('board_id', BOARD_ID)
+      .in('player_id', chunk)
+    for (const row of data ?? []) {
+      const raw = row as Record<string, unknown>
+      names.set(String(raw.player_id ?? ''), {
+        name: asString(raw.name),
+        nickname: asString(raw.nickname),
+      })
     }
   }
 
-  return { pipeline, stages, entries }
+  const missing = playerIds.filter((id) => {
+    const known = names.get(id)
+    return !known?.nickname && !known?.name
+  })
+  for (let i = 0; i < missing.length; i += 50) {
+    const chunk = missing.slice(i, i + 50)
+    const { data } = await supabase
+      .from('campaign_player_periods')
+      .select('player_id, player_name, nickname, period_start')
+      .eq('board_id', BOARD_ID)
+      .in('player_id', chunk)
+      .order('period_start', { ascending: false })
+      .limit(chunk.length * 4)
+    for (const row of data ?? []) {
+      const raw = row as Record<string, unknown>
+      const id = String(raw.player_id ?? '')
+      if (names.get(id)?.nickname || names.get(id)?.name) continue
+      names.set(id, {
+        name: asString(raw.player_name),
+        nickname: asString(raw.nickname),
+      })
+    }
+  }
+
+  for (const entry of entries) {
+    const known = names.get(entry.playerId)
+    if (!known) continue
+    entry.name = known.name
+    entry.nickname = known.nickname
+  }
 }
 
 export async function movePipelineEntry(input: {
@@ -276,6 +304,132 @@ export async function movePipelineEntry(input: {
     meta: {},
   })
   if (evtErr) throw new Error(evtErr.message)
+}
+
+export async function updatePipelineEntryNotes(input: {
+  entryId: string
+  pipelineId: string
+  playerId: string
+  notes: string
+  actorId?: string | null
+}): Promise<void> {
+  const notes = input.notes.trim() || null
+  const { error } = await supabase
+    .from('crm_pipeline_entries')
+    .update({ notes })
+    .eq('id', input.entryId)
+    .eq('board_id', BOARD_ID)
+  if (error) throw new Error(error.message)
+
+  const { error: evtErr } = await supabase.from('crm_pipeline_events').insert({
+    id: newId('pevt'),
+    board_id: BOARD_ID,
+    pipeline_id: input.pipelineId,
+    player_id: input.playerId,
+    event_type: 'note',
+    from_stage_id: null,
+    to_stage_id: null,
+    actor_id: input.actorId ?? null,
+    occurred_at: new Date().toISOString(),
+    meta: { notes },
+  })
+  if (evtErr) throw new Error(evtErr.message)
+}
+
+export async function updatePipelineEntryNextContact(input: {
+  entryId: string
+  nextContactAt: string | null
+}): Promise<void> {
+  const { error } = await supabase
+    .from('crm_pipeline_entries')
+    .update({ next_contact_at: input.nextContactAt })
+    .eq('id', input.entryId)
+    .eq('board_id', BOARD_ID)
+  if (error) throw new Error(error.message)
+}
+
+export async function listPipelineLeadEvents(
+  pipelineId: string,
+  playerId: string,
+): Promise<PipelineEvent[]> {
+  const { data, error } = await supabase
+    .from('crm_pipeline_events')
+    .select('id, player_id, event_type, from_stage_id, to_stage_id, occurred_at, meta')
+    .eq('board_id', BOARD_ID)
+    .eq('pipeline_id', pipelineId)
+    .eq('player_id', playerId)
+    .order('occurred_at', { ascending: false })
+    .limit(40)
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((row) => {
+    const raw = row as Record<string, unknown>
+    const meta = (raw.meta ?? {}) as Record<string, unknown>
+    return {
+      id: String(raw.id ?? ''),
+      playerId: String(raw.player_id ?? ''),
+      eventType: String(raw.event_type ?? ''),
+      fromStageId: asString(raw.from_stage_id),
+      toStageId: asString(raw.to_stage_id),
+      occurredAt: String(raw.occurred_at ?? ''),
+      note: asString(meta.notes),
+    }
+  })
+}
+
+export async function addPlayerToPipeline(input: {
+  pipelineId: string
+  playerId: string
+  actorId?: string | null
+}): Promise<'added' | 'exists'> {
+  const { data: existing, error: existingErr } = await supabase
+    .from('crm_pipeline_entries')
+    .select('id')
+    .eq('board_id', BOARD_ID)
+    .eq('pipeline_id', input.pipelineId)
+    .eq('player_id', input.playerId)
+    .is('left_at', null)
+    .maybeSingle()
+  if (existingErr) throw new Error(existingErr.message)
+  if (existing) return 'exists'
+
+  const { data: stage, error: stageErr } = await supabase
+    .from('crm_pipeline_stages')
+    .select('id')
+    .eq('pipeline_id', input.pipelineId)
+    .order('position', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  if (stageErr) throw new Error(stageErr.message)
+  const stageId = asString((stage as Record<string, unknown> | null)?.id)
+  if (!stageId) throw new Error('Pipeline sem estágios.')
+
+  const now = new Date().toISOString()
+  const { error } = await supabase.from('crm_pipeline_entries').insert({
+    id: newId('pent'),
+    board_id: BOARD_ID,
+    pipeline_id: input.pipelineId,
+    stage_id: stageId,
+    player_id: input.playerId,
+    entered_at: now,
+    left_at: null,
+    still_matches_segment: true,
+  })
+  if (error) throw new Error(error.message)
+
+  const { error: evtErr } = await supabase.from('crm_pipeline_events').insert({
+    id: newId('pevt'),
+    board_id: BOARD_ID,
+    pipeline_id: input.pipelineId,
+    player_id: input.playerId,
+    event_type: 'entered',
+    from_stage_id: null,
+    to_stage_id: stageId,
+    actor_id: input.actorId ?? null,
+    occurred_at: now,
+    meta: { source: 'player_base' },
+  })
+  if (evtErr) throw new Error(evtErr.message)
+  return 'added'
 }
 
 export async function addPipelineStage(

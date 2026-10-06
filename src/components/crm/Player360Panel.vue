@@ -6,6 +6,7 @@ import { usePlayer360 } from '../../composables/usePlayer360'
 import { formatCurrency, formatDate, formatDateTime, formatNumber, formatPercent } from '../../utils/campaignFormat'
 import { buildCampaignPlayerAlerts } from '../../utils/campaignPlayerAlerts'
 import { useCampaignsStore } from '../../stores/campaigns'
+import { GAME_TYPE_LABELS } from '../../utils/campaignMetricsBridge'
 import { crmDisplayName } from '../../utils/crmPlayerIdentity'
 import {
   INCENTIVE_CLASSIFICATIONS,
@@ -43,6 +44,11 @@ const editForm = reactive({
   purpose: '',
   notes: '',
 })
+
+function gameTypeLabel(code: string) {
+  const key = (code || 'OUTRO').toUpperCase()
+  return GAME_TYPE_LABELS[key] ?? code
+}
 
 function moneyClass(value: number): string {
   return value < 0 ? 'text-rose-300' : 'text-text-primary'
@@ -493,7 +499,7 @@ watch(
                 :key="g.gameType"
                 class="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2 text-sm"
               >
-                <span class="text-text-primary">{{ g.gameType }}</span>
+                <span class="text-text-primary">{{ gameTypeLabel(g.gameType) }}</span>
                 <span class="tabular-nums text-text-secondary">
                   {{ formatCurrency(g.rake) }}
                   <span v-if="g.hands != null" class="text-text-muted">

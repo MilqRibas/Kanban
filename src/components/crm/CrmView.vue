@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useCrmStore } from '../../stores/crm'
+import { usePipelinesStore } from '../../stores/pipelines'
+import { useToastStore } from '../../stores/toast'
 import { useDebouncedValue } from '../../composables/useDebouncedValue'
 import { usePlayer360 } from '../../composables/usePlayer360'
 import { formatCurrency, formatDate } from '../../utils/campaignFormat'
@@ -21,12 +23,18 @@ withDefaults(
 )
 
 const crm = useCrmStore()
+const pipelines = usePipelinesStore()
+const toast = useToastStore()
 const player360 = usePlayer360()
 const searchInput = ref('')
 const debouncedSearch = useDebouncedValue(() => searchInput.value, 250)
+const addPlayerId = ref<string | null>(null)
+const addPipelineId = ref('')
+const adding = ref(false)
 
 onMounted(() => {
   void crm.init()
+  if (!pipelines.ready) void pipelines.init()
 })
 
 watch(debouncedSearch, (value) => {
@@ -79,6 +87,29 @@ async function onSortChange(event: Event) {
   const value = (event.target as HTMLSelectElement).value as CrmPlayerSort
   await crm.setSort(value)
 }
+
+function openAdd(playerId: string) {
+  addPlayerId.value = playerId
+  addPipelineId.value = pipelines.rows[0]?.id ?? ''
+}
+
+async function confirmAdd() {
+  if (!addPlayerId.value || !addPipelineId.value || adding.value) return
+  adding.value = true
+  try {
+    const result = await pipelines.addPlayerFromBase(addPipelineId.value, addPlayerId.value)
+    if (result === 'exists') {
+      toast.info('Este jogador já está nesse pipeline.')
+    } else {
+      toast.success('Jogador adicionado ao primeiro estágio do pipeline.')
+    }
+    addPlayerId.value = null
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : 'Falha ao adicionar ao pipeline.')
+  } finally {
+    adding.value = false
+  }
+}
 </script>
 
 <template>
@@ -102,70 +133,92 @@ async function onSortChange(event: Event) {
     </header>
 
     <section class="space-y-3">
-      <div class="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
-        <input
-          v-model="searchInput"
-          type="search"
-          placeholder="Buscar Player ID, nick, nome ou agente…"
-          class="w-full min-w-[12rem] flex-1 rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary outline-none ring-accent/40 placeholder:text-text-muted focus:ring-2"
-        />
-        <select
-          class="rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary"
-          :value="crm.clubFilter"
-          @change="onClubChange"
-        >
-          <option value="all">Clube: todos</option>
-          <option value="sx_club">SX Club</option>
-          <option value="xtreme_pro">Xtreme Pro</option>
-        </select>
-        <select
-          class="rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary"
-          :value="crm.campaignFilter"
-          @change="onFilterChange"
-        >
-          <option value="all">Todas as origens</option>
-          <option value="with_campaign">Com campanha</option>
-          <option value="without_campaign">Sem campanha (Base Geral)</option>
-        </select>
-        <select
-          class="rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary"
-          :value="crm.incentiveAvailableFilter"
-          @change="onAvailableFilterChange"
-        >
-          <option value="all">Incentivo disponível: todos</option>
-          <option value="positive">Disponível &gt; 0</option>
-          <option value="zero">Disponível = 0</option>
-          <option value="negative">Disponível &lt; 0</option>
-        </select>
-        <select
-          class="rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary"
-          :value="crm.incentiveReceivedFilter"
-          @change="onReceivedFilterChange"
-        >
-          <option value="all">Incentivo recebido: todos</option>
-          <option value="received">Já recebeu MKT GT</option>
-          <option value="never">Nunca recebeu</option>
-          <option value="pending_classification">Classificação pendente</option>
-        </select>
-        <select
-          class="rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary"
-          :value="crm.sort"
-          @change="onSortChange"
-        >
-          <option value="last_activity_desc">Última atividade ↓</option>
-          <option value="last_activity_asc">Última atividade ↑</option>
-          <option value="rake_desc">Rake ↓</option>
-          <option value="rake_asc">Rake ↑</option>
-          <option value="limite_desc">Limite de Incentivo ↓</option>
-          <option value="limite_asc">Limite de Incentivo ↑</option>
-          <option value="disponivel_desc">Incentivo Disponível ↓</option>
-          <option value="disponivel_asc">Incentivo Disponível ↑</option>
-          <option value="enviado_desc">Incentivo Enviado ↓</option>
-          <option value="enviado_asc">Incentivo Enviado ↑</option>
-          <option value="player_id_asc">Player ID A–Z</option>
-          <option value="player_id_desc">Player ID Z–A</option>
-        </select>
+      <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        <label class="flex flex-col gap-1 text-[11px] text-text-muted sm:col-span-2 xl:col-span-3">
+          Busca
+          <input
+            v-model="searchInput"
+            type="search"
+            placeholder="Player ID, nick, nome ou agente"
+            aria-label="Buscar jogador"
+            class="w-full rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary outline-none ring-accent/40 placeholder:text-text-muted focus:ring-2"
+          />
+        </label>
+        <label class="flex flex-col gap-1 text-[11px] text-text-muted">
+          Clube
+          <select
+            class="rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary"
+            :value="crm.clubFilter"
+            @change="onClubChange"
+          >
+            <option value="all">Todos</option>
+            <option value="sx_club">SX Club</option>
+            <option value="xtreme_pro">Xtreme Pro</option>
+          </select>
+        </label>
+        <label class="flex flex-col gap-1 text-[11px] text-text-muted">
+          Origem
+          <select
+            class="rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary"
+            :value="crm.campaignFilter"
+            @change="onFilterChange"
+          >
+            <option value="all">Todas</option>
+            <option value="with_campaign">Com campanha</option>
+            <option value="without_campaign">Sem campanha</option>
+          </select>
+        </label>
+        <label class="flex flex-col gap-1 text-[11px] text-text-muted">
+          Incentivo disponível
+          <select
+            class="rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary"
+            :value="crm.incentiveAvailableFilter"
+            @change="onAvailableFilterChange"
+          >
+            <option value="all">Todos</option>
+            <option value="positive">Maior que zero</option>
+            <option value="zero">Igual a zero</option>
+            <option value="negative">Menor que zero</option>
+          </select>
+        </label>
+        <label class="flex flex-col gap-1 text-[11px] text-text-muted">
+          Incentivo recebido
+          <select
+            class="rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary"
+            :value="crm.incentiveReceivedFilter"
+            @change="onReceivedFilterChange"
+          >
+            <option value="all">Todos</option>
+            <option value="received">Já recebeu</option>
+            <option value="never">Nunca recebeu</option>
+            <option value="pending_classification">Classificação pendente</option>
+          </select>
+        </label>
+        <label class="flex flex-col gap-1 text-[11px] text-text-muted">
+          Ordenar por
+          <select
+            class="rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary"
+            :value="crm.sort"
+            @change="onSortChange"
+          >
+            <option value="last_activity_desc">Última atividade, mais recente</option>
+            <option value="last_activity_asc">Última atividade, mais antiga</option>
+            <option value="rake_desc">Maior rake</option>
+            <option value="rake_asc">Menor rake</option>
+            <option value="limite_desc">Maior limite de incentivo</option>
+            <option value="limite_asc">Menor limite de incentivo</option>
+            <option value="disponivel_desc">Maior incentivo disponível</option>
+            <option value="disponivel_asc">Menor incentivo disponível</option>
+            <option value="enviado_desc">Maior incentivo enviado</option>
+            <option value="enviado_asc">Menor incentivo enviado</option>
+            <option value="player_id_asc">Player ID A–Z</option>
+            <option value="player_id_desc">Player ID Z–A</option>
+          </select>
+        </label>
       </div>
+      <p class="text-[11px] text-text-muted">
+        Clique em um jogador para abrir a ficha. Use “No pipeline” para colocá-lo num fluxo, mesmo fora do segmento.
+      </p>
 
       <div class="overflow-hidden rounded-2xl border border-white/10 bg-board-elevated/50">
         <div class="overflow-x-auto">
@@ -181,16 +234,17 @@ async function onSortChange(event: Event) {
                 <th class="px-3 py-2 font-semibold text-right">Incentivo Disponível</th>
                 <th class="px-3 py-2 font-semibold">Última atividade</th>
                 <th class="px-3 py-2 font-semibold">Origem</th>
+                <th class="px-3 py-2 font-semibold">Pipeline</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="crm.loading">
-                <td colspan="9" class="px-3 py-8 text-center text-text-muted">
+                <td colspan="10" class="px-3 py-8 text-center text-text-muted">
                   Carregando jogadores…
                 </td>
               </tr>
               <tr v-else-if="crm.rows.length === 0">
-                <td colspan="9" class="px-3 py-8 text-center text-text-muted">
+                <td colspan="10" class="px-3 py-8 text-center text-text-muted">
                   Nenhum Player ID encontrado com os filtros atuais.
                 </td>
               </tr>
@@ -199,7 +253,9 @@ async function onSortChange(event: Event) {
                 :key="row.playerId"
                 class="cursor-pointer border-t border-white/5 transition-colors hover:bg-white/5"
                 :class="idx % 2 === 1 ? 'bg-white/[0.02]' : ''"
+                tabindex="0"
                 @click="player360.open(row.playerId)"
+                @keydown.enter="player360.open(row.playerId)"
               >
                 <td class="px-3 py-2 font-mono text-xs text-accent">{{ row.playerId }}</td>
                 <td class="px-3 py-2 text-text-primary">{{ displayName(row) }}</td>
@@ -240,6 +296,15 @@ async function onSortChange(event: Event) {
                     {{ row.originLabel }}
                   </span>
                 </td>
+                <td class="px-3 py-2" @click.stop @keydown.enter.stop>
+                  <button
+                    type="button"
+                    class="rounded-lg border border-white/10 px-2 py-1 text-[11px] font-medium text-text-primary hover:bg-white/5"
+                    @click.stop="openAdd(row.playerId)"
+                  >
+                    No pipeline
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -273,5 +338,58 @@ async function onSortChange(event: Event) {
         </div>
       </div>
     </section>
+
+    <div
+      v-if="addPlayerId"
+      class="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4"
+      role="presentation"
+      @click.self="addPlayerId = null"
+    >
+      <div
+        class="w-full max-w-sm space-y-3 rounded-2xl border border-white/10 bg-board p-4 shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-pipeline-title"
+      >
+        <h3 id="add-pipeline-title" class="text-sm font-semibold text-text-primary">
+          Adicionar ao pipeline
+        </h3>
+        <p class="font-mono text-xs text-text-muted">{{ addPlayerId }}</p>
+        <label class="block text-xs text-text-muted">
+          Pipeline
+          <select
+            v-model="addPipelineId"
+            class="mt-1 h-10 w-full rounded-xl border border-white/10 bg-board-elevated px-3 text-sm text-text-primary"
+          >
+            <option v-if="pipelines.rows.length === 0" value="" disabled>
+              Nenhum pipeline
+            </option>
+            <option v-for="pipe in pipelines.rows" :key="pipe.id" :value="pipe.id">
+              {{ pipe.name }}
+            </option>
+          </select>
+        </label>
+        <p class="text-[11px] text-text-muted">
+          O jogador entra no primeiro estágio, mesmo que esteja fora do segmento.
+        </p>
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            class="h-9 rounded-xl border border-white/10 px-3 text-sm text-text-secondary hover:bg-white/5"
+            @click="addPlayerId = null"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            class="h-9 rounded-xl bg-accent px-3 text-sm font-semibold text-board disabled:opacity-40"
+            :disabled="!addPipelineId || adding"
+            @click="confirmAdd"
+          >
+            {{ adding ? 'Adicionando…' : 'Adicionar' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

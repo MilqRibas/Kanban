@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   ArrowLeft,
   Columns3,
@@ -9,14 +9,20 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  X,
 } from '@lucide/vue'
 import draggable from 'vuedraggable'
 import { usePipelinesStore } from '../../stores/pipelines'
 import { useSegmentsStore } from '../../stores/segments'
 import { useCrmStore } from '../../stores/crm'
 import { usePlayer360 } from '../../composables/usePlayer360'
-import { formatCurrency, formatDate } from '../../utils/campaignFormat'
-import type { PipelineEntry, PipelineStage } from '../../types/pipelines'
+import { formatDate, formatDateTime } from '../../utils/campaignFormat'
+import {
+  compareLeadsByNextContact,
+  formatIsoDay,
+  nextContactRank,
+} from '../../utils/pipelineLeads'
+import type { PipelineEntry, PipelineEvent, PipelineStage } from '../../types/pipelines'
 import CrmView from './CrmView.vue'
 
 type CrmInnerTab = 'pipelines' | 'players'
@@ -33,6 +39,54 @@ const createSegmentId = ref('')
 const newStageName = ref('')
 const renamingStageId = ref<string | null>(null)
 const renameDraft = ref('')
+const selectedLeadId = ref<string | null>(null)
+const notesDraft = ref('')
+const contactDraft = ref('')
+const notesStatus = ref<'idle' | 'saving' | 'saved'>('idle')
+const leadQuery = ref('')
+
+function openLead(entry: PipelineEntry) {
+  selectedLeadId.value = entry.id
+  notesDraft.value = entry.notes ?? ''
+  contactDraft.value = entry.nextContactAt ?? ''
+  notesStatus.value = 'idle'
+  void store.loadLeadEvents(entry.pipelineId, entry.playerId)
+}
+
+function closeLead() {
+  void saveLeadNotes()
+  selectedLeadId.value = null
+}
+
+async function saveLeadNotes() {
+  const lead = selectedLead.value
+  if (!lead) return
+  const next = notesDraft.value.trim()
+  if ((lead.notes ?? '') === next) return
+  notesStatus.value = 'saving'
+  await store.saveEntryNotes(lead.id, notesDraft.value)
+  notesStatus.value = 'saved'
+}
+
+async function saveNextContact() {
+  const lead = selectedLead.value
+  if (!lead) return
+  await store.saveNextContact(lead.id, contactDraft.value || null)
+}
+
+function onLeadKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || !selectedLeadId.value) return
+  event.preventDefault()
+  closeLead()
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onLeadKeydown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onLeadKeydown)
+})
 
 onMounted(async () => {
   await Promise.all([store.init(), segments.init()])
@@ -40,6 +94,10 @@ onMounted(async () => {
 })
 
 const board = computed(() => store.board)
+
+const selectedLead = computed(() =>
+  board.value?.entries.find((entry) => entry.id === selectedLeadId.value) ?? null,
+)
 
 const stagesModel = computed({
   get: (): PipelineStage[] => board.value?.stages ?? [],
@@ -52,18 +110,73 @@ function entriesForStage(stageId: string): PipelineEntry[] {
   return board.value?.entries.filter((e) => e.stageId === stageId) ?? []
 }
 
+function leadMatches(entry: PipelineEntry) {
+  const query = leadQuery.value.trim().toLowerCase()
+  if (!query) return true
+  return [entry.playerId, entry.nickname, entry.name, entry.notes].some((value) =>
+    (value ?? '').toLowerCase().includes(query),
+  )
+}
+
+function visibleEntries(stageId: string): PipelineEntry[] {
+  return entriesForStage(stageId)
+    .filter(leadMatches)
+    .slice()
+    .sort((a, b) => compareLeadsByNextContact(a, b))
+}
+
+function contactLabel(entry: PipelineEntry) {
+  if (!entry.nextContactAt) return 'Sem data'
+  const day = formatIsoDay(entry.nextContactAt)
+  return nextContactRank(entry.nextContactAt) === 0 ? `Atrasado ${day}` : day
+}
+
+function contactClass(entry: PipelineEntry) {
+  const rank = nextContactRank(entry.nextContactAt)
+  if (rank === 0) return 'text-rose-300'
+  if (rank === 1) return 'text-amber-200/90'
+  return 'text-text-secondary'
+}
+
+function eventLabel(event: PipelineEvent) {
+  const to = event.toStageId ? stageName(event.toStageId) : ''
+  const from = event.fromStageId ? stageName(event.fromStageId) : ''
+  if (event.eventType === 'moved') {
+    return from && to ? `${from} → ${to}` : 'Mudou de estágio'
+  }
+  if (event.eventType === 'entered') return to ? `Entrou em ${to}` : 'Entrou no pipeline'
+  if (event.eventType === 'note') return 'Observação salva'
+  if (event.eventType === 'left') return 'Saiu do pipeline'
+  return 'Atualização'
+}
+
+function cardTitle(entry: PipelineEntry) {
+  const name = (entry.nickname || entry.name || '').trim()
+  if (name && name !== entry.playerId) return name
+  return entry.playerId
+}
+
+function cardHasDistinctName(entry: PipelineEntry) {
+  return cardTitle(entry) !== entry.playerId
+}
+
+function stageName(stageId: string) {
+  return board.value?.stages.find((stage) => stage.id === stageId)?.name ?? ''
+}
+
 function onStageListUpdate(stageId: string, list: PipelineEntry[]) {
   const prevIds = new Set(entriesForStage(stageId).map((e) => e.id))
-  store.applyColumnEntries(stageId, list)
+  const hidden = entriesForStage(stageId).filter((entry) => !leadMatches(entry))
+  const merged = [
+    ...list,
+    ...hidden.filter((entry) => !list.some((item) => item.id === entry.id)),
+  ]
+  store.applyColumnEntries(stageId, merged)
   for (const entry of list) {
     if (!prevIds.has(entry.id)) {
       void store.moveCard(entry.id, stageId)
     }
   }
-}
-
-function cardLabel(entry: PipelineEntry) {
-  return entry.nickname || entry.name || entry.playerId
 }
 
 async function openCreate() {
@@ -96,6 +209,7 @@ function openBoard(id: string) {
 }
 
 function closeBoard() {
+  selectedLeadId.value = null
   store.closeBoard()
 }
 
@@ -137,6 +251,7 @@ async function onDeletePipeline(id: string, name: string) {
       <button
         type="button"
         role="tab"
+        :aria-selected="innerTab === 'pipelines'"
         class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
         :class="
           innerTab === 'pipelines'
@@ -151,6 +266,7 @@ async function onDeletePipeline(id: string, name: string) {
       <button
         type="button"
         role="tab"
+        :aria-selected="innerTab === 'players'"
         class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
         :class="
           innerTab === 'players'
@@ -187,18 +303,28 @@ async function onDeletePipeline(id: string, name: string) {
               </span>
               <span v-else-if="board.pipeline.segmentId">Segmento vinculado</span>
               <span v-else>Sem segmentação</span>
-              · {{ board.entries.length }} cards
+              · {{ board.entries.length }}
+              {{ board.entries.length === 1 ? 'lead' : 'leads' }}
             </p>
           </div>
-          <button
-            type="button"
-            class="inline-flex h-9 items-center gap-1.5 rounded-xl border border-white/10 bg-board-elevated px-3 text-sm text-text-primary hover:bg-surface disabled:opacity-50"
-            :disabled="!board.pipeline.segmentId || store.syncing"
-            @click="onSync"
-          >
-            <RefreshCw :size="14" :class="store.syncing ? 'animate-spin' : ''" />
-            Atualizar da segmentação
-          </button>
+          <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <input
+              v-model="leadQuery"
+              type="search"
+              placeholder="Buscar lead por nome, ID ou observação"
+              aria-label="Buscar lead"
+              class="h-9 w-full rounded-xl border border-white/10 bg-board-elevated px-3 text-sm text-text-primary outline-none focus:border-accent/60 sm:w-72"
+            />
+            <button
+              type="button"
+              class="inline-flex h-9 items-center gap-1.5 rounded-xl border border-white/10 bg-board-elevated px-3 text-sm text-text-primary hover:bg-surface disabled:opacity-50"
+              :disabled="!board.pipeline.segmentId || store.syncing"
+              @click="onSync"
+            >
+              <RefreshCw :size="14" :class="store.syncing ? 'animate-spin' : ''" />
+              Atualizar da segmentação
+            </button>
+          </div>
         </header>
 
         <div
@@ -210,6 +336,10 @@ async function onDeletePipeline(id: string, name: string) {
         </div>
 
         <div v-else class="space-y-2">
+          <p class="text-[11px] text-text-muted">
+            Arraste o ícone para mover o lead. Clique no card para abrir a observação.
+            A faixa abaixo só muda a ordem dos estágios.
+          </p>
           <div class="flex flex-wrap items-center gap-2">
             <draggable
               v-model="stagesModel"
@@ -272,49 +402,184 @@ async function onDeletePipeline(id: string, name: string) {
                   {{ stage.name }}
                 </button>
                 <span class="tabular-nums text-[10px] text-text-muted">
-                  {{ entriesForStage(stage.id).length }}
+                  {{ visibleEntries(stage.id).length }}
+                  <template v-if="leadQuery.trim()">
+                    / {{ entriesForStage(stage.id).length }}
+                  </template>
                 </span>
               </header>
 
               <draggable
-                :model-value="entriesForStage(stage.id)"
+                :model-value="visibleEntries(stage.id)"
                 item-key="id"
-                :group="{ name: 'crm-pipeline' }"
+                handle=".lead-handle"
+                :group="{ name: 'crm-pipeline', pull: true, put: true }"
                 :animation="150"
                 class="flex min-h-[8rem] flex-1 flex-col gap-1.5 p-2"
                 @update:model-value="(list: PipelineEntry[]) => onStageListUpdate(stage.id, list)"
               >
                 <template #item="{ element: entry }">
-                  <button
-                    type="button"
-                    class="w-full rounded-xl border border-white/10 bg-board-elevated/80 px-2.5 py-2 text-left transition-colors hover:border-accent/40 hover:bg-surface"
+                  <div
+                    class="flex overflow-hidden rounded-xl border border-white/10 bg-board-elevated/80 transition-colors hover:border-accent/40"
                     :class="!entry.stillMatchesSegment ? 'opacity-60' : ''"
-                    @click="player360.open(entry.playerId)"
                   >
-                    <p class="truncate text-sm font-medium text-text-primary">
-                      {{ cardLabel(entry) }}
-                    </p>
-                    <p class="font-mono text-[10px] text-text-muted">{{ entry.playerId }}</p>
-                    <p
-                      v-if="entry.incentiveAvailable != null"
-                      class="mt-1 text-[11px] tabular-nums"
-                      :class="
-                        entry.incentiveAvailable < 0 ? 'text-rose-300' : 'text-text-secondary'
-                      "
+                    <button
+                      type="button"
+                      class="lead-handle flex w-7 shrink-0 cursor-grab items-center justify-center text-text-muted hover:bg-white/5 hover:text-text-primary active:cursor-grabbing"
+                      aria-label="Arrastar lead"
                     >
-                      Disp. {{ formatCurrency(entry.incentiveAvailable) }}
-                    </p>
-                    <p
-                      v-if="!entry.stillMatchesSegment"
-                      class="mt-0.5 text-[10px] text-amber-300/90"
+                      <GripVertical :size="14" />
+                    </button>
+                    <button
+                      type="button"
+                      class="min-w-0 flex-1 px-2 py-2 text-left"
+                      @click="openLead(entry)"
                     >
-                      Fora do segmento
-                    </p>
-                  </button>
+                      <p class="truncate text-sm font-medium text-text-primary">
+                        {{ cardTitle(entry) }}
+                      </p>
+                      <p v-if="cardHasDistinctName(entry)" class="font-mono text-[10px] text-text-muted">
+                        {{ entry.playerId }}
+                      </p>
+                      <p class="mt-1 text-[11px] font-medium" :class="contactClass(entry)">
+                        {{ contactLabel(entry) }}
+                      </p>
+                      <p
+                        v-if="entry.notes"
+                        class="mt-1 line-clamp-2 text-[11px] text-text-secondary"
+                      >
+                        {{ entry.notes }}
+                      </p>
+                      <p
+                        v-if="!entry.stillMatchesSegment"
+                        class="mt-0.5 text-[10px] text-amber-300/90"
+                      >
+                        Fora do segmento
+                      </p>
+                    </button>
+                  </div>
                 </template>
               </draggable>
+              <p
+                v-if="visibleEntries(stage.id).length === 0"
+                class="px-3 pb-3 text-center text-[11px] text-text-muted"
+              >
+                {{
+                  leadQuery.trim()
+                    ? 'Nenhum lead com essa busca'
+                    : 'Arraste um lead para cá'
+                }}
+              </p>
             </section>
           </div>
+        </div>
+
+        <div
+          v-if="selectedLead"
+          class="fixed inset-0 z-40 flex justify-end bg-black/50"
+          role="presentation"
+          @click.self="closeLead"
+        >
+          <aside
+            class="flex h-full w-full max-w-md flex-col border-l border-white/10 bg-board p-4 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="lead-panel-title"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p id="lead-panel-title" class="truncate text-base font-semibold text-text-primary">
+                  {{ cardTitle(selectedLead) }}
+                </p>
+                <p class="font-mono text-xs text-text-muted">
+                  {{ selectedLead.playerId }}
+                  <span v-if="stageName(selectedLead.stageId)">
+                    · {{ stageName(selectedLead.stageId) }}
+                  </span>
+                </p>
+              </div>
+              <button
+                type="button"
+                class="inline-flex size-8 items-center justify-center rounded-lg text-text-muted hover:bg-white/5 hover:text-text-primary"
+                aria-label="Fechar lead"
+                @click="closeLead"
+              >
+                <X :size="16" />
+              </button>
+            </div>
+
+            <label class="mt-4 flex flex-col gap-1.5 text-xs text-text-muted">
+              Próximo contato
+              <input
+                v-model="contactDraft"
+                type="date"
+                class="h-10 rounded-xl border border-white/10 bg-board-elevated px-3 text-sm text-text-primary outline-none focus:border-accent/60"
+                @change="saveNextContact"
+              />
+              <span class="text-[11px]">
+                Sem data ou atrasado, o lead sobe no topo da coluna.
+              </span>
+            </label>
+
+            <label class="mt-4 flex flex-col gap-1.5 text-xs text-text-muted">
+              Observação
+              <textarea
+                v-model="notesDraft"
+                rows="5"
+                class="w-full resize-y rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary outline-none focus:border-accent/60"
+                placeholder="O que foi combinado com este lead"
+                @input="notesStatus = 'idle'"
+                @blur="saveLeadNotes"
+              />
+              <span class="text-[11px]">
+                {{
+                  notesStatus === 'saving'
+                    ? 'Salvando…'
+                    : notesStatus === 'saved'
+                      ? 'Observação salva'
+                      : 'Salva ao sair do campo ou ao fechar'
+                }}
+              </span>
+            </label>
+
+            <div class="mt-4 min-h-0 flex-1 overflow-y-auto">
+              <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                Histórico
+              </p>
+              <p
+                v-if="store.leadEvents.length === 0"
+                class="mt-2 text-xs text-text-muted"
+              >
+                Nenhuma movimentação registrada.
+              </p>
+              <ol v-else class="mt-2 space-y-2">
+                <li
+                  v-for="event in store.leadEvents"
+                  :key="event.id"
+                  class="rounded-xl border border-white/10 bg-board-elevated/70 px-3 py-2"
+                >
+                  <p class="text-sm text-text-primary">{{ eventLabel(event) }}</p>
+                  <p class="text-[11px] text-text-muted">
+                    {{ formatDateTime(event.occurredAt) }}
+                  </p>
+                  <p
+                    v-if="event.eventType === 'note' && event.note"
+                    class="mt-1 line-clamp-3 text-xs text-text-secondary"
+                  >
+                    {{ event.note }}
+                  </p>
+                </li>
+              </ol>
+            </div>
+
+            <button
+              type="button"
+              class="mt-4 inline-flex h-9 items-center justify-center rounded-xl border border-white/10 bg-board-elevated px-3 text-sm text-text-primary hover:bg-surface"
+              @click="saveLeadNotes(); player360.open(selectedLead.playerId)"
+            >
+              Abrir ficha do jogador
+            </button>
+          </aside>
         </div>
       </template>
 
