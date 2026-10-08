@@ -1,6 +1,45 @@
 import { safeDivide } from './campaignMetricsBridge'
 import { GTB2C_PLAYER_ID, isIncentiveTransaction } from './crmIncentiveEconomics'
 
+/** Depósito mínimo do B2C. R$ 10 conta. Abaixo disso não é depósito. */
+export const MIN_DEPOSIT_AMOUNT = 10
+
+type ChipMovement = {
+  amount?: number | null
+  chipsSendOut?: number | null
+  chipsClaimback?: number | null
+}
+
+function movementDirection(row: ChipMovement): 'send' | 'withdraw' | 'other' {
+  const send = Number(row.chipsSendOut) || 0
+  const claim = Number(row.chipsClaimback) || 0
+  if (send > 0 && claim === 0) return 'send'
+  if (claim !== 0 && send === 0) return 'withdraw'
+  return 'other'
+}
+
+/** Envio e retirada seguidos, do mesmo valor, abaixo do depósito mínimo: validação de ID. */
+export function isIdValidationPair(current: ChipMovement, neighbor: ChipMovement): boolean {
+  const amount = Math.abs(Number(current.amount) || 0)
+  const other = Math.abs(Number(neighbor.amount) || 0)
+  if (amount <= 0 || amount >= MIN_DEPOSIT_AMOUNT || amount !== other) return false
+  const a = movementDirection(current)
+  const b = movementDirection(neighbor)
+  return (a === 'send' && b === 'withdraw') || (a === 'withdraw' && b === 'send')
+}
+
+/** Depósito da segmentação: movimentação de depósito única, de pelo menos R$ 10. */
+export function countsAsPlayerDeposit(
+  row: ChipMovement & {
+    isDeposit: boolean
+    neighbors?: ChipMovement[]
+  },
+): boolean {
+  if (!row.isDeposit) return false
+  if ((row.neighbors ?? []).some((neighbor) => isIdValidationPair(row, neighbor))) return false
+  return Math.abs(Number(row.amount) || 0) >= MIN_DEPOSIT_AMOUNT
+}
+
 export type DepositTxn = {
   receiverPlayerId: string
   agentId: string | null

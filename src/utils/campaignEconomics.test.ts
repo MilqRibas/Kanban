@@ -10,7 +10,12 @@ import {
   toLiquidRake,
   LEAGUE_FEE_RATE,
 } from './campaignEconomics'
-import { classifyTransactionFlags, resolveHistoricalAgentId } from './campaignDepositMetrics'
+import {
+  classifyTransactionFlags,
+  countsAsPlayerDeposit,
+  isIdValidationPair,
+  resolveHistoricalAgentId,
+} from './campaignDepositMetrics'
 import { buildCampaignWeeklyMetrics } from './campaignWeeklyMetrics'
 
 describe('consolidated rake = taxa total + taxa spin', () => {
@@ -251,6 +256,23 @@ describe('transaction classification', () => {
     })
     expect(flags.isBonus).toBe(false)
     expect(flags.isDeposit).toBe(true)
+  })
+
+  it('R$ 10 is a deposit and a smaller unique send is not', () => {
+    expect(countsAsPlayerDeposit({ isDeposit: true, amount: 10, chipsSendOut: 10 })).toBe(true)
+    expect(countsAsPlayerDeposit({ isDeposit: true, amount: 5, chipsSendOut: 5 })).toBe(false)
+  })
+
+  it('sequential send and withdrawal below R$ 10 are an ID check', () => {
+    const send = { amount: 0.12, chipsSendOut: 0.12, chipsClaimback: 0 }
+    const withdraw = { amount: 0.12, chipsSendOut: 0, chipsClaimback: 0.12 }
+    expect(isIdValidationPair(send, withdraw)).toBe(true)
+    expect(
+      countsAsPlayerDeposit({ isDeposit: true, ...send, neighbors: [withdraw] }),
+    ).toBe(false)
+    expect(isIdValidationPair({ amount: 20, chipsSendOut: 20 }, { amount: 20, chipsClaimback: 20 })).toBe(
+      false,
+    )
   })
 
   it('bonus never counts as deposit', () => {
