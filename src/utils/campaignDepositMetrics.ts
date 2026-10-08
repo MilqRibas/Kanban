@@ -1,5 +1,5 @@
 import { safeDivide } from './campaignMetricsBridge'
-import { isIncentiveTransaction } from './crmIncentiveEconomics'
+import { GTB2C_PLAYER_ID, isIncentiveTransaction } from './crmIncentiveEconomics'
 
 export type DepositTxn = {
   receiverPlayerId: string
@@ -65,6 +65,11 @@ export function classifyTransactionFlags(params: {
   transactionType?: string | null | undefined
   systemStatus?: string | null
   orderStatus?: string | null
+  senderPlayerId?: string | null
+  chipsSendOut?: number | null
+  chipsClaimback?: number | null
+  grantSendOut?: number | null
+  grantClaimback?: number | null
 }): { isDeposit: boolean; isBonus: boolean } {
   const norm = (value: string | null | undefined) =>
     String(value ?? '')
@@ -84,8 +89,20 @@ export function classifyTransactionFlags(params: {
     /cancel|fail|erro|rejeit|negad|pendente|pending/.test(status) &&
     !/conclu|complet|success|aprov|ok|pago|finaliz/.test(status)
 
-  // BÔNUS = SX tipo == Bônus (independente da Origem; Origem pode ser "-" ou vazia)
-  const isBonus = sxType === 'bonus' || sxType.includes('bonus')
+  const sxTypeBonus = sxType === 'bonus' || sxType.includes('bonus')
+  const sendOut = Number(params.chipsSendOut) || 0
+  const grantOut = Number(params.grantSendOut) || 0
+  const claimback = Number(params.chipsClaimback) || 0
+  const grantClaim = Number(params.grantClaimback) || 0
+  const credit = sendOut > 0 || grantOut > 0
+  const reversalOnly = !credit && (claimback !== 0 || grantClaim !== 0)
+  const fromGtb2c = String(params.senderPlayerId ?? '').trim() === GTB2C_PLAYER_ID
+  const depositOrigin = origin === 'sx 24 horas' || origin.includes('sx 24 horas')
+  // Crédito da GTB2C vira cortesia. Estorno, sem crédito ou depósito SX 24 Horas não.
+  const gtb2cCourtesy = fromGtb2c && !failed && credit && !reversalOnly && !(depositOrigin && !sxTypeBonus)
+
+  // BÔNUS = SX tipo == Bônus, ou crédito elegível da GTB2C.
+  const isBonus = sxTypeBonus || gtb2cCourtesy
 
   // DEPÓSITO = Origem == SX 24 Horas (nunca misturar com bônus)
   const isDeposit =

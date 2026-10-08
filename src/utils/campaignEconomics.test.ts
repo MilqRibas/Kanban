@@ -216,6 +216,43 @@ describe('transaction classification', () => {
     ).toBe(true)
   })
 
+  it('GTB2C credit is courtesy and not a deposit', () => {
+    const flags = classifyTransactionFlags({
+      origin: '-',
+      sxType: 'Envio de Fichas Jogador',
+      senderPlayerId: '1787210',
+      chipsSendOut: 20,
+      chipsClaimback: 0,
+      orderStatus: 'Concluído',
+    })
+    expect(flags.isBonus).toBe(true)
+    expect(flags.isDeposit).toBe(false)
+  })
+
+  it('GTB2C reversal is not courtesy', () => {
+    const flags = classifyTransactionFlags({
+      origin: '-',
+      sxType: 'Envio de Fichas Jogador',
+      senderPlayerId: '1787210',
+      chipsSendOut: 0,
+      chipsClaimback: -20,
+      orderStatus: 'Concluído',
+    })
+    expect(flags.isBonus).toBe(false)
+  })
+
+  it('GTB2C deposit origin stays a deposit', () => {
+    const flags = classifyTransactionFlags({
+      origin: 'SX 24 Horas',
+      sxType: 'Envio de Fichas Jogador',
+      senderPlayerId: '1787210',
+      chipsSendOut: 50,
+      orderStatus: 'Concluído',
+    })
+    expect(flags.isBonus).toBe(false)
+    expect(flags.isDeposit).toBe(true)
+  })
+
   it('bonus never counts as deposit', () => {
     const flags = classifyTransactionFlags({
       origin: '-',

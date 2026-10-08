@@ -7,6 +7,9 @@
 /** Player ID oficial da conta operacional de incentivos. Nunca usar nickname. */
 export const MKT_GT_PLAYER_ID = '1092502'
 
+/** Gestora de bônus/cortesia. Não entra na fórmula de incentivo por si só. */
+export const GTB2C_PLAYER_ID = '1787210'
+
 /** Taxa da liga sobre o rake bruto histórico confirmado. */
 export const LEAGUE_FEE_RATE = 0.18
 

@@ -144,6 +144,8 @@ type FieldKey =
   | 'transactionType'
   | 'chipsSendOut'
   | 'chipsClaimback'
+  | 'grantSendOut'
+  | 'grantClaimback'
   | 'systemStatus'
   | 'orderStatus'
   | 'amount'
@@ -251,6 +253,14 @@ const FIELD_MATCHERS: Array<{
   {
     field: 'chipsClaimback',
     exact: ['chips claimback', 'chip claimback', 'claimback', 'claim back'],
+  },
+  {
+    field: 'grantSendOut',
+    exact: ['grant send out', 'grant enviado'],
+  },
+  {
+    field: 'grantClaimback',
+    exact: ['grant claimback', 'grant estorno'],
   },
   {
     field: 'clubName',
@@ -581,7 +591,7 @@ export async function parseTransactionReportBuffer(
     warnings.push({
       code: 'missing_sender_column',
       message:
-        'Coluna de remetente (Sender / Player ID) não encontrada. Envio MKT GT (1092502) só será identificado se essa coluna existir no relatório.',
+        'Coluna de remetente (Sender / Player ID) não encontrada. Envios da MKT GT (1092502) e da GTB2C (1787210) só são identificados se essa coluna existir no relatório.',
     })
   } else {
     warnings.push({
@@ -627,18 +637,26 @@ export async function parseTransactionReportBuffer(
     const transactionType = toText(col('transactionType', row))
     const systemStatus = toText(col('systemStatus', row))
     const orderStatus = toText(col('orderStatus', row))
+    const chipsSendOut = toNullableNumber(col('chipsSendOut', row))
+    const chipsClaimback = toNullableNumber(col('chipsClaimback', row))
+    const grantSendOut = toNullableNumber(col('grantSendOut', row))
+    const grantClaimback = toNullableNumber(col('grantClaimback', row))
     const flags = classifyTransactionFlags({
       origin,
       sxType,
       transactionType,
       systemStatus,
       orderStatus,
+      senderPlayerId: normalizeEntityId(col('senderPlayerId', row)) || null,
+      chipsSendOut,
+      chipsClaimback,
+      grantSendOut,
+      grantClaimback,
     })
 
-    const chipsSendOut = toNullableNumber(col('chipsSendOut', row))
     const amountRaw = toNullableNumber(col('amount', row))
     const amount = resolveTransactionAmount({
-      chipsSendOut,
+      chipsSendOut: chipsSendOut ?? (flags.isBonus ? grantSendOut : null),
       amount: amountRaw,
       isDeposit: flags.isDeposit,
       isBonus: flags.isBonus,
@@ -673,7 +691,7 @@ export async function parseTransactionReportBuffer(
       transactionType,
       amount,
       chipsSendOut,
-      chipsClaimback: toNullableNumber(col('chipsClaimback', row)),
+      chipsClaimback,
       systemStatus,
       orderStatus,
       isDeposit: flags.isDeposit,

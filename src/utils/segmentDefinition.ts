@@ -21,6 +21,7 @@ export const SEGMENT_FIELDS: { value: string; label: string; kind: 'text' | 'num
   { value: 'incentive_sent', label: 'Incentivo enviado', kind: 'number' },
   { value: 'incentive_available', label: 'Incentivo disponível', kind: 'number' },
   { value: 'ever_received_incentive', label: 'Já recebeu incentivo', kind: 'bool' },
+  { value: 'bonus_without_deposit', label: 'Resgatou cortesia e nunca depositou', kind: 'bool' },
   { value: 'incentive_count', label: 'Qtd. incentivos', kind: 'number' },
 ]
 

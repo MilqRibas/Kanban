@@ -83,5 +83,9 @@ describe('usabilidade B2C — segmentações', () => {
     expect(fields.has('rake_30d')).toBe(true)
     expect(fields.has('incentive_available')).toBe(true)
     expect(fields.has('has_campaign')).toBe(true)
+    expect(fields.has('bonus_without_deposit')).toBe(true)
+    expect(SEGMENT_FIELDS.find((f) => f.value === 'bonus_without_deposit')?.label).toBe(
+      'Resgatou cortesia e nunca depositou',
+    )
   })
 })
