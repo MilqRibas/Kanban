@@ -286,7 +286,7 @@ function onBackFromDetails() {
 </script>
 
 <template>
-  <div class="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+  <div class="relative flex min-h-0 flex-1 flex-col overflow-hidden has-footer-pad">
     <div
       v-if="bootstrapping || (store.loading && !store.ready)"
       class="flex min-h-0 flex-1 items-center justify-center"
@@ -379,7 +379,7 @@ function onBackFromDetails() {
 
       <!-- Conteúdo com scroll próprio até a barra flutuante -->
       <div
-        class="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-footer-pad sm:mt-3"
+        class="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-y-contain sm:mt-3"
       >
         <div class="page-shell pb-3">
           <section v-if="screen === 'overview'" class="space-y-3">
@@ -398,7 +398,7 @@ function onBackFromDetails() {
                 <Loader2 :size="16" class="animate-spin text-accent" />
                 Consolidando rake, ativação e recuperação…
               </p>
-              <div class="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-10">
+              <div class="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-5">
                 <div
                   v-for="n in 10"
                   :key="n"

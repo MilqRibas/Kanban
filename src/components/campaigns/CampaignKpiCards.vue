@@ -110,42 +110,42 @@ function display(value: number | null, format: (typeof cards)[number]['format'])
 </script>
 
 <template>
-  <div class="grid grid-cols-2 gap-1.5 sm:gap-2 md:grid-cols-3 xl:grid-cols-10">
+  <div class="grid grid-cols-2 gap-1.5 sm:gap-2 md:grid-cols-3 lg:grid-cols-5">
     <div
-      class="panel-glass rounded-xl px-2.5 py-2 ring-1 ring-accent/40 sm:px-3 sm:py-2.5"
+      class="panel-glass min-w-0 rounded-xl px-2.5 py-2 ring-1 ring-accent/40 sm:px-3 sm:py-2.5"
       title="Todo o rake do SX Club nas semanas do mês, com ou sem campanha. A semana entra no mês em que começa. Inclui Taxa Spin."
     >
       <div class="flex items-center gap-1.5 text-text-muted">
         <Layers :size="12" class="shrink-0 text-accent" />
-        <span class="truncate text-[10px] font-medium uppercase tracking-wide">
+        <span class="text-[10px] font-medium uppercase leading-tight tracking-wide">
           Rake do slot
         </span>
       </div>
-      <p class="mt-1 text-sm font-semibold tabular-nums leading-tight text-text-primary sm:text-base lg:text-lg">
+      <p class="mt-1 text-sm font-semibold tabular-nums leading-tight text-text-primary sm:text-base">
         {{ formatCurrency(slotRake) }}
       </p>
-      <p class="mt-0.5 truncate text-[10px] text-text-muted">
+      <p class="mt-0.5 text-[10px] leading-snug text-text-muted">
         {{ slotPeriodLabel }}
       </p>
     </div>
     <div
       v-for="card in cards"
       :key="card.key"
-      class="panel-glass rounded-xl px-2.5 py-2 sm:px-3 sm:py-2.5"
+      class="panel-glass min-w-0 rounded-xl px-2.5 py-2 sm:px-3 sm:py-2.5"
       :title="card.hint || card.label"
     >
       <div class="flex items-center gap-1.5 text-text-muted">
         <component :is="card.icon" :size="12" class="shrink-0 text-accent" />
-        <span class="truncate text-[10px] font-medium uppercase tracking-wide">
+        <span class="text-[10px] font-medium uppercase leading-tight tracking-wide">
           {{ card.shortLabel }}
         </span>
       </div>
-      <p class="mt-1 text-sm font-semibold tabular-nums leading-tight text-text-primary sm:text-base lg:text-lg">
+      <p class="mt-1 text-sm font-semibold tabular-nums leading-tight text-text-primary sm:text-base">
         {{ display(kpis[card.key], card.format) }}
       </p>
       <p
         v-if="card.key === 'totalAccumulatedRake'"
-        class="mt-0.5 truncate text-[10px] text-text-muted"
+        class="mt-0.5 text-[10px] leading-snug text-text-muted"
       >
         Líquido {{ formatCurrency((kpis.totalAccumulatedRake || 0) * (1 - LEAGUE_FEE_RATE)) }}
         <span v-if="(kpis.organicAccumulatedRake ?? 0) > 0.009">
@@ -154,7 +154,7 @@ function display(value: number | null, format: (typeof cards)[number]['format'])
       </p>
       <p
         v-else-if="card.key === 'recoveryRate'"
-        class="mt-0.5 truncate text-[10px] text-text-muted"
+        class="mt-0.5 text-[10px] leading-snug text-text-muted"
       >
         Base líquida (−18% liga)
       </p>

@@ -740,7 +740,7 @@ watch(tableDetailsPeriod, async (period) => {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-footer-pad pt-2 sm:pt-3">
+  <div class="flex min-h-0 flex-1 flex-col overflow-y-auto pt-2 sm:pt-3">
     <div class="page-shell flex flex-col gap-3 sm:gap-5">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0 space-y-2">

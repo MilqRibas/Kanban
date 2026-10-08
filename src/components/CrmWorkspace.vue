@@ -39,7 +39,7 @@ watch(area, (next) => {
 </script>
 
 <template>
-  <div class="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+  <div class="relative flex min-h-0 flex-1 flex-col overflow-hidden has-footer-pad">
     <div class="page-shell shrink-0 space-y-3 pt-1.5 sm:pt-2">
       <header>
         <h2 class="text-lg font-semibold tracking-tight text-text-primary sm:text-2xl">
@@ -71,7 +71,7 @@ watch(area, (next) => {
       </div>
     </div>
 
-    <div class="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-footer-pad sm:mt-3">
+    <div class="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-y-contain sm:mt-3">
       <div v-if="area === 'segments'" class="page-shell pb-3">
         <SegmentsView />
       </div>
