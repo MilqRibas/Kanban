@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ChevronLeft, ChevronRight, Plus, X } from '@lucide/vue'
+import { Calendar, ChevronLeft, ChevronRight, Plus, X } from '@lucide/vue'
 import { useCommunityStore } from '../stores/community'
+import { useHubSectionsStore } from '../stores/hubSections'
 import CommunityContentPanel from './CommunityContentPanel.vue'
 import { contentStatusStyle } from '../types/community'
 
 const community = useCommunityStore()
+const hubSections = useHubSectionsStore()
 const today = new Date()
 const viewDate = ref(new Date(today.getFullYear(), today.getMonth(), 1))
 
@@ -33,37 +35,44 @@ const monthLabel = computed(() =>
   }).format(viewDate.value),
 )
 
-const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+const weekDays = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
+
+const sectionUrl = computed(() => {
+  if (!props.sectionId) return null
+  const url = hubSections.sections.find((section) => section.id === props.sectionId)?.url
+  return url?.trim() || null
+})
+
+function dateKeyOf(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function dayLabel(date: Date) {
+  if (date.getDate() !== 1) return String(date.getDate())
+  const month = new Intl.DateTimeFormat('pt-BR', { month: 'short' })
+    .format(date)
+    .replace('.', '')
+  return `${date.getDate()} de ${month}.`
+}
 
 const calendarDays = computed(() => {
   const year = viewDate.value.getFullYear()
   const month = viewDate.value.getMonth()
-  const firstDay = new Date(year, month, 1).getDay()
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const cells: {
-    day: number | null
-    isToday: boolean
-    dateKey: string | null
-  }[] = []
+  const gridStart = new Date(year, month, 1)
+  gridStart.setDate(1 - gridStart.getDay())
+  const todayKeyValue = todayKey()
 
-  for (let i = 0; i < firstDay; i++) {
-    cells.push({ day: null, isToday: false, dateKey: null })
-  }
-
-  for (let day = 1; day <= daysInMonth; day++) {
-    const isToday =
-      day === today.getDate() &&
-      month === today.getMonth() &&
-      year === today.getFullYear()
-    const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    cells.push({ day, isToday, dateKey })
-  }
-
-  while (cells.length < 42) {
-    cells.push({ day: null, isToday: false, dateKey: null })
-  }
-
-  return cells
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(gridStart)
+    date.setDate(gridStart.getDate() + index)
+    const dateKey = dateKeyOf(date)
+    return {
+      inMonth: date.getMonth() === month,
+      isToday: dateKey === todayKeyValue,
+      dateKey,
+      label: dayLabel(date),
+    }
+  })
 })
 
 function prevMonth() {
@@ -87,8 +96,7 @@ function goToday() {
 }
 
 function todayKey() {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return dateKeyOf(new Date())
 }
 
 function itemsForDay(dateKey: string | null) {
@@ -108,59 +116,74 @@ async function createOnDay(dateKey: string | null) {
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-    <header class="mb-3 flex shrink-0 flex-wrap items-center gap-2">
-      <button
-        type="button"
-        class="rounded-lg px-2.5 py-1.5 text-xs text-text-secondary hover:bg-white/10 hover:text-text-primary"
-        @click="emit('back')"
-      >
-        ← HUB
-      </button>
-      <div class="min-w-0 flex-1">
-        <h2 class="text-lg font-semibold text-text-primary">
-          {{ title || 'Comunidade' }}
-        </h2>
-        <p class="text-xs text-text-muted">
-          Planejamento de conteúdo por dia
+    <header class="flex shrink-0 items-start justify-between gap-3 px-4 py-3 sm:px-5">
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <button
+            type="button"
+            class="rounded-md p-1 text-text-muted hover:bg-white/10 hover:text-text-primary"
+            aria-label="Voltar"
+            @click="emit('back')"
+          >
+            <ChevronLeft :size="16" />
+          </button>
+          <h2 class="truncate text-base font-semibold text-text-primary">
+            {{ title || 'Calendário de Conteúdo' }}
+          </h2>
+        </div>
+        <p class="mt-0.5 pl-7 text-sm text-text-muted">
+          {{ monthLabel }}
         </p>
       </div>
-      <div class="flex items-center gap-1">
+      <div class="flex shrink-0 flex-wrap items-center justify-end gap-2">
         <button
           type="button"
-          class="rounded-lg p-1.5 text-text-secondary hover:bg-white/10 hover:text-text-primary"
-          aria-label="Mês anterior"
-          @click="prevMonth"
-        >
-          <ChevronLeft :size="18" />
-        </button>
-        <button
-          type="button"
-          class="rounded-lg px-2.5 py-1 text-xs capitalize text-text-secondary hover:bg-white/10 hover:text-text-primary"
-          @click="goToday"
-        >
-          {{ monthLabel }} · Hoje
-        </button>
-        <button
-          type="button"
-          class="rounded-lg p-1.5 text-text-secondary hover:bg-white/10 hover:text-text-primary"
-          aria-label="Próximo mês"
-          @click="nextMonth"
-        >
-          <ChevronRight :size="18" />
-        </button>
-        <button
-          type="button"
-          class="ml-1 inline-flex items-center gap-1 rounded-lg bg-[#39bcff] px-2.5 py-1.5 text-xs font-semibold text-board hover:brightness-110"
+          class="inline-flex h-8 items-center gap-1 rounded-md bg-accent px-2.5 text-sm font-medium text-board hover:bg-accent-hover"
           title="Criar conteúdo com data de hoje"
           @click="createOnDay(todayKey())"
         >
           <Plus :size="14" />
-          Nova
+          Novo
         </button>
+        <a
+          v-if="sectionUrl"
+          :href="sectionUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/15 px-2.5 text-xs text-text-secondary hover:bg-white/5 hover:text-text-primary"
+        >
+          <Calendar :size="14" />
+          Abrir calendário
+        </a>
+        <div class="flex items-center gap-1">
+          <button
+            type="button"
+            class="inline-flex size-8 items-center justify-center rounded-md border border-white/15 text-text-secondary hover:bg-white/5 hover:text-text-primary"
+            aria-label="Mês anterior"
+            @click="prevMonth"
+          >
+            <ChevronLeft :size="16" />
+          </button>
+          <button
+            type="button"
+            class="inline-flex h-8 items-center rounded-md border border-white/15 px-2.5 text-sm text-text-primary hover:bg-white/5"
+            @click="goToday"
+          >
+            Hoje
+          </button>
+          <button
+            type="button"
+            class="inline-flex size-8 items-center justify-center rounded-md border border-white/15 text-text-secondary hover:bg-white/5 hover:text-text-primary"
+            aria-label="Próximo mês"
+            @click="nextMonth"
+          >
+            <ChevronRight :size="16" />
+          </button>
+        </div>
       </div>
     </header>
 
-    <p v-if="community.error" class="mb-2 text-xs text-red-300">
+    <p v-if="community.error" class="mx-4 mb-2 text-xs text-red-300 sm:mx-5">
       {{ community.error }}
       <button type="button" class="ml-1 underline" @click="community.error = null">
         <X :size="12" class="inline" />
@@ -169,7 +192,7 @@ async function createOnDay(dateKey: string | null) {
 
     <div
       v-if="community.undatedItems.length"
-      class="mb-2 flex shrink-0 flex-wrap items-center gap-1.5 rounded-xl border border-amber-400/25 bg-amber-950/30 px-3 py-2"
+      class="mx-4 mb-2 flex shrink-0 flex-wrap items-center gap-1.5 sm:mx-5"
     >
       <span class="text-[11px] font-medium text-amber-200">Sem data:</span>
       <button
@@ -184,65 +207,60 @@ async function createOnDay(dateKey: string | null) {
     </div>
 
     <div
-      class="panel-glass grid min-h-0 flex-1 grid-cols-7 gap-px overflow-hidden rounded-2xl border border-white/10"
+      class="grid min-h-0 flex-1 grid-cols-7 overflow-hidden border-t border-white/10"
       style="grid-template-rows: auto repeat(6, minmax(0, 1fr))"
     >
       <div
-        v-for="weekDay in weekDays"
+        v-for="(weekDay, index) in weekDays"
         :key="weekDay"
-        class="bg-black/25 px-1 py-1.5 text-center text-[11px] font-medium text-text-muted"
+        class="border-b border-r border-white/10 px-2 py-1.5 text-left text-[11px] text-text-muted"
+        :class="index === 6 ? 'border-r-0' : ''"
       >
         {{ weekDay }}
       </div>
 
       <div
         v-for="(cell, index) in calendarDays"
-        :key="index"
-        class="group/day flex min-h-0 flex-col overflow-hidden bg-black/20 p-1"
+        :key="cell.dateKey"
+        class="group/day flex min-h-0 flex-col overflow-hidden border-b border-r border-white/10 p-1"
+        :class="index % 7 === 6 ? 'border-r-0' : ''"
       >
-        <template v-if="cell.day !== null">
-          <div class="mb-0.5 flex items-center justify-between gap-1">
-            <span
-              :class="[
-                'inline-flex size-6 shrink-0 items-center justify-center rounded-full text-xs',
-                cell.isToday
-                  ? 'bg-accent font-semibold text-board'
-                  : 'text-text-secondary',
-              ]"
-            >
-              {{ cell.day }}
-            </span>
-            <button
-              type="button"
-              class="rounded p-0.5 text-text-muted opacity-0 transition-opacity hover:bg-white/10 hover:text-text-primary group-hover/day:opacity-100"
-              title="Criar conteúdo neste dia"
-              @click="createOnDay(cell.dateKey)"
-            >
-              <Plus :size="12" />
-            </button>
-          </div>
+        <div class="mb-0.5 flex items-start justify-between gap-1">
+          <span
+            :class="[
+              'inline-flex h-6 min-w-6 items-center justify-center px-1 text-xs',
+              cell.isToday
+                ? 'rounded-full bg-accent font-semibold text-board'
+                : cell.inMonth
+                  ? 'text-text-primary'
+                  : 'text-text-muted/70',
+            ]"
+          >
+            {{ cell.label }}
+          </span>
+          <button
+            type="button"
+            class="rounded p-0.5 text-text-muted opacity-0 transition-opacity hover:bg-white/10 hover:text-text-primary group-hover/day:opacity-100"
+            title="Criar conteúdo neste dia"
+            @click="createOnDay(cell.dateKey)"
+          >
+            <Plus :size="12" />
+          </button>
+        </div>
 
-          <div class="min-h-0 flex-1 space-y-1 overflow-y-auto pr-0.5">
-            <button
-              v-for="item in itemsForDay(cell.dateKey)"
-              :key="item.id"
-              type="button"
-              class="panel-glass block w-full rounded-lg px-1.5 py-1.5 text-left transition-all hover:brightness-110"
-              @click="community.open(item.id)"
-            >
-              <p class="line-clamp-2 text-[11px] font-semibold leading-snug text-text-primary">
-                {{ item.title || 'Sem título' }}
-              </p>
-              <span
-                v-if="item.status"
-                class="mt-1 inline-block rounded-full px-1.5 py-0.5 text-[9px] font-medium"
-                :class="contentStatusStyle(item.status)"
-              >
-                {{ item.status }}
-              </span>
-            </button>
-          </div>
-        </template>
+        <div class="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
+          <button
+            v-for="item in itemsForDay(cell.dateKey)"
+            :key="item.id"
+            type="button"
+            class="block w-full truncate rounded px-1 py-0.5 text-left text-[11px] leading-4"
+            :class="contentStatusStyle(item.status)"
+            :title="item.title || 'Sem título'"
+            @click="community.open(item.id)"
+          >
+            {{ item.title || 'Sem título' }}
+          </button>
+        </div>
       </div>
     </div>
 

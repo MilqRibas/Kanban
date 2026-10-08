@@ -604,7 +604,7 @@ async function addSection() {
       <CommunityCalendar
         v-else-if="activeSection"
         :key="`section-${activeSection.id}`"
-        class="min-h-0 flex-1 overflow-y-auto scroll-footer-pad px-2 pt-2 sm:px-4 sm:pt-3"
+        class="min-h-0 flex-1 overflow-hidden"
         :title="activeSection.title"
         :section-id="activeSection.id"
         @back="screen = 'conteudo'"
