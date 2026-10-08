@@ -1618,8 +1618,11 @@ export const useCampaignsStore = defineStore('campaigns', () => {
       (includeTransactions ? transactionsRes.error : null)
 
     if (shellError) {
-      error.value = shellError.message
-      useToastStore().error(shellError.message)
+      const raw = shellError.message
+      error.value = /statement timeout/i.test(raw)
+        ? 'Uma consulta demorou demais e foi cancelada. Atualize a página.'
+        : raw
+      useToastStore().error(error.value)
       loading.value = false
       return
     }

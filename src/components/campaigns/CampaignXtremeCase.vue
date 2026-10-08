@@ -108,8 +108,10 @@ onMounted(async () => {
     editingInvestment.value = false
     summary.value = snap
   } catch (err) {
-    loadError.value =
-      err instanceof Error ? err.message : 'Falha ao carregar o case Xtreme Pro.'
+    const raw = err instanceof Error ? err.message : ''
+    loadError.value = /statement timeout/i.test(raw)
+      ? 'O case Xtreme demorou demais para carregar. Atualize a página.'
+      : raw || 'Falha ao carregar o case Xtreme Pro.'
   } finally {
     loading.value = false
   }
