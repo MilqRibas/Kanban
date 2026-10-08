@@ -75,6 +75,10 @@ const CampaignsView = defineAsyncComponent({
   loader: () => import('./components/CampaignsView.vue'),
   ...asyncOpts,
 })
+const CrmWorkspace = defineAsyncComponent({
+  loader: () => import('./components/CrmWorkspace.vue'),
+  ...asyncOpts,
+})
 
 const tabViews: Record<NavTab, Component> = {
   board: markRaw(BoardView),
@@ -84,7 +88,7 @@ const tabViews: Record<NavTab, Component> = {
   hub: markRaw(HubView),
   community: markRaw(HubView),
   campaigns: markRaw(CampaignsView),
-  crm: markRaw(CampaignsView),
+  crm: markRaw(CrmWorkspace),
 }
 
 const auth = useAuthStore()
@@ -116,6 +120,7 @@ const showAppShell = computed(
 const contentLoading = computed(() => {
   if (!auth.profileReady) return true
   if (auth.isCampaignsOnly) {
+    if (activeTab.value === 'crm') return false
     return boardBootstrapping.value || !campaignsReady.value
   }
   return boardBootstrapping.value || !board.ready
@@ -140,7 +145,7 @@ function prefetchTabChunks() {
   void import('./components/NotesView.vue')
   void import('./components/HubView.vue')
   void import('./components/CampaignsView.vue')
-  void import('./components/crm/CrmView.vue')
+  void import('./components/CrmWorkspace.vue')
 }
 
 async function ensureTabData(tab: NavTab) {
@@ -163,7 +168,7 @@ async function ensureTabData(tab: NavTab) {
     await Promise.all([community.init(), hubSections.init()])
     hubReady.value = true
   }
-  if ((tab === 'campaigns' || tab === 'crm') && !campaignsReady.value) {
+  if (tab === 'campaigns' && !campaignsReady.value) {
     await campaigns.init()
     campaignsReady.value = true
   }
@@ -207,6 +212,7 @@ watch(
       if (activeTab.value !== 'campaigns' && activeTab.value !== 'crm') {
         activeTab.value = 'campaigns'
       }
+      if (activeTab.value === 'crm') return
       boardBootstrapping.value = true
       try {
         await campaigns.init()
@@ -312,9 +318,7 @@ watch(activeTab, async (tab) => {
                   ? { entry: 'conteudo' }
                   : activeTab === 'hub'
                     ? { entry: 'home' }
-                    : activeTab === 'crm'
-                      ? { entry: 'crm' }
-                      : {}
+                    : {}
               "
               class="tab-panel flex min-h-0 w-full flex-1 flex-col"
             />

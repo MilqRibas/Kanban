@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { BarChart3, ContactRound, FileUp, Filter, Loader2, Megaphone, Plus } from '@lucide/vue'
+import { FileUp, Loader2, Plus } from '@lucide/vue'
 import { useCampaignsStore } from '../stores/campaigns'
-import { useCrmStore } from '../stores/crm'
-import { useSegmentsStore } from '../stores/segments'
-import { usePipelinesStore } from '../stores/pipelines'
 import CampaignFilters, {
   type CampaignFiltersState,
 } from './campaigns/CampaignFilters.vue'
@@ -17,22 +14,10 @@ import CampaignCharts from './campaigns/CampaignCharts.vue'
 import CampaignComparison from './campaigns/CampaignComparison.vue'
 import CampaignImportsAdmin from './campaigns/CampaignImportsAdmin.vue'
 import CampaignXtremeCase from './campaigns/CampaignXtremeCase.vue'
-import CrmPipelinesView from './crm/CrmPipelinesView.vue'
-import CrmBiView from './crm/CrmBiView.vue'
-import SegmentsView from './segments/SegmentsView.vue'
 import { buildSearchHaystack, matchesSearch } from '../utils/search'
 import { slotWeeksInsideRange, sumSlotWeeklyRake } from '../utils/campaignWeeklyMetrics'
 import type { Campaign } from '../types/campaigns'
 
-type EcosystemArea = 'campaigns' | 'segments' | 'crm' | 'bi'
-
-const props = withDefaults(
-  defineProps<{
-    /** crm = atalho do menu inferior, já na área de pipelines. */
-    entry?: 'campaigns' | 'crm'
-  }>(),
-  { entry: 'campaigns' },
-)
 type CampaignScreen = 'overview' | 'list' | 'comparison' | 'imports'
 
 /** Torneio no filtro também encontra legado Outro + campaign_type_other. */
@@ -49,11 +34,7 @@ function matchesCampaignTypeFilter(campaign: Campaign, selected: string) {
 }
 
 const store = useCampaignsStore()
-const crm = useCrmStore()
-const segments = useSegmentsStore()
-const pipelines = usePipelinesStore()
 const bootstrapping = ref(false)
-const area = ref<EcosystemArea>(props.entry === 'crm' ? 'crm' : 'campaigns')
 const screen = ref<CampaignScreen>('overview')
 const formOpen = ref(false)
 const importOpen = ref(false)
@@ -89,24 +70,12 @@ function formatFilterDay(iso: string) {
   return `${day}/${month}/${year}`
 }
 
-const areaTabs: { id: EcosystemArea; label: string; icon: typeof ContactRound }[] = [
-  { id: 'campaigns', label: 'Campanhas', icon: Megaphone },
-  { id: 'segments', label: 'Segmentações', icon: Filter },
-  { id: 'crm', label: 'CRM', icon: ContactRound },
-  { id: 'bi', label: 'BI', icon: BarChart3 },
-]
-
 const tabs: { id: CampaignScreen; label: string }[] = [
   { id: 'overview', label: 'Visão Geral' },
   { id: 'list', label: 'Lista' },
   { id: 'comparison', label: 'Comparativo' },
   { id: 'imports', label: 'Imports' },
 ]
-
-const areaTitle = computed(() => {
-  const found = areaTabs.find((t) => t.id === area.value)
-  return found?.label ?? 'Campanhas'
-})
 
 onMounted(async () => {
   if (!store.ready) {
@@ -116,22 +85,6 @@ onMounted(async () => {
     } finally {
       bootstrapping.value = false
     }
-  }
-  if (area.value === 'crm') {
-    if (!crm.ready) await crm.init()
-    if (!pipelines.ready) await pipelines.init()
-  }
-})
-
-watch(area, async (next) => {
-  if (next === 'crm' || next === 'bi') {
-    if (!crm.ready) await crm.init()
-  }
-  if (next === 'segments') {
-    if (!segments.ready) await segments.init()
-  }
-  if (next === 'crm') {
-    if (!pipelines.ready) await pipelines.init()
   }
 })
 
@@ -359,10 +312,10 @@ function onBackFromDetails() {
         <header class="flex items-start justify-between gap-2">
           <div class="min-w-0">
             <h2 class="text-lg font-semibold tracking-tight text-text-primary sm:text-2xl">
-              {{ areaTitle }}
+              Campanhas
             </h2>
           </div>
-          <div v-if="area === 'campaigns'" class="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <div class="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <button
               type="button"
               class="inline-flex size-9 items-center justify-center rounded-xl border border-border-subtle bg-board-elevated text-text-primary hover:bg-surface sm:h-auto sm:w-auto sm:gap-1.5 sm:px-3.5 sm:py-2 sm:text-sm sm:font-medium"
@@ -385,34 +338,7 @@ function onBackFromDetails() {
           </div>
         </header>
 
-        <!-- Nível 1: módulos do ecossistema (sempre full-width, empilhados) -->
         <div
-          class="flex w-full gap-1 overflow-x-auto rounded-2xl border border-border-subtle bg-board-elevated/80 p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          role="tablist"
-          aria-label="Áreas do ecossistema"
-        >
-          <button
-            v-for="tab in areaTabs"
-            :key="tab.id"
-            type="button"
-            role="tab"
-            :aria-selected="area === tab.id"
-            :class="[
-              'inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-all',
-              area === tab.id
-                ? 'bg-accent text-board shadow-sm'
-                : 'text-text-secondary hover:bg-surface hover:text-text-primary',
-            ]"
-            @click="area = tab.id"
-          >
-            <component :is="tab.icon" :size="15" class="shrink-0" />
-            {{ tab.label }}
-          </button>
-        </div>
-
-        <!-- Nível 2: só dentro de Campanhas — visual secundário -->
-        <div
-          v-if="area === 'campaigns'"
           class="flex w-full gap-0.5 overflow-x-auto border-b border-border-subtle [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           role="tablist"
           aria-label="Visões de campanhas"
@@ -436,7 +362,7 @@ function onBackFromDetails() {
         </div>
 
         <CampaignFilters
-          v-if="area === 'campaigns' && screen !== 'imports'"
+          v-if="screen !== 'imports'"
           v-model="filters"
           :years="years"
           :show-archived="store.showArchived"
@@ -444,7 +370,7 @@ function onBackFromDetails() {
         />
 
         <p
-          v-if="area === 'campaigns' && store.error"
+          v-if="store.error"
           class="rounded-lg border border-red-400/30 bg-red-950/40 px-3 py-2 text-xs text-red-200"
         >
           {{ store.error }}
@@ -455,16 +381,7 @@ function onBackFromDetails() {
       <div
         class="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-footer-pad sm:mt-3"
       >
-        <div v-if="area === 'segments'" class="page-shell pb-3">
-          <SegmentsView />
-        </div>
-        <div v-else-if="area === 'crm'" class="page-shell pb-3">
-          <CrmPipelinesView />
-        </div>
-        <div v-else-if="area === 'bi'" class="page-shell pb-3">
-          <CrmBiView />
-        </div>
-        <div v-else class="page-shell pb-3">
+        <div class="page-shell pb-3">
           <section v-if="screen === 'overview'" class="space-y-3">
             <p class="px-0.5 text-xs text-text-muted">
               Nos KPIs de campanha, recuperação e payback usam
