@@ -43,3 +43,25 @@ export function compareLeadsByNextContact(
   }
   return a.id.localeCompare(b.id)
 }
+
+export type LeadColumnMove = {
+  id: string
+  fromStageId: string
+}
+
+/** Movimentos reais: a coluna de origem ainda está no card arrastado. */
+export function leadMovesToPersist(
+  incoming: { id: string; stageId: string }[],
+  targetStageId: string,
+): LeadColumnMove[] {
+  const seen = new Set<string>()
+  const moves: LeadColumnMove[] = []
+  for (const entry of incoming) {
+    if (!entry.id || seen.has(entry.id)) continue
+    seen.add(entry.id)
+    if (entry.stageId && entry.stageId !== targetStageId) {
+      moves.push({ id: entry.id, fromStageId: entry.stageId })
+    }
+  }
+  return moves
+}

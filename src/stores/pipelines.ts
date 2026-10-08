@@ -110,14 +110,18 @@ export const usePipelinesStore = defineStore('pipelines', () => {
     return pipe
   }
 
-  async function moveCard(entryId: string, toStageId: string) {
+  async function moveCard(
+    entryId: string,
+    toStageId: string,
+    fromStageId?: string,
+  ) {
     const current = board.value
     if (!current) return
     const entry = current.entries.find((e) => e.id === entryId)
-    if (!entry || entry.stageId === toStageId) return
+    if (!entry) return
+    const origin = fromStageId || entry.stageId
+    if (!origin || origin === toStageId) return
 
-    const fromStageId = entry.stageId
-    // Optimistic
     entry.stageId = toStageId
     try {
       const auth = useAuthStore()
@@ -125,12 +129,12 @@ export const usePipelinesStore = defineStore('pipelines', () => {
         entryId,
         pipelineId: current.pipeline.id,
         playerId: entry.playerId,
-        fromStageId,
+        fromStageId: origin,
         toStageId,
         actorId: auth.memberId ?? null,
       })
     } catch (err) {
-      entry.stageId = fromStageId
+      entry.stageId = origin
       const message =
         err instanceof Error ? err.message : 'Falha ao mover card.'
       useToastStore().error(message)

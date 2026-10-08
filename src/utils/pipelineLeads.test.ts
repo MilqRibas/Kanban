@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   compareLeadsByNextContact,
   formatIsoDay,
+  leadMovesToPersist,
   nextContactRank,
 } from './pipelineLeads'
 
@@ -36,5 +37,19 @@ describe('pipeline next contact order', () => {
 
   it('formats a calendar day without shifting the date', () => {
     expect(formatIsoDay('2026-10-06')).toBe('06/10/2026')
+  })
+})
+
+describe('pipeline column moves to persist', () => {
+  it('keeps the stage the card had before the column list was rewritten', () => {
+    const moves = leadMovesToPersist(
+      [
+        { id: 'stay', stageId: 'contato' },
+        { id: 'moved', stageId: 'novo' },
+        { id: 'moved', stageId: 'novo' },
+      ],
+      'contato',
+    )
+    expect(moves).toEqual([{ id: 'moved', fromStageId: 'novo' }])
   })
 })

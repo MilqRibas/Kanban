@@ -359,7 +359,7 @@ export async function listPipelineLeadEvents(
     .eq('pipeline_id', pipelineId)
     .eq('player_id', playerId)
     .order('occurred_at', { ascending: false })
-    .limit(40)
+    .limit(200)
   if (error) throw new Error(error.message)
   return (data ?? []).map((row) => {
     const raw = row as Record<string, unknown>

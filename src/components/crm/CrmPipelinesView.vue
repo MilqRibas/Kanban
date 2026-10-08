@@ -20,6 +20,7 @@ import { formatDate, formatDateTime } from '../../utils/campaignFormat'
 import {
   compareLeadsByNextContact,
   formatIsoDay,
+  leadMovesToPersist,
   nextContactRank,
 } from '../../utils/pipelineLeads'
 import type { PipelineEntry, PipelineEvent, PipelineStage } from '../../types/pipelines'
@@ -171,17 +172,15 @@ function stageName(stageId: string) {
 }
 
 function onStageListUpdate(stageId: string, list: PipelineEntry[]) {
-  const prevIds = new Set(entriesForStage(stageId).map((e) => e.id))
   const hidden = entriesForStage(stageId).filter((entry) => !leadMatches(entry))
   const merged = [
     ...list,
     ...hidden.filter((entry) => !list.some((item) => item.id === entry.id)),
   ]
+  const moves = leadMovesToPersist(list, stageId)
   store.applyColumnEntries(stageId, merged)
-  for (const entry of list) {
-    if (!prevIds.has(entry.id)) {
-      void store.moveCard(entry.id, stageId)
-    }
+  for (const move of moves) {
+    void store.moveCard(move.id, stageId, move.fromStageId)
   }
 }
 
