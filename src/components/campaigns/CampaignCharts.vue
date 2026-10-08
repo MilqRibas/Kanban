@@ -106,7 +106,7 @@ const lastWeekStart = computed(
                 </span>
                 <div class="flex shrink-0 items-center gap-2">
                   <CampaignStatusBadge :status="row.metrics.status" />
-                  <span class="w-16 text-right tabular-nums text-text-secondary">
+                  <span class="whitespace-nowrap text-right tabular-nums text-text-secondary">
                     {{ formatPercent(row.metrics.recoveryRate) }}
                   </span>
                 </div>

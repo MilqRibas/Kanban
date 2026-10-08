@@ -39,7 +39,7 @@ watch(area, (next) => {
 </script>
 
 <template>
-  <div class="relative flex min-h-0 flex-1 flex-col overflow-hidden has-footer-pad">
+  <div class="relative flex min-h-0 flex-1 flex-col overflow-hidden">
     <div class="page-shell shrink-0 space-y-3 pt-1.5 sm:pt-2">
       <header>
         <h2 class="text-lg font-semibold tracking-tight text-text-primary sm:text-2xl">

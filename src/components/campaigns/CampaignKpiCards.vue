@@ -97,6 +97,29 @@ const cards: {
   },
 ]
 
+function cardHint(card: (typeof cards)[number], kpis: OverviewKpis): string {
+  if (card.key === 'totalAccumulatedRake') {
+    const liquid = formatCurrency((kpis.totalAccumulatedRake || 0) * (1 - LEAGUE_FEE_RATE))
+    if ((kpis.organicAccumulatedRake ?? 0) > 0.009) {
+      return `Líquido ${liquid} · Org. ${formatCurrency(kpis.organicAccumulatedRake)}`
+    }
+    return `Líquido ${liquid}`
+  }
+  if (card.key === 'recoveryRate') return 'Base líquida (−18% liga)'
+  return '\u00a0'
+}
+
+/** Bordas internas: 2 colunas no celular, 5 a partir de sm. */
+function kpiCellClass(visualIndex: number) {
+  return [
+    'border-border-subtle/70',
+    visualIndex % 2 === 0 ? 'border-r' : 'border-r-0',
+    visualIndex < 8 ? 'border-b' : 'border-b-0',
+    visualIndex % 5 === 4 ? 'sm:border-r-0' : 'sm:border-r',
+    visualIndex < 5 ? 'sm:border-b' : 'sm:border-b-0',
+  ]
+}
+
 function display(value: number | null, format: (typeof cards)[number]['format']) {
   if (format === 'currency') return formatCurrency(value)
   if (format === 'percent') return formatPercent(value)
@@ -110,53 +133,43 @@ function display(value: number | null, format: (typeof cards)[number]['format'])
 </script>
 
 <template>
-  <div class="grid grid-cols-2 gap-1.5 sm:gap-2 md:grid-cols-3 lg:grid-cols-5">
+  <div class="panel-glass grid grid-cols-2 overflow-hidden rounded-2xl sm:grid-cols-5">
     <div
-      class="panel-glass min-w-0 rounded-xl px-2.5 py-2 ring-1 ring-accent/40 sm:px-3 sm:py-2.5"
+      class="min-w-0 px-3 py-2.5"
+      :class="kpiCellClass(0)"
       title="Todo o rake do SX Club nas semanas do mês, com ou sem campanha. A semana entra no mês em que começa. Inclui Taxa Spin."
     >
       <div class="flex items-center gap-1.5 text-text-muted">
         <Layers :size="12" class="shrink-0 text-accent" />
-        <span class="text-[10px] font-medium uppercase leading-tight tracking-wide">
+        <span class="truncate text-[10px] font-medium uppercase tracking-wide">
           Rake do slot
         </span>
       </div>
-      <p class="mt-1 text-sm font-semibold tabular-nums leading-tight text-text-primary sm:text-base">
+      <p class="mt-1 truncate text-sm font-semibold tabular-nums leading-tight text-text-primary">
         {{ formatCurrency(slotRake) }}
       </p>
-      <p class="mt-0.5 text-[10px] leading-snug text-text-muted">
+      <p class="mt-0.5 truncate text-[10px] text-text-muted">
         {{ slotPeriodLabel }}
       </p>
     </div>
     <div
-      v-for="card in cards"
+      v-for="(card, index) in cards"
       :key="card.key"
-      class="panel-glass min-w-0 rounded-xl px-2.5 py-2 sm:px-3 sm:py-2.5"
+      class="min-w-0 px-3 py-2.5"
+      :class="kpiCellClass(index + 1)"
       :title="card.hint || card.label"
     >
       <div class="flex items-center gap-1.5 text-text-muted">
         <component :is="card.icon" :size="12" class="shrink-0 text-accent" />
-        <span class="text-[10px] font-medium uppercase leading-tight tracking-wide">
+        <span class="truncate text-[10px] font-medium uppercase tracking-wide">
           {{ card.shortLabel }}
         </span>
       </div>
-      <p class="mt-1 text-sm font-semibold tabular-nums leading-tight text-text-primary sm:text-base">
+      <p class="mt-1 truncate text-sm font-semibold tabular-nums leading-tight text-text-primary">
         {{ display(kpis[card.key], card.format) }}
       </p>
-      <p
-        v-if="card.key === 'totalAccumulatedRake'"
-        class="mt-0.5 text-[10px] leading-snug text-text-muted"
-      >
-        Líquido {{ formatCurrency((kpis.totalAccumulatedRake || 0) * (1 - LEAGUE_FEE_RATE)) }}
-        <span v-if="(kpis.organicAccumulatedRake ?? 0) > 0.009">
-          · Org. {{ formatCurrency(kpis.organicAccumulatedRake) }}
-        </span>
-      </p>
-      <p
-        v-else-if="card.key === 'recoveryRate'"
-        class="mt-0.5 text-[10px] leading-snug text-text-muted"
-      >
-        Base líquida (−18% liga)
+      <p class="mt-0.5 truncate text-[10px] text-text-muted">
+        {{ cardHint(card, kpis) }}
       </p>
     </div>
   </div>
