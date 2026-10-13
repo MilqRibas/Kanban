@@ -19,19 +19,83 @@ export const BI_METRIC_LABEL: Record<BiMetric, string> = {
   rake_liquido: 'Rake líquido',
   ativos: 'Jogadores ativos',
   incentivos: 'Incentivos enviados',
-  primeira_semana: 'Primeira semana observada',
+  primeira_semana: 'Jogadores observados pela primeira vez',
+}
+
+export const PRIZE_STATUS_LABEL = {
+  planejada: 'Premiação planejada',
+  registrada: 'Premiação registrada',
+  enviada: 'Envio informado operacionalmente',
+} as const
+
+/** Nenhum status operacional confirma transação. A conciliação financeira ainda não existe. */
+export function prizeHasFinancialConfirmation(_status: string): boolean {
+  return false
 }
 
 const WEEKLY_ONLY: BiMetric[] = ['rake_bruto', 'rake_liquido', 'ativos', 'primeira_semana']
 
 export function metricAllowsGrain(metric: BiMetric, grain: BiGrain): boolean {
+  if (grain === 'range') return metric === 'ativos'
   if (grain === 'day' && WEEKLY_ONLY.includes(metric)) return false
   return true
 }
 
+export function coerceGrain(metric: BiMetric, grain: BiGrain): BiGrain {
+  return metricAllowsGrain(metric, grain) ? grain : 'week'
+}
+
 export function grainBlockReason(metric: BiMetric, grain: BiGrain): string | null {
   if (metricAllowsGrain(metric, grain)) return null
-  return 'O relatório de rake é semanal. Não há valor diário para fabricar a partir do total da semana.'
+  if (metric === 'ativos') {
+    return 'Jogadores ativos vêm do relatório semanal. Não há atividade diária para contar.'
+  }
+  if (metric === 'primeira_semana') {
+    return 'A primeira observação é a semana importada. Não há data diária de entrada.'
+  }
+  return 'O relatório de rake é semanal. O valor da semana não é distribuído entre os dias.'
+}
+
+/** Taxa spin ausente ou zero não entra no ranking e não vira zero. */
+export function spinFeeIsRankable(fee: number | null | undefined): boolean {
+  return fee != null && Number.isFinite(fee) && fee > 0
+}
+
+export function spinCoverage(playersWithFee: number): 'indisponivel' | 'com_taxa' {
+  return playersWithFee > 0 ? 'com_taxa' : 'indisponivel'
+}
+
+/** Semana encerrada antes do dia corrente em America/Sao_Paulo. A semana aberta não é completa. */
+export function weekIsClosed(periodEnd: string, today: string): boolean {
+  return periodEnd.slice(0, 10) < today.slice(0, 10)
+}
+
+/** O rake semanal inteiro aparece no ponto, mas o intervalo não cobre segunda–domingo. */
+export function weekOverlapsPartial(from: string, to: string, periodStart: string, periodEnd: string): boolean {
+  return periodStart.slice(0, 10) < from.slice(0, 10) || periodEnd.slice(0, 10) > to.slice(0, 10)
+}
+
+export function firstObservationKind(input: {
+  club: string
+  agentId: string
+  campaignId: string
+  playerId: string
+}): 'global' | 'recorte' {
+  const allClubs = !input.club || input.club === 'all'
+  if (allClubs && !input.agentId && !input.campaignId && !input.playerId) return 'global'
+  return 'recorte'
+}
+
+export const HISTORY_LIMITATION =
+  'A primeira semana importada não é data de cadastro nem de aquisição. Atividade anterior à cobertura não é estimada.'
+
+/** Diferença entre a taxa total do jogador e a soma das mesas. Não é redistribuída. */
+export function rakeSourceGap(weeklyRake: number, tableRake: number): number {
+  return Math.round((weeklyRake - tableRake) * 100) / 100
+}
+
+export function distinctPlayerCount(playerIds: string[]): number {
+  return new Set(playerIds.filter(Boolean)).size
 }
 
 /** Desempate estável: maior rake e, no empate, menor Player ID. Não altera o valor. */

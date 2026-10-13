@@ -6,7 +6,9 @@ import { usePlayer360 } from '../../composables/usePlayer360'
 import { formatCurrency } from '../../utils/campaignFormat'
 import {
   formatIsoDay,
+  PRIZE_STATUS_LABEL,
   RANKING_CATEGORY_LABEL,
+  spinCoverage,
   type RankingCategory,
 } from '../../utils/biAnalytics'
 import {
@@ -49,8 +51,10 @@ function rowsOf(category: RankingCategory) {
 function categoryNote(category: RankingCategory): string | null {
   if (!week.value) return null
   if (category === 'spin') {
-    if (!week.value.spinPlayers) return 'Não há taxa spin individual nesta semana.'
-    return 'Spin usa a taxa spin do jogador na semana. O rake das mesas Spin não entra, porque está zerado.'
+    if (spinCoverage(week.value.spinPlayers) === 'indisponivel') {
+      return 'Spin indisponível nesta semana: não há taxa spin individual. Ausência não vira zero e não gera Top 3. Stake e receita agregada não substituem o jogador.'
+    }
+    return 'Spin usa só a taxa spin preenchida por jogador. Quem não tem taxa não entra como zero. O rake das mesas Spin não entra.'
   }
   if (!week.value.tablesLoaded) return 'Cobertura incompleta: esta semana não tem o detalhe de Cash e Torneio.'
   if (category === 'torneio') return 'Torneio soma MTT e SNG. OFC, Rodeo e TLT ficam de fora.'
@@ -190,7 +194,10 @@ onMounted(async () => {
       <section v-for="category in categories" :key="category" class="panel-glass rounded-2xl p-3">
         <h4 class="text-sm font-semibold text-text-primary">{{ RANKING_CATEGORY_LABEL[category] }}</h4>
         <p class="mt-1 text-[11px] text-text-muted">{{ categoryNote(category) }}</p>
-        <p v-if="category !== 'spin' && week && !week.tablesLoaded" class="mt-4 text-sm text-text-secondary">
+        <p v-if="category === 'spin' && week && spinCoverage(week.spinPlayers) === 'indisponivel'" class="mt-4 text-sm text-text-secondary">
+          Ranking de Spin não exibido.
+        </p>
+        <p v-else-if="category !== 'spin' && week && !week.tablesLoaded" class="mt-4 text-sm text-text-secondary">
           Ranking não exibido.
         </p>
         <ol v-else class="mt-3 space-y-2">
@@ -220,8 +227,8 @@ onMounted(async () => {
 
     <section class="panel-glass rounded-2xl p-3">
       <h4 class="text-sm font-semibold text-text-primary">Registrar premiação</h4>
-      <p class="mt-1 text-[11px] text-text-muted">
-        O registro não envia fichas e não entra como incentivo. Status enviado é só operacional.
+        <p class="mt-1 text-[11px] text-text-muted">
+        O registro não envia fichas e não entra como incentivo. Confirmação financeira indisponível: nenhum status comprova transação.
       </p>
       <form class="mt-3 grid gap-2 sm:grid-cols-3" @submit.prevent="submitPrize">
         <select v-model="form.category" class="rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm" aria-label="Categoria">
@@ -237,9 +244,9 @@ onMounted(async () => {
         </select>
         <input v-model.number="form.amount" type="number" min="0" step="0.01" class="rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm" placeholder="Valor" aria-label="Valor" />
         <select v-model="form.status" class="rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm" aria-label="Status">
-          <option value="planejada">Planejada</option>
-          <option value="registrada">Registrada</option>
-          <option value="enviada">Enviada</option>
+          <option value="planejada">{{ PRIZE_STATUS_LABEL.planejada }}</option>
+          <option value="registrada">{{ PRIZE_STATUS_LABEL.registrada }}</option>
+          <option value="enviada">{{ PRIZE_STATUS_LABEL.enviada }}</option>
         </select>
         <input v-model="form.note" class="rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm" placeholder="Observação" aria-label="Observação" />
         <button type="submit" class="rounded-xl bg-accent px-3 py-2 text-sm text-board disabled:opacity-50" :disabled="saving">
@@ -250,7 +257,8 @@ onMounted(async () => {
         <li v-if="!prizes.length" class="text-text-muted">Nenhuma premiação nesta semana.</li>
         <li v-for="prize in prizes" :key="prize.id" class="rounded-xl border border-white/10 px-3 py-2">
           {{ RANKING_CATEGORY_LABEL[prize.category] }} · {{ prize.placement }}º · {{ prize.playerId }}
-          · {{ formatCurrency(prize.amount) }} · {{ prize.status }}
+          · {{ formatCurrency(prize.amount) }} · {{ PRIZE_STATUS_LABEL[prize.status] }}
+          <p class="text-[11px] text-text-muted">Confirmação financeira indisponível.</p>
           <p
             v-if="currentRake(prize) != null && Math.abs((currentRake(prize) ?? 0) - prize.rakeSnapshot) > 0.01"
             class="text-[11px] text-amber-200"

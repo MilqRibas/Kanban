@@ -5,8 +5,11 @@ import BiLineChart, { type ChartSeries } from './BiLineChart.vue'
 import { formatCurrency, formatNumber } from '../../utils/campaignFormat'
 import {
   BI_METRIC_LABEL,
+  coerceGrain,
+  firstObservationKind,
   formatIsoDay,
   grainBlockReason,
+  HISTORY_LIMITATION,
   metricAllowsGrain,
   periodPreset,
   previousWindow,
@@ -77,6 +80,15 @@ function resetCutScope(cut: Cut) {
   cut.playerId = ''
 }
 const grainHint = computed(() => grainBlockReason(metric.value, 'day'))
+const observationKind = computed(() =>
+  firstObservationKind({
+    club: club.value,
+    agentId: agentId.value,
+    campaignId: campaignId.value,
+    playerId: playerId.value,
+  }),
+)
+const hasPartialBucket = computed(() => series.value.some((item) => item.points.some((point) => point.partial)))
 const moneyMetric = computed(() => metric.value === 'rake_bruto' || metric.value === 'rake_liquido' || metric.value === 'incentivos')
 
 function formatValue(value: number) {
@@ -92,9 +104,10 @@ function applyPreset() {
 
 function cutLabel(cut: Cut, index: number) {
   const clubName = cut.club === 'sx_club' ? 'SX Club' : cut.club === 'xtreme_pro' ? 'Xtreme Pro' : 'Todos'
-  const agent = options.value.find((item) => item.kind === 'agent' && item.id === cut.agentId)
-  const campaign = options.value.find((item) => item.kind === 'campaign' && item.id === cut.campaignId)
-  return [clubName, agent?.label, campaign?.label, cut.playerId].filter(Boolean).join(' · ') || `Recorte ${index + 1}`
+  const pool = optionsByClub.value[cut.club || 'all'] ?? []
+  const agent = pool.find((item) => item.kind === 'agent' && item.id === cut.agentId)
+  const campaign = pool.find((item) => item.kind === 'campaign' && item.id === cut.campaignId)
+  return [clubName, agent?.label ?? (cut.agentId || null), campaign?.label ?? (cut.campaignId || null), cut.playerId].filter(Boolean).join(' · ') || `Recorte ${index + 1}`
 }
 
 function toChart(points: BiPoint[], label: string, color: string, id: string): ChartSeries {
@@ -152,9 +165,8 @@ async function load() {
     error.value = 'A data inicial precisa ser anterior ou igual à final.'
     return
   }
-  if (!metricAllowsGrain(metric.value, grain.value)) {
-    grain.value = 'week'
-  }
+  const nextGrain = coerceGrain(metric.value, grain.value)
+  if (nextGrain !== grain.value) grain.value = nextGrain
   const token = ++request
   loading.value = true
   error.value = ''
@@ -299,7 +311,7 @@ onMounted(async () => {
         <h3 class="text-base font-semibold text-text-primary">Evolução de desempenho</h3>
         <p class="text-xs text-text-muted">
           Rake bruto é taxa total mais taxa spin. O líquido usa a taxa da liga já vigente.
-          Primeira semana observada não é aquisição.
+          Jogadores observados pela primeira vez não são aquisições.
         </p>
       </div>
       <button type="button" class="rounded-xl border border-white/10 px-3 py-2 text-sm" @click="exportCsv">
@@ -335,9 +347,19 @@ onMounted(async () => {
         <input v-model="to" type="date" class="rounded-xl border border-white/10 bg-board-elevated px-2 py-2 text-sm" aria-label="Data final" @change="preset = 'custom'" />
       </div>
     </div>
-    <p v-if="grainHint" class="text-[11px] text-text-muted">{{ grainHint }}</p>
+    <p v-if="grainHint" class="text-[11px] text-text-muted">{{ grainHint }} Diário fica desabilitado para esta métrica.</p>
     <p v-if="metric === 'primeira_semana'" class="text-[11px] text-text-muted">
-      Conta a primeira semana em que o jogador aparece no recorte importado. Não representa aquisição de campanha.
+      <template v-if="mode !== 'single' || observationKind === 'recorte'">
+        Neste recorte, o número é a primeira semana importada dentro do clube, da agência, da campanha ou do jogador selecionado.
+        Um jogador antigo em outro clube pode aparecer aqui. Não é a primeira observação global.
+      </template>
+      <template v-else>
+        Com todos os clubes e sem agência, campanha ou jogador, o número é a primeira semana do jogador em todo o histórico importado.
+      </template>
+      {{ HISTORY_LIMITATION }}
+    </p>
+    <p v-if="hasPartialBucket && metric !== 'incentivos'" class="text-[11px] text-amber-200">
+      O intervalo corta uma semana ou um mês. O ponto mostra o total importado do bucket, sem ratear o rake pelos dias selecionados.
     </p>
     <p v-if="campaignId || cuts.some((cut) => cut.campaignId)" class="text-[11px] text-text-muted">
       O rake da campanha segue a coorte e o agente dela. Comparar campanhas não soma o mesmo jogador entre as séries.
