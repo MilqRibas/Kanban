@@ -1,0 +1,351 @@
+[
+  {
+    "file": "Relatório de transações suprema 13-08-2026-17-22-15.xlsx",
+    "period": {
+      "start": "2026-07-23",
+      "end": "2026-08-09",
+      "label": "23/07/2026 a 09/08/2026"
+    },
+    "recognizedHeaders": {
+      "externalTransactionId": "ID",
+      "receiverPlayerId": "Receiver player ID",
+      "senderPlayerId": "Sender player ID",
+      "agentId": "Agente player ID",
+      "senderNickname": "Sender player nickname",
+      "day": "Dia",
+      "time": "Hora",
+      "origin": "Origem",
+      "sxType": "SX tipo",
+      "chipsSendOut": "Chips Send Out",
+      "chipsClaimback": "Chips Claimback",
+      "grantSendOut": "Grant Send Out",
+      "grantClaimback": "Grant Claimback",
+      "clubName": "Nome do clube",
+      "systemStatus": "Status sistema",
+      "orderStatus": "Order status"
+    },
+    "senderHeader": "Sender player ID",
+    "nicknameHeader": "Sender player nickname",
+    "rows": 919,
+    "withSender": 919,
+    "mktGt": 48,
+    "mktGtAmount": 297,
+    "incentives": 51,
+    "incentiveAmount": 827,
+    "uniqueSenders": [
+      "741438",
+      "1092502",
+      "37729"
+    ],
+    "sampleMkt": [
+      {
+        "externalTransactionId": "040d21d8-2290-45da-a88d-588b4307776b",
+        "senderPlayerId": "1092502",
+        "senderNickname": "MKT GT",
+        "receiverPlayerId": "1683562",
+        "amount": 3,
+        "isBonus": true,
+        "sxType": "Bônus",
+        "occurredAt": "2026-07-27T16:09:11.000Z"
+      },
+      {
+        "externalTransactionId": "0ae63ce3-e5ad-479f-9b18-3dc9bffa35fa",
+        "senderPlayerId": "1092502",
+        "senderNickname": "MKT GT",
+        "receiverPlayerId": "342173",
+        "amount": 15,
+        "isBonus": true,
+        "sxType": "Bônus",
+        "occurredAt": "2026-08-04T17:28:42.000Z"
+      },
+      {
+        "externalTransactionId": "108ce6de-0a48-411f-b406-f83a2488ceee",
+        "senderPlayerId": "1092502",
+        "senderNickname": "MKT GT",
+        "receiverPlayerId": "1586753",
+        "amount": 5,
+        "isBonus": true,
+        "sxType": "Bônus",
+        "occurredAt": "2026-07-30T16:38:51.000Z"
+      }
+    ],
+    "warnings": [
+      "agent_column_ok",
+      "unmapped_headers",
+      "sender_column_ok",
+      "period_from_rows"
+    ]
+  },
+  {
+    "file": "Relatório de transações suprema 13-08-2026-17-23-39.xlsx",
+    "period": {
+      "start": "2026-05-01",
+      "end": "2026-06-08",
+      "label": "01/05/2026 a 08/06/2026"
+    },
+    "recognizedHeaders": {
+      "externalTransactionId": "ID",
+      "receiverPlayerId": "Receiver player ID",
+      "senderPlayerId": "Sender player ID",
+      "agentId": "Agente player ID",
+      "senderNickname": "Sender player nickname",
+      "day": "Dia",
+      "time": "Hora",
+      "origin": "Origem",
+      "sxType": "SX tipo",
+      "chipsSendOut": "Chips Send Out",
+      "chipsClaimback": "Chips Claimback",
+      "grantSendOut": "Grant Send Out",
+      "grantClaimback": "Grant Claimback",
+      "clubName": "Nome do clube",
+      "systemStatus": "Status sistema",
+      "orderStatus": "Order status"
+    },
+    "senderHeader": "Sender player ID",
+    "nicknameHeader": "Sender player nickname",
+    "rows": 676,
+    "withSender": 676,
+    "mktGt": 45,
+    "mktGtAmount": 910,
+    "incentives": 46,
+    "incentiveAmount": 920,
+    "uniqueSenders": [
+      "741438",
+      "1092502"
+    ],
+    "sampleMkt": [
+      {
+        "externalTransactionId": "078f7cbe-7220-4fd5-8190-29005f5c0cbb",
+        "senderPlayerId": "1092502",
+        "senderNickname": "MKT GT",
+        "receiverPlayerId": "1101959",
+        "amount": 15,
+        "isBonus": true,
+        "sxType": "Bônus",
+        "occurredAt": "2026-06-01T11:00:19.000Z"
+      },
+      {
+        "externalTransactionId": "07f8f820-6ab9-42be-88de-d017df58677e",
+        "senderPlayerId": "1092502",
+        "senderNickname": "MKT GT",
+        "receiverPlayerId": "1332594",
+        "amount": 25,
+        "isBonus": true,
+        "sxType": "Bônus",
+        "occurredAt": "2026-05-05T13:06:57.000Z"
+      },
+      {
+        "externalTransactionId": "0e31e60a-2f0f-4315-b81d-c5793e5da16f",
+        "senderPlayerId": "1092502",
+        "senderNickname": "MKT GT",
+        "receiverPlayerId": "1708663",
+        "amount": 10,
+        "isBonus": true,
+        "sxType": "Bônus",
+        "occurredAt": "2026-05-28T18:32:46.000Z"
+      }
+    ],
+    "warnings": [
+      "agent_column_ok",
+      "unmapped_headers",
+      "sender_column_ok",
+      "period_from_rows"
+    ]
+  },
+  {
+    "file": "Relatório de transações suprema 13-08-2026-17-24-20.xlsx",
+    "period": {
+      "start": "2026-04-01",
+      "end": "2026-04-30",
+      "label": "01/04/2026 a 30/04/2026"
+    },
+    "recognizedHeaders": {
+      "externalTransactionId": "ID",
+      "receiverPlayerId": "Receiver player ID",
+      "senderPlayerId": "Sender player ID",
+      "agentId": "Agente player ID",
+      "senderNickname": "Sender player nickname",
+      "day": "Dia",
+      "time": "Hora",
+      "origin": "Origem",
+      "sxType": "SX tipo",
+      "chipsSendOut": "Chips Send Out",
+      "chipsClaimback": "Chips Claimback",
+      "grantSendOut": "Grant Send Out",
+      "grantClaimback": "Grant Claimback",
+      "clubName": "Nome do clube",
+      "systemStatus": "Status sistema",
+      "orderStatus": "Order status"
+    },
+    "senderHeader": "Sender player ID",
+    "nicknameHeader": "Sender player nickname",
+    "rows": 317,
+    "withSender": 317,
+    "mktGt": 16,
+    "mktGtAmount": 455,
+    "incentives": 16,
+    "incentiveAmount": 455,
+    "uniqueSenders": [
+      "741438",
+      "1092502"
+    ],
+    "sampleMkt": [
+      {
+        "externalTransactionId": "04043eea-82a0-420f-a78b-46a66960fad8",
+        "senderPlayerId": "1092502",
+        "senderNickname": "MKT GT",
+        "receiverPlayerId": "735228",
+        "amount": 5,
+        "isBonus": true,
+        "sxType": "Bônus",
+        "occurredAt": "2026-04-01T14:14:56.000Z"
+      },
+      {
+        "externalTransactionId": "1111ebe9-b76d-438f-80c0-ead79d89d8db",
+        "senderPlayerId": "1092502",
+        "senderNickname": "MKT GT",
+        "receiverPlayerId": "1291336",
+        "amount": 50,
+        "isBonus": true,
+        "sxType": "Bônus",
+        "occurredAt": "2026-04-17T15:30:33.000Z"
+      },
+      {
+        "externalTransactionId": "11f50376-66f5-4346-b20d-5657bf9644d5",
+        "senderPlayerId": "1092502",
+        "senderNickname": "MKT GT",
+        "receiverPlayerId": "1533290",
+        "amount": 5,
+        "isBonus": true,
+        "sxType": "Bônus",
+        "occurredAt": "2026-04-01T14:14:48.000Z"
+      }
+    ],
+    "warnings": [
+      "agent_column_ok",
+      "unmapped_headers",
+      "sender_column_ok",
+      "period_from_rows"
+    ]
+  },
+  {
+    "file": "Relatório de transações suprema 13-08-2026-17-24-49.xlsx",
+    "period": {
+      "start": "2026-03-01",
+      "end": "2026-03-31",
+      "label": "01/03/2026 a 31/03/2026"
+    },
+    "recognizedHeaders": {
+      "externalTransactionId": "ID",
+      "receiverPlayerId": "Receiver player ID",
+      "senderPlayerId": "Sender player ID",
+      "agentId": "Agente player ID",
+      "senderNickname": "Sender player nickname",
+      "day": "Dia",
+      "time": "Hora",
+      "origin": "Origem",
+      "sxType": "SX tipo",
+      "chipsSendOut": "Chips Send Out",
+      "chipsClaimback": "Chips Claimback",
+      "grantSendOut": "Grant Send Out",
+      "grantClaimback": "Grant Claimback",
+      "clubName": "Nome do clube",
+      "systemStatus": "Status sistema",
+      "orderStatus": "Order status"
+    },
+    "senderHeader": "Sender player ID",
+    "nicknameHeader": "Sender player nickname",
+    "rows": 384,
+    "withSender": 384,
+    "mktGt": 70,
+    "mktGtAmount": 1925,
+    "incentives": 70,
+    "incentiveAmount": 1925,
+    "uniqueSenders": [
+      "1092502",
+      "741438"
+    ],
+    "sampleMkt": [
+      {
+        "externalTransactionId": "00ebd335-8541-482b-88bb-ec7fad0c73dc",
+        "senderPlayerId": "1092502",
+        "senderNickname": "MKT GT",
+        "receiverPlayerId": "1503232",
+        "amount": 15,
+        "isBonus": true,
+        "sxType": "Bônus",
+        "occurredAt": "2026-03-06T14:29:21.000Z"
+      },
+      {
+        "externalTransactionId": "01e1fb0d-b01b-4f7f-8d45-10ee6b2c7e3e",
+        "senderPlayerId": "1092502",
+        "senderNickname": "MKT GT",
+        "receiverPlayerId": "369825",
+        "amount": 15,
+        "isBonus": true,
+        "sxType": "Bônus",
+        "occurredAt": "2026-03-09T12:12:41.000Z"
+      },
+      {
+        "externalTransactionId": "02f478b3-0569-4e5c-b9be-43085341321c",
+        "senderPlayerId": "1092502",
+        "senderNickname": "MKT GT",
+        "receiverPlayerId": "339838",
+        "amount": 40,
+        "isBonus": true,
+        "sxType": "Bônus",
+        "occurredAt": "2026-03-13T10:39:13.000Z"
+      }
+    ],
+    "warnings": [
+      "agent_column_ok",
+      "unmapped_headers",
+      "sender_column_ok",
+      "period_from_rows"
+    ]
+  },
+  {
+    "file": "Relatório de transações suprema 13-08-2026-17-25-16.xlsx",
+    "period": {
+      "start": "2026-02-24",
+      "end": "2026-02-28",
+      "label": "24/02/2026 a 28/02/2026"
+    },
+    "recognizedHeaders": {
+      "externalTransactionId": "ID",
+      "receiverPlayerId": "Receiver player ID",
+      "senderPlayerId": "Sender player ID",
+      "agentId": "Agente player ID",
+      "senderNickname": "Sender player nickname",
+      "day": "Dia",
+      "time": "Hora",
+      "origin": "Origem",
+      "sxType": "SX tipo",
+      "chipsSendOut": "Chips Send Out",
+      "chipsClaimback": "Chips Claimback",
+      "grantSendOut": "Grant Send Out",
+      "grantClaimback": "Grant Claimback",
+      "clubName": "Nome do clube",
+      "systemStatus": "Status sistema",
+      "orderStatus": "Order status"
+    },
+    "senderHeader": "Sender player ID",
+    "nicknameHeader": "Sender player nickname",
+    "rows": 249,
+    "withSender": 249,
+    "mktGt": 0,
+    "mktGtAmount": 0,
+    "incentives": 0,
+    "incentiveAmount": 0,
+    "uniqueSenders": [
+      "741438"
+    ],
+    "sampleMkt": [],
+    "warnings": [
+      "agent_column_ok",
+      "unmapped_headers",
+      "sender_column_ok",
+      "period_from_rows"
+    ]
+  }
+]
