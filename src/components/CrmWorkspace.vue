@@ -4,7 +4,7 @@ import { BarChart3, ContactRound, Filter } from '@lucide/vue'
 import { useCrmStore } from '../stores/crm'
 import { usePipelinesStore } from '../stores/pipelines'
 import { useSegmentsStore } from '../stores/segments'
-import CrmBiView from './crm/CrmBiView.vue'
+import BiModule from './crm/BiModule.vue'
 import CrmPipelinesView from './crm/CrmPipelinesView.vue'
 import SegmentsView from './segments/SegmentsView.vue'
 
@@ -76,7 +76,7 @@ watch(area, (next) => {
         <SegmentsView />
       </div>
       <div v-else-if="area === 'bi'" class="page-shell pb-3">
-        <CrmBiView />
+        <BiModule />
       </div>
       <div v-else class="page-shell pb-3">
         <CrmPipelinesView />
