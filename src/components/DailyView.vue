@@ -274,6 +274,16 @@ function duplicateDay(mode: DailyDuplicateMode) {
   daily.duplicateEntry(mode)
 }
 
+async function deleteDay() {
+  duplicateMenuOpen.value = false
+  const name = selectedMember.value?.name ?? 'Sem responsável'
+  const confirmed = window.confirm(
+    `Excluir as tarefas de ${name} em ${dateLabel.value}? Esta ação não pode ser desfeita.`,
+  )
+  if (!confirmed) return
+  await daily.deleteCurrentEntry()
+}
+
 function isTabActive(mode: 'day' | 'week' | 'month') {
   if (mode === 'day') return daily.dayDetailOpen
   if (mode === 'week') {
@@ -653,6 +663,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEscapeKey))
               {{ selectedMember?.name ?? 'Sem responsável' }}
             </h2>
             <div class="flex items-center gap-2 pr-1">
+              <button
+                type="button"
+                class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-danger hover:bg-danger/10"
+                title="Excluir tarefa"
+                @click="deleteDay"
+              >
+                <Trash2 :size="14" />
+                Excluir
+              </button>
               <div class="relative">
                 <button
                   type="button"

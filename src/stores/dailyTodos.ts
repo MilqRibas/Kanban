@@ -164,6 +164,8 @@ export const useDailyStore = defineStore('daily', () => {
   const board = useBoardStore()
   const ui = loadUiState()
   const entries = ref<DailyEntry[]>([])
+  const deletedIds = new Set<string>()
+  const deletedKeys = new Set<string>()
   const selectedDateKey = ref(ui?.selectedDateKey ?? toDateKey(new Date()))
   const calendarViewMode = ref<DailyCalendarMode>(ui?.calendarViewMode ?? 'week')
   const dayDetailOpen = ref(ui?.dayDetailOpen ?? false)
@@ -202,7 +204,15 @@ export const useDailyStore = defineStore('daily', () => {
     }
   }
 
+  function isDeleted(entry: DailyEntry) {
+    return (
+      deletedIds.has(entry.id) ||
+      deletedKeys.has(entryLookupKey(entry.memberId, entry.dateKey))
+    )
+  }
+
   async function persistEntry(entry: DailyEntry) {
+    if (isDeleted(entry)) return
     quietRealtime()
 
     let existingQuery = supabase
@@ -225,6 +235,8 @@ export const useDailyStore = defineStore('daily', () => {
         persistTimers.delete(oldId)
       }
     }
+
+    if (isDeleted(entry)) return
 
     const { error: upsertError } = await supabase.from('daily_entries').upsert(
       {
@@ -641,6 +653,52 @@ export const useDailyStore = defineStore('daily', () => {
     schedulePersist(entry)
   }
 
+  async function deleteCurrentEntry() {
+    const entry = currentEntry.value
+    if (!entry) return false
+    const key = entryLookupKey(entry.memberId, entry.dateKey)
+    deletedIds.add(entry.id)
+    deletedKeys.add(key)
+    const timer = persistTimers.get(entry.id)
+    if (timer) clearTimeout(timer)
+    persistTimers.delete(entry.id)
+    entries.value = entries.value.filter((item) => item.id !== entry.id)
+    quietRealtime(2500)
+    closeDayDetail()
+
+    const { error: deleteError } = await supabase
+      .from('daily_entries')
+      .delete()
+      .eq('board_id', BOARD_ID)
+      .eq('id', entry.id)
+
+    let byKey = supabase
+      .from('daily_entries')
+      .delete()
+      .eq('board_id', BOARD_ID)
+      .eq('date_key', entry.dateKey)
+    byKey = entry.memberId
+      ? byKey.eq('member_id', entry.memberId)
+      : byKey.is('member_id', null)
+    const { error: keyError } = await byKey
+
+    window.setTimeout(() => {
+      deletedIds.delete(entry.id)
+      deletedKeys.delete(key)
+    }, 2500)
+
+    if (deleteError || keyError) {
+      const message = deleteError?.message ?? keyError?.message ?? 'Falha ao excluir a tarefa.'
+      error.value = message
+      useToastStore().error(message)
+      void loadEntries()
+      return false
+    }
+
+    useToastStore().success('Tarefa excluída.')
+    return true
+  }
+
   function removeTodo(todoId: string) {
     const entry = ensureEntry()
     if (!entry) return
@@ -770,6 +828,7 @@ export const useDailyStore = defineStore('daily', () => {
     toggleTodo,
     updateTodoText,
     removeTodo,
+    deleteCurrentEntry,
     duplicateEntry,
     duplicateTodo,
     ensureEntry,
