@@ -71,7 +71,7 @@ watch(area, (next) => {
       </div>
     </div>
 
-    <div class="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-y-contain sm:mt-3">
+    <div class="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-footer-pad sm:mt-3">
       <div v-if="area === 'segments'" class="page-shell pb-3">
         <SegmentsView />
       </div>

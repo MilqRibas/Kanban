@@ -30,7 +30,7 @@ import {
 type Mode = 'single' | 'cuts' | 'periods'
 type Cut = { club: string; agentId: string; campaignId: string; playerId: string }
 
-const colors = ['#7dd3fc', '#fbbf24', '#f472b6']
+const colors = ['#39bcff', '#F5C451', '#FF5AD1']
 const mode = ref<Mode>('single')
 const metric = ref<BiMetric>('rake_bruto')
 const grain = ref<BiGrain>('week')
@@ -110,19 +110,38 @@ function cutLabel(cut: Cut, index: number) {
   return [clubName, agent?.label ?? (cut.agentId || null), campaign?.label ?? (cut.campaignId || null), cut.playerId].filter(Boolean).join(' · ') || `Recorte ${index + 1}`
 }
 
-function toChart(points: BiPoint[], label: string, color: string, id: string): ChartSeries {
+function scopeOf(cut: Cut): string {
+  const clubName =
+    cut.club === 'sx_club' ? 'SX Club' : cut.club === 'xtreme_pro' ? 'Xtreme Pro' : 'Todos os clubes'
+  const pool = optionsByClub.value[cut.club || 'all'] ?? options.value
+  const parts = [clubName]
+  if (cut.agentId) parts.push(pool.find((item) => item.kind === 'agent' && item.id === cut.agentId)?.label ?? cut.agentId)
+  if (cut.campaignId) {
+    parts.push(pool.find((item) => item.kind === 'campaign' && item.id === cut.campaignId)?.label ?? cut.campaignId)
+  }
+  if (cut.playerId.trim()) parts.push(`Jogador ${cut.playerId.trim()}`)
+  return parts.join(' · ')
+}
+
+function periodLabel(start: string, end: string) {
+  if (!end || end === start) return formatIsoDay(start)
+  return `${formatIsoDay(start)} a ${formatIsoDay(end)}`
+}
+
+function toChart(points: BiPoint[], label: string, color: string, id: string, scope: string): ChartSeries {
   return {
     id,
     label,
     color,
+    metricLabel: BI_METRIC_LABEL[metric.value],
     points: points.map((point) => ({
       label: point.bucketStart,
       value: point.hasData ? point.value : null,
       end: point.bucketEnd,
       partial: point.partial,
-      tip: point.hasData
-        ? `${label}: ${formatIsoDay(point.bucketStart)} a ${formatIsoDay(point.bucketEnd)} · ${formatValue(point.value ?? 0)}${point.partial ? ' · período parcial' : ''}`
-        : `${label}: ${formatIsoDay(point.bucketStart)} sem dados`,
+      scope,
+      period: periodLabel(point.bucketStart, point.bucketEnd),
+      display: point.hasData && point.value != null ? formatValue(point.value) : 'Sem dados',
     })),
   }
 }
@@ -191,7 +210,7 @@ async function load() {
       })
       if (token !== request) return
       const label = mode.value === 'cuts' ? cutLabel(cut, index) : 'Período principal'
-      charts.push(toChart(points, label, colors[index] ?? colors[0]!, `cut-${index}`))
+      charts.push(toChart(points, label, colors[index] ?? colors[0]!, `cut-${index}`, scopeOf(cut)))
       summary.push({ label, total: await totalOf(cut, from.value, to.value) })
     }
     if (mode.value === 'periods') {
@@ -213,14 +232,15 @@ async function load() {
         id: 'compare',
         label: `Comparação ${formatIsoDay(other.from)} – ${formatIsoDay(other.to)}`,
         color: colors[1]!,
+        metricLabel: BI_METRIC_LABEL[metric.value],
         points: points.map((point, index) => ({
           label: charts[0]?.points[index]?.label ?? point.bucketStart,
           end: point.bucketEnd,
           partial: point.partial,
+          scope: scopeOf(cut),
+          period: periodLabel(point.bucketStart, point.bucketEnd),
           value: point.hasData ? point.value : null,
-          tip: point.hasData
-            ? `Comparação: ${formatIsoDay(point.bucketStart)} a ${formatIsoDay(point.bucketEnd)} · ${formatValue(point.value ?? 0)}${point.partial ? ' · período parcial' : ''}`
-            : `Comparação: ${formatIsoDay(point.bucketStart)} sem dados`,
+          display: point.hasData && point.value != null ? formatValue(point.value) : 'Sem dados',
         })),
       })
       summary.push({ label: 'Período de comparação', total: await totalOf(cut, other.from, other.to) })
@@ -438,7 +458,6 @@ onMounted(async () => {
     <section class="panel-glass rounded-2xl p-3">
       <p v-if="!series.length" class="py-8 text-center text-sm text-text-muted">Nenhum ponto no recorte.</p>
       <BiLineChart v-else :series="series" />
-      <p class="mt-2 text-[11px] text-text-muted">Ponto ausente significa semana ou dia sem cobertura. Zero é valor real.</p>
     </section>
   </div>
 </template>
