@@ -10,9 +10,11 @@ import {
   Trash2,
 } from '@lucide/vue'
 import { useAgendaStore } from '../stores/agenda'
+import { useToastStore } from '../stores/toast'
 import type { AgendaEvent } from '../types/agenda'
 
 const agenda = useAgendaStore()
+const toast = useToastStore()
 const today = new Date()
 const viewDate = ref(new Date(today.getFullYear(), today.getMonth(), 1))
 const selectedDate = ref(toDateKey(today))
@@ -23,6 +25,9 @@ const draftDescription = ref('')
 const draftDate = ref(selectedDate.value)
 const draftTime = ref('')
 const saving = ref(false)
+const openEventId = ref<string | null>(null)
+const noteDraft = ref('')
+const noteSaving = ref(false)
 
 onMounted(() => {
   if (!agenda.ready) void agenda.init()
@@ -92,6 +97,10 @@ const eventsByDay = computed(() => {
 })
 
 const selectedEvents = computed(() => agenda.eventsOnDate(selectedDate.value))
+
+const openEvent = computed(
+  () => agenda.events.find((event) => event.id === openEventId.value) ?? null,
+)
 
 const upcomingEvents = computed(() => {
   const todayKey = toDateKey(today)
@@ -164,7 +173,37 @@ async function saveEvent() {
 
 async function onDelete(id: string) {
   if (!confirm('Remover este item da agenda?')) return
+  if (openEventId.value === id) openEventId.value = null
   await agenda.removeEvent(id)
+}
+
+function openNotes(event: AgendaEvent) {
+  openEventId.value = event.id
+  noteDraft.value = event.description ?? ''
+}
+
+function closeNotes() {
+  if (noteSaving.value) return
+  openEventId.value = null
+}
+
+async function saveNotes() {
+  const event = openEvent.value
+  if (!event || noteSaving.value) return
+  const next = noteDraft.value.trim()
+  if (next === (event.description ?? '').trim()) {
+    openEventId.value = null
+    return
+  }
+  noteSaving.value = true
+  try {
+    const saved = await agenda.updateEvent(event.id, { description: next || null })
+    if (!saved) return
+    toast.success('Ata salva.')
+    openEventId.value = null
+  } finally {
+    noteSaving.value = false
+  }
 }
 
 function countOnDay(dateKey: string | null) {
@@ -281,10 +320,14 @@ function countOnDay(dateKey: string | null) {
           <li
             v-for="event in selectedEvents"
             :key="event.id"
-            class="rounded-2xl border border-white/10 bg-card/80 p-3 shadow-sm"
+            class="rounded-2xl border border-white/10 bg-card/80 p-3 shadow-sm transition-colors hover:border-accent/30"
           >
             <div class="flex items-start justify-between gap-2">
-              <div class="min-w-0">
+              <button
+                type="button"
+                class="min-w-0 flex-1 rounded-lg text-left"
+                @click="openNotes(event)"
+              >
                 <p class="font-medium text-text-primary">{{ event.title }}</p>
                 <p
                   v-if="event.eventTime"
@@ -295,11 +338,12 @@ function countOnDay(dateKey: string | null) {
                 </p>
                 <p
                   v-if="event.description"
-                  class="mt-1 text-xs text-text-secondary"
+                  class="mt-1 line-clamp-2 text-xs text-text-secondary"
                 >
                   {{ event.description }}
                 </p>
-              </div>
+                <p v-else class="mt-1 text-[11px] text-text-muted">Adicionar ata</p>
+              </button>
               <button
                 type="button"
                 class="rounded-xl p-1.5 text-text-muted hover:bg-rose-500/10 hover:text-rose-300"
@@ -369,9 +413,13 @@ function countOnDay(dateKey: string | null) {
                 class="rounded-2xl border border-white/10 bg-card/70 p-3.5 transition-colors hover:border-accent/30"
               >
                 <div class="flex items-start justify-between gap-3">
-                  <div class="min-w-0">
+                  <button
+                    type="button"
+                    class="min-w-0 flex-1 rounded-lg text-left"
+                    @click="openNotes(event)"
+                  >
                     <div class="flex flex-wrap items-center gap-2">
-                      <h4 class="font-medium text-text-primary">{{ event.title }}</h4>
+                      <span class="font-medium text-text-primary">{{ event.title }}</span>
                       <span
                         v-if="event.eventTime"
                         class="inline-flex items-center gap-1 rounded-lg bg-accent/15 px-2 py-0.5 text-[11px] text-accent"
@@ -382,11 +430,12 @@ function countOnDay(dateKey: string | null) {
                     </div>
                     <p
                       v-if="event.description"
-                      class="mt-1 text-sm text-text-secondary"
+                      class="mt-1 line-clamp-2 text-sm text-text-secondary"
                     >
                       {{ event.description }}
                     </p>
-                  </div>
+                    <p v-else class="mt-1 text-[11px] text-text-muted">Adicionar ata</p>
+                  </button>
                   <button
                     type="button"
                     class="rounded-xl p-1.5 text-text-muted hover:bg-rose-500/10 hover:text-rose-300"
@@ -466,6 +515,60 @@ function countOnDay(dateKey: string | null) {
               @click="saveEvent"
             >
               {{ saving ? 'Salvando…' : 'Salvar' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <Teleport to="body">
+      <div
+        v-if="openEvent"
+        class="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-3 sm:items-center"
+        @click.self="closeNotes"
+      >
+        <div
+          class="flex max-h-[min(88dvh,720px)] w-full max-w-lg flex-col rounded-2xl border border-white/10 bg-board shadow-xl"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="`Ata de ${openEvent.title}`"
+          @keydown.esc="closeNotes"
+        >
+          <header class="border-b border-white/10 px-4 py-3">
+            <h3 class="text-base font-semibold text-text-primary">{{ openEvent.title }}</h3>
+            <p class="mt-1 inline-flex items-center gap-2 text-xs text-text-muted">
+              <span>{{ formatDayLabel(openEvent.eventDate) }}</span>
+              <span v-if="openEvent.eventTime" class="inline-flex items-center gap-1 text-accent">
+                <Clock :size="12" />
+                {{ openEvent.eventTime }}
+              </span>
+            </p>
+          </header>
+          <label class="flex min-h-0 flex-1 flex-col gap-1 px-4 py-3">
+            <span class="text-[11px] uppercase text-text-muted">Ata</span>
+            <textarea
+              v-model="noteDraft"
+              rows="10"
+              class="min-h-40 w-full flex-1 resize-y rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent/40"
+              placeholder="Registre o que foi decidido, os combinados e os próximos passos."
+            />
+          </label>
+          <div class="flex justify-end gap-2 border-t border-white/10 px-4 py-3">
+            <button
+              type="button"
+              class="rounded-xl border border-white/10 px-3 py-2 text-sm text-text-secondary"
+              :disabled="noteSaving"
+              @click="closeNotes"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              class="rounded-xl bg-accent px-3 py-2 text-sm font-semibold text-board disabled:opacity-50"
+              :disabled="noteSaving"
+              @click="saveNotes"
+            >
+              {{ noteSaving ? 'Salvando…' : 'Salvar ata' }}
             </button>
           </div>
         </div>
