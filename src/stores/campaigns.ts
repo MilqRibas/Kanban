@@ -1761,11 +1761,9 @@ export const useCampaignsStore = defineStore('campaigns', () => {
         { event: '*', schema: 'public', table: 'campaign_transaction_imports' },
         () => scheduleReload('tx'),
       )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'campaign_transactions' },
-        () => scheduleReload('tx'),
-      )
+      // Sem escuta em campaign_transactions: cada lote de import gerava WAL
+      // demais e reload em cascata. O fim do import em campaign_transaction_imports
+      // já dispara o refresh das transações.
       .subscribe()
   }
 
