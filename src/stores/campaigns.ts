@@ -198,28 +198,6 @@ async function fetchAllPaged(
   return { data: all, error: null }
 }
 
-/** Página seguinte por id (evita OFFSET, que varre as linhas puladas e estoura timeout). */
-async function fetchAllByIdCursor(
-  build: (afterId: string | null) => PromiseLike<{
-    data: unknown[] | null
-    error: { message: string } | null
-  }>,
-): Promise<{ data: Record<string, unknown>[]; error: { message: string } | null }> {
-  const all: Record<string, unknown>[] = []
-  let afterId: string | null = null
-  while (all.length < HARD_ROW_CAP) {
-    const { data, error } = await build(afterId)
-    if (error) return { data: all, error }
-    const rows = (data ?? []) as Record<string, unknown>[]
-    all.push(...rows)
-    if (rows.length < PAGE_SIZE) break
-    const lastId = String(rows[rows.length - 1]?.id ?? '')
-    if (!lastId || lastId === afterId) break
-    afterId = lastId
-  }
-  return { data: all, error: null }
-}
-
 async function insertInChunks(
   table: string,
   rows: Record<string, unknown>[],
@@ -1270,52 +1248,43 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     }
   }
 
-  function incentivePage(afterId: string | null, kind: 'bonus' | 'mkt') {
-    let query = supabase
-      .from('campaign_transactions')
-      .select(TRANSACTION_LIST_COLUMNS)
-      .eq('board_id', BOARD_ID)
-    query =
-      kind === 'bonus'
-        ? query.eq('is_bonus', true)
-        : query.eq('sender_player_id', MKT_GT_PLAYER_ID)
-    if (afterId) query = query.gt('id', afterId)
-    return query.order('id', { ascending: true }).limit(PAGE_SIZE)
+  /** Incentivos (bonus ∪ MKT) em páginas paralelas — um filtro só, sem 2º crawl serial. */
+  function pagedIncentiveSelect() {
+    return fetchAllPaged(() =>
+      asRangeQuery(
+        supabase
+          .from('campaign_transactions')
+          .select(TRANSACTION_LIST_COLUMNS)
+          .eq('board_id', BOARD_ID)
+          .or(
+            `is_bonus.eq.true,sender_player_id.eq.${MKT_GT_PLAYER_ID}`,
+          )
+          .order('id', { ascending: true }),
+      ),
+    )
   }
 
   async function loadBonusTransactions() {
-    const txImportsRes = await supabase
-      .from('campaign_transaction_imports')
-      .select('*')
-      .eq('board_id', BOARD_ID)
-      .order('period_start', { ascending: false })
+    const [txImportsRes, incentivesRes] = await Promise.all([
+      supabase
+        .from('campaign_transaction_imports')
+        .select('*')
+        .eq('board_id', BOARD_ID)
+        .order('period_start', { ascending: false }),
+      pagedIncentiveSelect(),
+    ])
     if (txImportsRes.error) {
       console.warn('[campaigns] tx imports', txImportsRes.error.message)
       return
     }
-    const bonusRows = await fetchAllByIdCursor((afterId) =>
-      incentivePage(afterId, 'bonus'),
-    )
-    if (bonusRows.error) {
-      console.warn('[campaigns] bonus page', bonusRows.error.message)
-      return
-    }
-    const mktRows = await fetchAllByIdCursor((afterId) =>
-      incentivePage(afterId, 'mkt'),
-    )
-    if (mktRows.error) {
-      console.warn('[campaigns] mkt page', mktRows.error.message)
+    if (incentivesRes.error) {
+      console.warn('[campaigns] incentives page', incentivesRes.error.message)
       return
     }
     transactionImports.value = (txImportsRes.data ?? []).map((row) =>
       mapTransactionImport(row as Record<string, unknown>),
     )
-    const byId = new Map<string, Record<string, unknown>>()
-    for (const row of [...bonusRows.data, ...mktRows.data]) {
-      const id = String(row.id ?? '')
-      if (id) byId.set(id, row)
-    }
-    bonusTransactions.value = [...byId.values()].map(mapTransaction)
+    bonusTransactions.value = incentivesRes.data.map(mapTransaction)
     bonusTransactionsLoaded.value = true
   }
 
@@ -1834,14 +1803,15 @@ export const useCampaignsStore = defineStore('campaigns', () => {
     }
     try {
       await load({ includeTransactions: false, deferPeriods: true })
-      // KPIs primeiro: a função cabe no timeout dela. Bônus e períodos
-      // só depois, em série, para não cancelar a consulta mais curta.
-      await fetchOverviewKpisRpc()
-      void ensureBonusTransactionsLoaded()
-        .then(() => ensurePeriodsLoaded())
-        .finally(() => {
-          metricsSettled.value = true
-        })
+      // KPIs + incentivos + períodos em paralelo (Pro aguenta; serial só
+      // adiava o metricsSettled da overview).
+      void Promise.all([
+        fetchOverviewKpisRpc(),
+        ensureBonusTransactionsLoaded(),
+        ensurePeriodsLoaded(),
+      ]).finally(() => {
+        metricsSettled.value = true
+      })
     } finally {
       ready.value = true
       loading.value = false
