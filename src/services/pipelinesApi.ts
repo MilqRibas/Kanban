@@ -7,7 +7,16 @@ import type {
   PipelineStage,
 } from '../types/pipelines'
 import type { SegmentDefinition } from '../types/segments'
-import { previewSegment } from './segmentsApi'
+import { previewSegment, type SegmentClubFilter } from './segmentsApi'
+
+function clubFilterFromPipelineName(name: string): SegmentClubFilter {
+  const n = name.toLowerCase()
+  if (n.includes('xtreme')) return 'xtreme_pro'
+  if (n.includes('sx club') || n.includes('sx_club') || n.endsWith(' - sx')) {
+    return 'sx_club'
+  }
+  return 'all'
+}
 
 function newId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`
@@ -509,7 +518,8 @@ export async function syncPipelineFromSegment(
   if (!board.stages.length) throw new Error('Pipeline sem estágios.')
 
   const firstStageId = board.stages[0].id
-  const preview = await previewSegment(definition, 5000)
+  const club = clubFilterFromPipelineName(board.pipeline.name)
+  const preview = await previewSegment(definition, 5000, club)
   const matchingIds = new Set(preview.sample.map((s) => s.playerId).filter(Boolean))
   const sampleComplete = preview.count <= preview.sample.length
 
