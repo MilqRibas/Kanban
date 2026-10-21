@@ -341,27 +341,11 @@ async function onDeletePipeline(id: string, name: string) {
         </div>
 
         <div v-else class="space-y-2">
-          <p class="text-[11px] text-text-muted">
-            Arraste o ícone para mover o lead. Clique no card para abrir a observação.
-            A faixa abaixo só muda a ordem dos estágios.
-          </p>
-          <div class="flex flex-wrap items-center gap-2">
-            <draggable
-              v-model="stagesModel"
-              item-key="id"
-              :animation="150"
-              class="flex flex-wrap gap-1"
-              handle=".stage-handle"
-            >
-              <template #item="{ element: stage }">
-                <span
-                  class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-board-elevated/60 px-2 py-1 text-[11px] text-text-secondary"
-                >
-                  <GripVertical class="stage-handle cursor-grab text-text-muted" :size="12" />
-                  {{ stage.name }}
-                </span>
-              </template>
-            </draggable>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <p class="text-[11px] text-text-muted">
+              Arraste o ícone da coluna para reordenar estágios; o do card move o lead.
+              Clique no card para abrir a observação.
+            </p>
             <form class="flex items-center gap-1" @submit.prevent="onAddStage">
               <input
                 v-model="newStageName"
@@ -379,113 +363,125 @@ async function onDeletePipeline(id: string, name: string) {
             </form>
           </div>
 
-          <div
+          <draggable
+            v-model="stagesModel"
+            item-key="id"
+            handle=".stage-handle"
+            :animation="150"
             class="-mx-1 flex gap-2 overflow-x-auto px-1 pb-2 [-ms-overflow-style:none] [scrollbar-width:thin]"
           >
-            <section
-              v-for="stage in board.stages"
-              :key="stage.id"
-              class="panel-glass flex w-[16.5rem] shrink-0 flex-col rounded-2xl"
-            >
-              <header class="flex items-center gap-1 border-b border-white/5 px-2.5 py-2">
-                <template v-if="renamingStageId === stage.id">
-                  <input
-                    v-model="renameDraft"
-                    type="text"
-                    class="min-w-0 flex-1 rounded-md border border-white/10 bg-board px-1.5 py-0.5 text-xs text-text-primary"
-                    @keydown.enter="commitRenameStage"
-                    @blur="commitRenameStage"
-                  />
-                </template>
-                <button
-                  v-else
-                  type="button"
-                  class="min-w-0 flex-1 truncate text-left text-xs font-semibold text-text-primary hover:text-accent"
-                  title="Renomear"
-                  @click="startRenameStage(stage.id, stage.name)"
-                >
-                  {{ stage.name }}
-                </button>
-                <span class="tabular-nums text-[10px] text-text-muted">
-                  {{ visibleEntries(stage.id).length }}
-                  <template v-if="leadQuery.trim()">
-                    / {{ entriesForStage(stage.id).length }}
-                  </template>
-                </span>
-              </header>
-
-              <draggable
-                :model-value="visibleEntries(stage.id)"
-                item-key="id"
-                handle=".lead-handle"
-                :group="{ name: 'crm-pipeline', pull: true, put: true }"
-                :animation="150"
-                class="flex min-h-[8rem] flex-1 flex-col gap-1.5 p-2"
-                @update:model-value="(list: PipelineEntry[]) => onStageListUpdate(stage.id, list)"
+            <template #item="{ element: stage }">
+              <section
+                class="panel-glass flex w-[16.5rem] shrink-0 flex-col rounded-2xl"
               >
-                <template #item="{ element: entry }">
-                  <div
-                    class="flex overflow-hidden rounded-lg border border-white/10 bg-board-elevated/80 transition-colors hover:border-accent/40"
-                    :class="!entry.stillMatchesSegment ? 'opacity-60' : ''"
+                <header class="flex items-center gap-1 border-b border-white/5 px-2.5 py-2">
+                  <button
+                    type="button"
+                    class="stage-handle flex size-6 shrink-0 cursor-grab items-center justify-center rounded-md text-text-muted hover:bg-white/5 hover:text-text-primary active:cursor-grabbing"
+                    title="Arrastar coluna"
+                    aria-label="Arrastar coluna"
                   >
-                    <button
-                      type="button"
-                      class="lead-handle flex w-6 shrink-0 cursor-grab items-start justify-center pt-2 text-text-muted hover:bg-white/5 hover:text-text-primary active:cursor-grabbing"
-                      aria-label="Arrastar lead"
+                    <GripVertical :size="13" />
+                  </button>
+                  <template v-if="renamingStageId === stage.id">
+                    <input
+                      v-model="renameDraft"
+                      type="text"
+                      class="min-w-0 flex-1 rounded-md border border-white/10 bg-board px-1.5 py-0.5 text-xs text-text-primary"
+                      @keydown.enter="commitRenameStage"
+                      @blur="commitRenameStage"
+                    />
+                  </template>
+                  <button
+                    v-else
+                    type="button"
+                    class="min-w-0 flex-1 truncate text-left text-xs font-semibold text-text-primary hover:text-accent"
+                    title="Renomear"
+                    @click="startRenameStage(stage.id, stage.name)"
+                  >
+                    {{ stage.name }}
+                  </button>
+                  <span class="tabular-nums text-[10px] text-text-muted">
+                    {{ visibleEntries(stage.id).length }}
+                    <template v-if="leadQuery.trim()">
+                      / {{ entriesForStage(stage.id).length }}
+                    </template>
+                  </span>
+                </header>
+
+                <draggable
+                  :model-value="visibleEntries(stage.id)"
+                  item-key="id"
+                  handle=".lead-handle"
+                  :group="{ name: 'crm-pipeline', pull: true, put: true }"
+                  :animation="150"
+                  class="flex min-h-[8rem] flex-1 flex-col gap-1.5 p-2"
+                  @update:model-value="(list: PipelineEntry[]) => onStageListUpdate(stage.id, list)"
+                >
+                  <template #item="{ element: entry }">
+                    <div
+                      class="flex overflow-hidden rounded-lg border border-white/10 bg-board-elevated/80 transition-colors hover:border-accent/40"
+                      :class="!entry.stillMatchesSegment ? 'opacity-60' : ''"
                     >
-                      <GripVertical :size="13" />
-                    </button>
-                    <button
-                      type="button"
-                      class="min-w-0 flex-1 py-1.5 pr-2 text-left"
-                      @click="openLead(entry)"
-                    >
-                      <span class="flex items-center gap-1.5">
-                        <span class="min-w-0 flex-1 truncate text-[13px] font-medium leading-5 text-text-primary">
-                          {{ cardTitle(entry) }}
+                      <button
+                        type="button"
+                        class="lead-handle flex w-6 shrink-0 cursor-grab items-start justify-center pt-2 text-text-muted hover:bg-white/5 hover:text-text-primary active:cursor-grabbing"
+                        aria-label="Arrastar lead"
+                      >
+                        <GripVertical :size="13" />
+                      </button>
+                      <button
+                        type="button"
+                        class="min-w-0 flex-1 py-1.5 pr-2 text-left"
+                        @click="openLead(entry)"
+                      >
+                        <span class="flex items-center gap-1.5">
+                          <span class="min-w-0 flex-1 truncate text-[13px] font-medium leading-5 text-text-primary">
+                            {{ cardTitle(entry) }}
+                          </span>
+                          <span
+                            class="shrink-0 rounded px-1 py-px text-[10px] font-medium leading-4"
+                            :class="contactChipClass(entry)"
+                            :title="contactChipTitle(entry)"
+                          >
+                            {{ contactChip(entry) }}
+                          </span>
                         </span>
                         <span
-                          class="shrink-0 rounded px-1 py-px text-[10px] font-medium leading-4"
-                          :class="contactChipClass(entry)"
-                          :title="contactChipTitle(entry)"
+                          v-if="cardHasDistinctName(entry)"
+                          class="block truncate font-mono text-[10px] leading-4 text-text-muted"
                         >
-                          {{ contactChip(entry) }}
+                          {{ entry.playerId }}
                         </span>
-                      </span>
-                      <span
-                        v-if="cardHasDistinctName(entry)"
-                        class="block truncate font-mono text-[10px] leading-4 text-text-muted"
-                      >
-                        {{ entry.playerId }}
-                      </span>
-                      <span
-                        v-if="entry.notes"
-                        class="mt-0.5 block truncate text-[11px] leading-4 text-text-secondary"
-                      >
-                        {{ entry.notes }}
-                      </span>
-                      <span
-                        v-if="!entry.stillMatchesSegment"
-                        class="mt-0.5 block text-[10px] leading-4 text-amber-300/90"
-                      >
-                        Fora do segmento
-                      </span>
-                    </button>
-                  </div>
-                </template>
-              </draggable>
-              <p
-                v-if="visibleEntries(stage.id).length === 0"
-                class="px-3 pb-3 text-center text-[11px] text-text-muted"
-              >
-                {{
-                  leadQuery.trim()
-                    ? 'Nenhum lead com essa busca'
-                    : 'Arraste um lead para cá'
-                }}
-              </p>
-            </section>
-          </div>
+                        <span
+                          v-if="entry.notes"
+                          class="mt-0.5 block truncate text-[11px] leading-4 text-text-secondary"
+                        >
+                          {{ entry.notes }}
+                        </span>
+                        <span
+                          v-if="!entry.stillMatchesSegment"
+                          class="mt-0.5 block text-[10px] leading-4 text-amber-300/90"
+                        >
+                          Fora do segmento
+                        </span>
+                      </button>
+                    </div>
+                  </template>
+                </draggable>
+                <p
+                  v-if="visibleEntries(stage.id).length === 0"
+                  class="px-3 pb-3 text-center text-[11px] text-text-muted"
+                >
+                  {{
+                    leadQuery.trim()
+                      ? 'Nenhum lead com essa busca'
+                      : 'Arraste um lead para cá'
+                  }}
+                </p>
+              </section>
+            </template>
+          </draggable>
         </div>
 
         <Teleport to="body">
