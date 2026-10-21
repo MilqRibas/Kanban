@@ -23,13 +23,8 @@ export function normalizePhoneE164(raw: string, defaultCountry = '55'): string |
 export function extractPlayerIdHypothesis(contactName: string): string | null {
   const text = contactName.trim()
   if (!text) return null
-  const patterns = [
-    /(?:^|[\s\-_|:(])(\d{5,12})(?:$|[\s\-_|:)])/,
-    /(\d{5,12})\s*$/,
-  ]
-  for (const re of patterns) {
-    const m = text.match(re)
-    if (m?.[1]) return m[1]
-  }
-  return null
+  const dashed = text.match(/^(.+?)\s+[-–—]\s+(\d{5,12})\s*$/)
+  if (dashed?.[2]) return dashed[2]
+  const trail = text.match(/(?:^|[\s\-_|:(])(\d{5,12})\s*$/)
+  return trail?.[1] || null
 }

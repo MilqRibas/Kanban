@@ -20,7 +20,15 @@ describe('extractPlayerIdHypothesis', () => {
     expect(extractPlayerIdHypothesis('Zico - 123456')).toBe('123456')
   })
 
+  it('extrai caso Davi - 1737455', () => {
+    expect(extractPlayerIdHypothesis('Davi - 1737455')).toBe('1737455')
+  })
+
   it('não inventa ID', () => {
     expect(extractPlayerIdHypothesis('Zico')).toBeNull()
+  })
+
+  it('não pega número no meio do nome', () => {
+    expect(extractPlayerIdHypothesis('Sala 12 Poker')).toBeNull()
   })
 })

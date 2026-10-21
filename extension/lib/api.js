@@ -91,10 +91,12 @@ async function rpc(fnName, params) {
 function extractPlayerIdHypothesis(contactName) {
   const text = String(contactName || '').trim()
   if (!text) return null
-  const m =
-    text.match(/(?:^|[\s\-_|:(])(\d{5,12})(?:$|[\s\-_|:)])/) ||
-    text.match(/(\d{5,12})\s*$/)
-  return m?.[1] || null
+  // Preferir padrão da equipe: "Nome - 123456"
+  const dashed = text.match(/^(.+?)\s+[-–—]\s+(\d{5,12})\s*$/)
+  if (dashed?.[2]) return dashed[2]
+  // Fallback: ID no final após separador
+  const trail = text.match(/(?:^|[\s\-_|:(])(\d{5,12})\s*$/)
+  return trail?.[1] || null
 }
 
 function normalizePhoneE164(raw, defaultCountry = '55') {
