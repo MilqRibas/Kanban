@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { BarChart3, ContactRound, Filter } from '@lucide/vue'
+import { BarChart3, ContactRound, Filter, Headset } from '@lucide/vue'
 import { useCrmStore } from '../stores/crm'
 import { usePipelinesStore } from '../stores/pipelines'
 import { useSegmentsStore } from '../stores/segments'
+import ActivationLeadsView from './crm/ActivationLeadsView.vue'
 import BiModule from './crm/BiModule.vue'
 import CrmPipelinesView from './crm/CrmPipelinesView.vue'
 import SegmentsView from './segments/SegmentsView.vue'
 
-type CrmArea = 'segments' | 'crm' | 'bi'
+type CrmArea = 'segments' | 'crm' | 'bi' | 'activation'
 
 const area = ref<CrmArea>('crm')
 const crm = useCrmStore()
@@ -18,6 +19,7 @@ const pipelines = usePipelinesStore()
 const areaTabs: { id: CrmArea; label: string; icon: typeof ContactRound }[] = [
   { id: 'segments', label: 'Segmentações', icon: Filter },
   { id: 'crm', label: 'CRM', icon: ContactRound },
+  { id: 'activation', label: 'Ativação de Leads', icon: Headset },
   { id: 'bi', label: 'BI', icon: BarChart3 },
 ]
 
@@ -77,6 +79,9 @@ watch(area, (next) => {
       </div>
       <div v-else-if="area === 'bi'" class="page-shell pb-3">
         <BiModule />
+      </div>
+      <div v-else-if="area === 'activation'" class="page-shell pb-3">
+        <ActivationLeadsView />
       </div>
       <div v-else class="page-shell pb-3">
         <CrmPipelinesView />

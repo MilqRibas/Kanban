@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "SX B2C Assistant",
+  "version": "0.1.0",
+  "description": "Consulta rápida de jogadores para Agentes de Ativação no WhatsApp Web (SX B2C).",
+  "permissions": ["storage", "sidePanel"],
+  "host_permissions": [
+    "https://web.whatsapp.com/*",
+    "https://*.supabase.co/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "SX B2C Assistant",
+    "default_popup": "popup.html"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

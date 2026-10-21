@@ -29,3 +29,12 @@ dist-ssr
 .vercel
 .env*
 !.env.example
+
+# Extensão: config local com anon key
+extension/config.js
+.tmp_*
+.tmp_fn_*.sql
+.tmp_mig*.json
+.tmp_query_only.json
+.tmp_fn_parts.json
+.tmp_all_fns.sql

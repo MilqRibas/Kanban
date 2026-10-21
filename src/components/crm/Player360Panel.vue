@@ -14,15 +14,116 @@ import {
   type IncentiveClassification,
 } from '../../utils/crmIncentiveEconomics'
 import type { CrmIncentiveHistoryItem } from '../../types/crm'
+import type { OperationalIdentity } from '../../types/activationIdentity'
+import {
+  associatePlayerIds,
+  confirmIdentityPhone,
+  getOperationalIdentity,
+} from '../../services/activationIdentityApi'
+import { normalizePhoneE164 } from '../../utils/phoneNormalize'
+import { computeRakeOverDeposits } from '../../utils/rakeOverDeposits'
+import { useToastStore } from '../../stores/toast'
 
 const crm = useCrmStore()
 const player360Api = usePlayer360()
 const campaigns = useCampaignsStore()
+const toast = useToastStore()
+
+const identity = ref<OperationalIdentity | null>(null)
+const identityError = ref<string | null>(null)
+const identityLoading = ref(false)
+const phoneDraft = ref('')
+const associateDraft = ref('')
+const identityBusy = ref(false)
+
+async function loadIdentity(playerId: string) {
+  identityLoading.value = true
+  identityError.value = null
+  identity.value = null
+  try {
+    identity.value = await getOperationalIdentity(playerId)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Falha ao carregar identidade.'
+    if (/crm_get_operational_identity|does not exist|schema cache/i.test(msg)) {
+      identityError.value =
+        'Identidade operacional pendente de migration no Supabase.'
+    } else {
+      identityError.value = msg
+    }
+  } finally {
+    identityLoading.value = false
+  }
+}
+
+async function onConfirmPhone() {
+  const p = data.value
+  if (!p || identityBusy.value) return
+  const e164 = normalizePhoneE164(phoneDraft.value)
+  if (!e164) {
+    toast.error('Telefone inválido.')
+    return
+  }
+  identityBusy.value = true
+  try {
+    const result = await confirmIdentityPhone({
+      playerId: p.playerId,
+      phoneE164: e164,
+      phoneRaw: phoneDraft.value,
+      source: 'manual',
+    })
+    if (!result.ok) {
+      toast.error(result.message ?? 'Não foi possível confirmar o telefone.')
+      return
+    }
+    phoneDraft.value = ''
+    toast.success('Telefone confirmado.')
+    await loadIdentity(p.playerId)
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : 'Falha ao confirmar telefone.')
+  } finally {
+    identityBusy.value = false
+  }
+}
+
+async function onAssociateId() {
+  const p = data.value
+  if (!p || identityBusy.value) return
+  const other = associateDraft.value.trim()
+  if (!other) return
+  identityBusy.value = true
+  try {
+    const result = await associatePlayerIds(p.playerId, other)
+    if (!result.ok) {
+      toast.error(result.message ?? 'Associação bloqueada.')
+      return
+    }
+    associateDraft.value = ''
+    toast.success(
+      result.alreadyLinked ? 'Vínculo já existia.' : 'Player ID associado.',
+    )
+    await loadIdentity(p.playerId)
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : 'Falha ao associar ID.')
+  } finally {
+    identityBusy.value = false
+  }
+}
 
 const isOpen = computed(
   () => player360Api.isOpen.value || crm.player360Loading || Boolean(crm.player360),
 )
 const data = computed(() => crm.player360)
+
+const rakeOverDeposits = computed(() => {
+  const p = data.value
+  if (!p) return null
+  return computeRakeOverDeposits({
+    rakeBruto: p.rake.accumulatedRake,
+    depositsValid: p.transactions.depositedVolume,
+    // Cobertura histórica ainda não auditada para publicar a métrica.
+    depositsCoverageValidated: false,
+  })
+})
 
 const displayName = computed(() => {
   const p = data.value
@@ -102,8 +203,15 @@ async function saveEdit() {
 
 watch(
   () => data.value?.playerId,
-  () => {
+  (playerId) => {
     editingTxId.value = null
+    phoneDraft.value = ''
+    associateDraft.value = ''
+    if (playerId) void loadIdentity(playerId)
+    else {
+      identity.value = null
+      identityError.value = null
+    }
   },
 )
 
@@ -219,7 +327,95 @@ watch(
                   <template v-else>—</template>
                 </p>
               </div>
+              <div class="rounded-xl bg-white/5 px-3 py-2 col-span-2">
+                <p class="text-[11px] text-text-muted">Rake sobre Depósitos (%)</p>
+                <p class="text-sm text-text-secondary">
+                  {{
+                    rakeOverDeposits?.status === 'ready' && rakeOverDeposits.percent != null
+                      ? `${formatNumber(rakeOverDeposits.percent)}%`
+                      : 'Indisponível'
+                  }}
+                </p>
+                <p class="mt-0.5 text-[10px] text-text-muted">
+                  {{ rakeOverDeposits?.reason || 'Métrica complementar — não substitui indicadores atuais.' }}
+                </p>
+              </div>
             </div>
+          </section>
+
+          <!-- Identidade operacional (Ativação de Leads) -->
+          <section class="space-y-2">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+              Identidade operacional
+            </h3>
+            <p v-if="identityLoading" class="text-xs text-text-muted">Carregando vínculos…</p>
+            <p v-else-if="identityError" class="text-xs text-amber-200/90">{{ identityError }}</p>
+            <template v-else>
+              <p class="text-[11px] text-text-muted">
+                Complementar ao Player ID. Não funde rake nem incentivos oficiais.
+              </p>
+              <div class="rounded-xl bg-white/5 px-3 py-2 text-sm">
+                <p class="text-[11px] text-text-muted">Telefones confirmados</p>
+                <p class="text-text-primary">
+                  {{
+                    identity?.phones?.length
+                      ? identity.phones.map((p) => p.phoneE164).join(', ')
+                      : 'Nenhum'
+                  }}
+                </p>
+              </div>
+              <div class="rounded-xl bg-white/5 px-3 py-2 text-sm">
+                <p class="text-[11px] text-text-muted">Player IDs associados</p>
+                <p class="font-mono text-text-primary">
+                  {{
+                    identity?.playerIds?.length
+                      ? identity.playerIds.map((p) => p.playerId).join(', ')
+                      : data.playerId
+                  }}
+                </p>
+              </div>
+              <form class="flex flex-wrap gap-1.5" @submit.prevent="onConfirmPhone">
+                <input
+                  v-model="phoneDraft"
+                  type="tel"
+                  placeholder="Telefone (+55…)"
+                  class="min-w-0 flex-1 rounded-lg border border-white/10 bg-board px-2 py-1.5 text-xs text-text-primary"
+                />
+                <button
+                  type="submit"
+                  class="rounded-lg border border-white/15 px-2.5 py-1.5 text-xs text-text-primary hover:border-accent/40 disabled:opacity-50"
+                  :disabled="identityBusy"
+                >
+                  Confirmar telefone
+                </button>
+              </form>
+              <form class="flex flex-wrap gap-1.5" @submit.prevent="onAssociateId">
+                <input
+                  v-model="associateDraft"
+                  type="text"
+                  inputmode="numeric"
+                  placeholder="Associar Player ID existente"
+                  class="min-w-0 flex-1 rounded-lg border border-white/10 bg-board px-2 py-1.5 text-xs text-text-primary"
+                />
+                <button
+                  type="submit"
+                  class="rounded-lg border border-white/15 px-2.5 py-1.5 text-xs text-text-primary hover:border-accent/40 disabled:opacity-50"
+                  :disabled="identityBusy"
+                >
+                  Associar ID
+                </button>
+              </form>
+              <ul
+                v-if="identity?.audit?.length"
+                class="space-y-1 text-[10px] text-text-muted"
+              >
+                <li v-for="(item, idx) in identity.audit.slice(0, 5)" :key="idx">
+                  {{ item.operation }}
+                  ·
+                  {{ item.occurredAt ? formatDateTime(item.occurredAt) : '—' }}
+                </li>
+              </ul>
+            </template>
           </section>
 
           <!-- Origem / Campanhas -->
