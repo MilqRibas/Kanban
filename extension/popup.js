@@ -7,7 +7,14 @@ function money(n) {
 }
 
 async function render() {
-  const session = await api.getSession()
+  let session = await api.getSession()
+  if (session?.access_token) {
+    try {
+      session = await api.ensureSession()
+    } catch {
+      session = null
+    }
+  }
   if (!session) {
     root.innerHTML = `
       <p class="muted">Entre com a conta SX B2C das Agentes de Ativação.</p>

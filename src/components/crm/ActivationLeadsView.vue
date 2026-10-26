@@ -206,7 +206,7 @@ function openFull360() {
       </div>
 
       <p class="text-[11px] text-text-muted">
-        Atualização (v0.1.1+): em chrome://extensions clique em “Atualizar” na SX B2C Assistant,
+        Atualização (v0.1.2+): em chrome://extensions clique em “Atualizar” na SX B2C Assistant,
         depois recarregue a aba do WhatsApp Web (ou use “Atualizar contato” no painel).
         Suporte: time SX B2C. Chrome Web Store / Edge Add-ons — fase posterior.
       </p>

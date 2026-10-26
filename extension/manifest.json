@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SX B2C Assistant",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Consulta rápida de jogadores para Agentes de Ativação no WhatsApp Web (SX B2C).",
   "permissions": ["storage", "sidePanel", "scripting", "tabs"],
   "host_permissions": [

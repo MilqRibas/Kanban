@@ -400,6 +400,14 @@ async function runLookup({ source = 'manual', playerId, phonePrefill } = {}) {
   } catch (e) {
     const text = e.message || 'Falha na consulta'
     result.innerHTML = ''
+    if (/sessão expirada|jwt expired|entre de novo/i.test(text)) {
+      err.textContent =
+        'Sessão expirada. Faça login novamente para consultar jogadores.'
+      err.hidden = false
+      lookupBusy = false
+      await renderLogin()
+      return
+    }
     err.textContent = /crm_activation_lookup|does not exist|schema cache/i.test(
       text,
     )
@@ -412,7 +420,14 @@ async function runLookup({ source = 'manual', playerId, phonePrefill } = {}) {
 }
 
 ;(async function boot() {
-  const session = await api.getSession()
+  let session = await api.getSession()
+  if (session?.access_token) {
+    try {
+      session = await api.ensureSession()
+    } catch {
+      session = null
+    }
+  }
   if (session) {
     await requestWhatsAppRead()
     await renderMain()
