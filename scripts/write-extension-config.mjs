@@ -33,7 +33,7 @@ const anon =
 const app = env.VITE_APP_URL || 'https://timeb2c.vercel.app'
 
 const body = `/* Gerado localmente — não versionar. */
-window.SX_B2C_CONFIG = {
+globalThis.SX_B2C_CONFIG = {
   SUPABASE_URL: ${JSON.stringify(url)},
   SUPABASE_ANON_KEY: ${JSON.stringify(anon)},
   BOARD_ID: 'board-1',

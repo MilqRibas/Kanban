@@ -12,13 +12,23 @@ marked.use({
       const titleAttr = title ? ` title="${title}"` : ''
       return `<a href="${safeHref}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`
     },
+    image({ href, title, text }) {
+      const safeHref = href ?? ''
+      if (!safeHref) return text || ''
+      const titleAttr = title ? ` title="${title}"` : ''
+      const alt = text || 'imagem'
+      return `<img src="${safeHref}" alt="${alt}"${titleAttr} loading="lazy" />`
+    },
   },
 })
 
-/** Converte URLs soltas em markdown de link. */
+/**
+ * Converte URLs soltas em markdown de link.
+ * Não inclui "(" no prefixo — senão quebra ![alt](https://...) e [texto](https://...).
+ */
 export function autolinkMarkdown(text: string) {
   return text.replace(
-    /(^|[\s(])((https?:\/\/|www\.)[^\s<]+[^\s<.,:;!?)\]])/gi,
+    /(^|[\s])((https?:\/\/|www\.)[^\s<]+[^\s<.,:;!?)\]])/gi,
     (_match, prefix: string, raw: string) => {
       const url = raw.startsWith('http') ? raw : `https://${raw}`
       return `${prefix}[${raw}](${url})`

@@ -69,12 +69,19 @@ async function requestWhatsAppRead() {
 }
 
 async function renderLogin() {
+  const savedLogin = await api.getSavedLogin()
+  const remember = await api.getRememberLogin()
   root.innerHTML = `
     <p class="muted">Login SX B2C — Agentes de Ativação</p>
-    <label>Usuário ou e-mail<input id="login" /></label>
-    <label>Senha<input id="password" type="password" /></label>
+    <label>Usuário ou e-mail<input id="login" autocomplete="username" value="${escapeHtml(savedLogin)}" /></label>
+    <label>Senha<input id="password" type="password" autocomplete="current-password" /></label>
+    <label class="row" style="align-items:center;gap:8px;margin:8px 0">
+      <input id="remember" type="checkbox" ${remember ? 'checked' : ''} />
+      <span class="muted">Manter conectado neste computador</span>
+    </label>
     <button id="btn-login">Entrar</button>
     <p id="err" class="error" hidden></p>
+    <p class="muted">Com “Manter conectado”, a sessão permanece após desligar o PC (enquanto o Chrome não limpar dados da extensão).</p>
   `
   document.getElementById('btn-login').onclick = async () => {
     const err = document.getElementById('err')
@@ -83,6 +90,7 @@ async function renderLogin() {
       await api.signIn(
         document.getElementById('login').value,
         document.getElementById('password').value,
+        { persist: document.getElementById('remember').checked },
       )
       await renderMain()
     } catch (e) {
@@ -400,13 +408,26 @@ async function runLookup({ source = 'manual', playerId, phonePrefill } = {}) {
   } catch (e) {
     const text = e.message || 'Falha na consulta'
     result.innerHTML = ''
-    if (/sessão expirada|jwt expired|entre de novo/i.test(text)) {
-      err.textContent =
-        'Sessão expirada. Faça login novamente para consultar jogadores.'
-      err.hidden = false
-      lookupBusy = false
-      await renderLogin()
-      return
+    if (/invalid_refresh|no_refresh|entre de novo/i.test(text) && !/mantivemos seu login|sem rede/i.test(text)) {
+      const still = await api.getSession()
+      if (!still?.refresh_token) {
+        err.textContent =
+          'Sessão encerrada. Faça login novamente para consultar jogadores.'
+        err.hidden = false
+        lookupBusy = false
+        await renderLogin()
+        return
+      }
+    }
+    if (/jwt expired|token inválido|renovar/i.test(text)) {
+      try {
+        await api.refreshSession({ clearOnHardFail: false })
+        lookupBusy = false
+        await runLookup({ source, playerId: id })
+        return
+      } catch {
+        /* cai no erro abaixo */
+      }
     }
     err.textContent = /crm_activation_lookup|does not exist|schema cache/i.test(
       text,
@@ -421,14 +442,27 @@ async function runLookup({ source = 'manual', playerId, phonePrefill } = {}) {
 
 ;(async function boot() {
   let session = await api.getSession()
-  if (session?.access_token) {
+  if (session?.refresh_token || session?.access_token) {
     try {
-      session = await api.ensureSession()
+      // Pede ao background renovar (sobrevive a reboot do PC)
+      await new Promise((resolve) => {
+        chrome.runtime.sendMessage({ type: 'AUTH_ENSURE' }, () => {
+          void chrome.runtime.lastError
+          resolve()
+        })
+      })
+      session = await api.ensureSession({ allowStale: true }).catch(async (e) => {
+        // Soft fail: ainda há refresh_token — entra e tenta de novo nas consultas
+        if (e?.session?.refresh_token || (await api.getSession())?.refresh_token) {
+          return e.session || (await api.getSession())
+        }
+        return null
+      })
     } catch {
-      session = null
+      session = await api.getSession()
     }
   }
-  if (session) {
+  if (session?.access_token || session?.refresh_token) {
     await requestWhatsAppRead()
     await renderMain()
   } else {

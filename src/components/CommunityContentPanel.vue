@@ -217,10 +217,21 @@ async function handleImageFile(file: File) {
   uploadingImage.value = true
   isEditingBody.value = true
   try {
-    const uploaded = await community.uploadImage(community.selected.id, file)
+    const stamped =
+      file.name && file.name !== 'image.png'
+        ? file
+        : new File(
+            [file],
+            `print-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${file.type.split('/')[1] || 'png'}`,
+            { type: file.type || 'image/png' },
+          )
+    const uploaded = await community.uploadImage(community.selected.id, stamped)
     if (!uploaded) return
     await nextTick()
-    insertMarkdownImage(uploaded.url, uploaded.name.replace(/\.[^.]+$/, '') || 'imagem')
+    insertMarkdownImage(
+      uploaded.url,
+      uploaded.name.replace(/\.[^.]+$/, '') || 'imagem',
+    )
     await community.update(community.selected.id, { body: draftBody.value })
     toast.success('Imagem adicionada')
   } finally {
@@ -357,6 +368,7 @@ function emptyLabel(value: string) {
       role="dialog"
       aria-modal="true"
       :aria-label="community.selected.title"
+      @paste="onPaste"
     >
       <button
         type="button"
@@ -672,8 +684,14 @@ function emptyLabel(value: string) {
               class="w-full rounded-xl border border-dashed border-white/10 px-3 py-8 text-left text-sm text-text-muted hover:border-[#39bcff]/35 hover:text-text-secondary"
               @click="isEditingBody = true"
             >
-              Adicionar texto ou colar imagem…
+              Adicionar texto ou colar imagem (Ctrl+V)…
             </button>
+            <p
+              v-if="!isEditingBody && renderedBody"
+              class="mt-2 text-[11px] text-text-muted"
+            >
+              Ctrl+V cola imagem neste conteúdo · clique na imagem para copiar/baixar
+            </p>
           </div>
 
           <!-- subtle empty hint for collapsed props -->

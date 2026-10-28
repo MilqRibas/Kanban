@@ -48,7 +48,7 @@ export type ActivationLookupResult = {
 
 export const EXTENSION_META = {
   name: 'SX B2C Assistant',
-  version: '0.1.2',
+  version: '0.1.3',
   compatibility: 'Chrome e Edge (Manifest V3)',
   packagePath: 'extension/',
 } as const
