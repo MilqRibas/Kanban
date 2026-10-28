@@ -1,3 +1,5 @@
+import type { Attachment } from './board'
+
 export type AgendaEvent = {
   id: string
   boardId: string
@@ -7,6 +9,8 @@ export type AgendaEvent = {
   eventDate: string
   /** HH:mm opcional */
   eventTime: string | null
+  memberIds: string[]
+  attachments: Attachment[]
   createdBy: string | null
   createdAt: string
   updatedAt: string
@@ -17,4 +21,5 @@ export type AgendaEventDraft = {
   description?: string | null
   eventDate: string
   eventTime?: string | null
+  memberIds?: string[]
 }

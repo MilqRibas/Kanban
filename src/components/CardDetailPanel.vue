@@ -520,28 +520,99 @@ async function deleteCurrentCard() {
   await board.deleteCard(card.value.id)
 }
 
-async function onPickAttachment(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!card.value || !file) return
+function insertMarkdownImage(url: string, alt: string) {
+  const el = descriptionInputRef.value
+  const markdown = `![${alt}](${url})`
+  if (!el) {
+    draftDescription.value = draftDescription.value
+      ? `${draftDescription.value.trimEnd()}\n\n${markdown}\n`
+      : `${markdown}\n`
+    return
+  }
+  const start = el.selectionStart ?? draftDescription.value.length
+  const end = el.selectionEnd ?? start
+  const needsLeadingNewline =
+    start > 0 && draftDescription.value[start - 1] !== '\n'
+  const insert = `${needsLeadingNewline ? '\n\n' : ''}${markdown}\n`
+  const { next, cursor } = insertAtCursor(
+    draftDescription.value,
+    start,
+    end,
+    insert,
+  )
+  draftDescription.value = next
+  nextTick(() => {
+    el.focus()
+    el.setSelectionRange(cursor, cursor)
+  })
+}
+
+async function handleImageOrFile(
+  file: File,
+  { insertInDescription = false }: { insertInDescription?: boolean } = {},
+) {
+  if (!card.value) return
   attachmentError.value = null
 
   if (file.size > 5 * 1024 * 1024) {
     attachmentError.value = 'Arquivo acima do limite de 5 MB.'
-    input.value = ''
     return
   }
 
   uploading.value = true
   try {
-    const result = await board.uploadAttachment(card.value.id, file)
+    // Nome útil para prints colados (clipboard costuma vir como "image.png")
+    const stamped =
+      file.name && file.name !== 'image.png'
+        ? file
+        : new File(
+            [file],
+            `print-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${file.type.split('/')[1] || 'png'}`,
+            { type: file.type || 'image/png' },
+          )
+
+    const result = await board.uploadAttachment(card.value.id, stamped)
     if (!result) {
       attachmentError.value = board.error ?? 'Falha ao enviar o arquivo.'
+      return
+    }
+
+    if (insertInDescription && result.mimeType.startsWith('image/')) {
+      isEditingDescription.value = true
+      await nextTick()
+      insertMarkdownImage(
+        result.url,
+        result.name.replace(/\.[^.]+$/, '') || 'imagem',
+      )
+      board.updateCard(card.value.id, { description: draftDescription.value })
     }
   } finally {
     uploading.value = false
-    input.value = ''
   }
+}
+
+async function onPasteImage(event: ClipboardEvent) {
+  const items = event.clipboardData?.items
+  if (!items?.length) return
+  const imageItem = Array.from(items).find((item) =>
+    item.type.startsWith('image/'),
+  )
+  if (!imageItem) return
+  const file = imageItem.getAsFile()
+  if (!file) return
+  event.preventDefault()
+  // Imagem colada: anexa ao card e insere na descrição (markdown)
+  await handleImageOrFile(file, { insertInDescription: true })
+}
+
+async function onPickAttachment(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!card.value || !file) return
+  input.value = ''
+  await handleImageOrFile(file, {
+    insertInDescription: file.type.startsWith('image/') && isEditingDescription.value,
+  })
 }
 
 async function submitLink() {
@@ -614,6 +685,7 @@ function renderCommentBody(body: string) {
       role="dialog"
       aria-modal="true"
       :aria-label="card.title"
+      @paste="onPasteImage"
     >
       <button
         type="button"
@@ -880,9 +952,10 @@ function renderCommentBody(body: string) {
                 ref="descriptionInputRef"
                 v-model="draftDescription"
                 rows="6"
-                placeholder="Adicione uma descrição… Use **negrito** e *itálico*"
+                placeholder="Adicione uma descrição… Use **negrito** e *itálico*. Cole imagens com Ctrl+V."
                 class="w-full resize-y rounded-xl border border-border-subtle bg-column px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
                 @keydown="onFormatKeydown($event, 'description')"
+                @paste="onPasteImage"
               />
               <div class="flex gap-2">
                 <button
@@ -911,7 +984,7 @@ function renderCommentBody(body: string) {
               class="w-full rounded-xl bg-column px-3 py-3 text-left text-sm text-text-muted hover:bg-column-hover"
               @click="isEditingDescription = true"
             >
-              Adicionar uma descrição mais detalhada…
+              Adicionar descrição ou colar imagem…
             </button>
 
             <div
@@ -1245,7 +1318,8 @@ function renderCommentBody(body: string) {
             </div>
 
             <p class="mb-2 text-[11px] text-text-muted">
-              Arquivos até 5 MB (foto, PDF, CSV, etc.)
+              Arquivos até 5 MB · cole imagens (Ctrl+V) em qualquer lugar do cartão
+              {{ uploading ? ' · Enviando…' : '' }}
             </p>
 
             <form

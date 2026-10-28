@@ -6,15 +6,19 @@ import {
   ChevronRight,
   Clock,
   Loader2,
+  Paperclip,
   Plus,
   Trash2,
+  Users,
 } from '@lucide/vue'
 import { useAgendaStore } from '../stores/agenda'
-import { useToastStore } from '../stores/toast'
+import { useBoardStore } from '../stores/board'
 import type { AgendaEvent } from '../types/agenda'
+import AgendaEventPanel from './AgendaEventPanel.vue'
+import MemberAvatar from './MemberAvatar.vue'
 
 const agenda = useAgendaStore()
-const toast = useToastStore()
+const board = useBoardStore()
 const today = new Date()
 const viewDate = ref(new Date(today.getFullYear(), today.getMonth(), 1))
 const selectedDate = ref(toDateKey(today))
@@ -26,11 +30,10 @@ const draftDate = ref(selectedDate.value)
 const draftTime = ref('')
 const saving = ref(false)
 const openEventId = ref<string | null>(null)
-const noteDraft = ref('')
-const noteSaving = ref(false)
 
 onMounted(() => {
   if (!agenda.ready) void agenda.init()
+  if (!board.ready) void board.init()
 })
 
 function toDateKey(d: Date) {
@@ -80,7 +83,8 @@ const calendarDays = computed(() => {
     cells.push({ day, isToday, dateKey })
   }
 
-  while (cells.length < 42) {
+  // Completa só a última semana (evita linha vazia após o dia 31)
+  while (cells.length % 7 !== 0) {
     cells.push({ day: null, isToday: false, dateKey: null })
   }
 
@@ -98,24 +102,40 @@ const eventsByDay = computed(() => {
 
 const selectedEvents = computed(() => agenda.eventsOnDate(selectedDate.value))
 
-const openEvent = computed(
-  () => agenda.events.find((event) => event.id === openEventId.value) ?? null,
-)
-
-const upcomingEvents = computed(() => {
+/** Timeline: próximos a partir de hoje; se não houver, mostra os mais recentes. */
+const timelineEvents = computed(() => {
   const todayKey = toDateKey(today)
-  return agenda.sortedEvents.filter((e) => e.eventDate >= todayKey).slice(0, 40)
+  const upcoming = agenda.sortedEvents.filter((e) => e.eventDate >= todayKey)
+  if (upcoming.length) return upcoming.slice(0, 40)
+  return [...agenda.sortedEvents].reverse().slice(0, 40)
+})
+
+const timelineIsPastFallback = computed(() => {
+  const todayKey = toDateKey(today)
+  return !agenda.sortedEvents.some((e) => e.eventDate >= todayKey)
 })
 
 const timelineGroups = computed(() => {
   const groups: { date: string; items: AgendaEvent[] }[] = []
-  for (const event of upcomingEvents.value) {
+  const items = timelineIsPastFallback.value
+    ? [...timelineEvents.value].sort((a, b) => {
+        const d = b.eventDate.localeCompare(a.eventDate)
+        if (d !== 0) return d
+        return (b.eventTime || '').localeCompare(a.eventTime || '')
+      })
+    : timelineEvents.value
+  for (const event of items) {
     const last = groups[groups.length - 1]
     if (last && last.date === event.eventDate) last.items.push(event)
     else groups.push({ date: event.eventDate, items: [event] })
   }
   return groups
 })
+
+function formatEventTime(time: string | null) {
+  if (!time) return null
+  return time.slice(0, 5)
+}
 
 function prevMonth() {
   viewDate.value = new Date(
@@ -165,6 +185,7 @@ async function saveEvent() {
       selectedDate.value = created.eventDate
       const [y, m] = created.eventDate.split('-').map(Number)
       viewDate.value = new Date(y, m - 1, 1)
+      openEventId.value = created.id
     }
   } finally {
     saving.value = false
@@ -177,45 +198,26 @@ async function onDelete(id: string) {
   await agenda.removeEvent(id)
 }
 
-function openNotes(event: AgendaEvent) {
+function openEvent(event: AgendaEvent) {
   openEventId.value = event.id
-  noteDraft.value = event.description ?? ''
-}
-
-function closeNotes() {
-  if (noteSaving.value) return
-  openEventId.value = null
-}
-
-async function saveNotes() {
-  const event = openEvent.value
-  if (!event || noteSaving.value) return
-  const next = noteDraft.value.trim()
-  if (next === (event.description ?? '').trim()) {
-    openEventId.value = null
-    return
-  }
-  noteSaving.value = true
-  try {
-    const saved = await agenda.updateEvent(event.id, { description: next || null })
-    if (!saved) return
-    toast.success('Ata salva.')
-    openEventId.value = null
-  } finally {
-    noteSaving.value = false
-  }
 }
 
 function countOnDay(dateKey: string | null) {
   if (!dateKey) return 0
   return eventsByDay.value[dateKey]?.length ?? 0
 }
+
+function memberPreview(event: AgendaEvent) {
+  return event.memberIds
+    .map((id) => board.getMemberById(id))
+    .filter(Boolean)
+    .slice(0, 3)
+}
 </script>
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-3 pt-2 sm:pt-3 has-footer-pad">
     <div class="page-shell flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
-      <!-- Calendário -->
       <section
         class="panel-glass flex min-h-0 w-full flex-col rounded-2xl p-3 shadow-xl shadow-black/20 lg:max-w-md"
       >
@@ -268,7 +270,7 @@ function countOnDay(dateKey: string | null) {
             :key="index"
             type="button"
             :disabled="!cell.dateKey"
-            class="relative flex aspect-square flex-col items-center justify-center rounded-xl text-sm transition-colors disabled:opacity-30"
+            class="relative flex min-h-9 flex-col items-center justify-center rounded-xl py-1.5 text-sm transition-colors disabled:pointer-events-none disabled:opacity-0"
             :class="[
               cell.dateKey === selectedDate
                 ? 'bg-accent text-board font-semibold'
@@ -320,21 +322,21 @@ function countOnDay(dateKey: string | null) {
           <li
             v-for="event in selectedEvents"
             :key="event.id"
-            class="rounded-2xl border border-white/10 bg-card/80 p-3 shadow-sm transition-colors hover:border-accent/30"
+            class="rounded-2xl border border-white/10 bg-card/80 p-3 shadow-sm transition-colors hover:border-accent/30 hover:bg-card"
           >
             <div class="flex items-start justify-between gap-2">
               <button
                 type="button"
-                class="min-w-0 flex-1 rounded-lg text-left"
-                @click="openNotes(event)"
+                class="min-w-0 flex-1 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                @click="openEvent(event)"
               >
                 <p class="font-medium text-text-primary">{{ event.title }}</p>
                 <p
-                  v-if="event.eventTime"
+                  v-if="formatEventTime(event.eventTime)"
                   class="mt-0.5 inline-flex items-center gap-1 text-[11px] text-accent"
                 >
                   <Clock :size="12" />
-                  {{ event.eventTime }}
+                  {{ formatEventTime(event.eventTime) }}
                 </p>
                 <p
                   v-if="event.description"
@@ -342,7 +344,35 @@ function countOnDay(dateKey: string | null) {
                 >
                   {{ event.description }}
                 </p>
-                <p v-else class="mt-1 text-[11px] text-text-muted">Adicionar ata</p>
+                <p v-else class="mt-1 text-[11px] text-text-muted">
+                  Clique para abrir · membros, ata e imagens
+                </p>
+                <div
+                  v-if="event.memberIds.length || event.attachments.length"
+                  class="mt-2 flex flex-wrap items-center gap-2"
+                >
+                  <div
+                    v-if="event.memberIds.length"
+                    class="inline-flex items-center gap-1 text-[11px] text-text-muted"
+                  >
+                    <Users :size="12" />
+                    <span class="inline-flex -space-x-1.5">
+                      <MemberAvatar
+                        v-for="m in memberPreview(event)"
+                        :key="m!.id"
+                        :member="m!"
+                        size="sm"
+                      />
+                    </span>
+                  </div>
+                  <span
+                    v-if="event.attachments.length"
+                    class="inline-flex items-center gap-1 text-[11px] text-text-muted"
+                  >
+                    <Paperclip :size="12" />
+                    {{ event.attachments.length }}
+                  </span>
+                </div>
               </button>
               <button
                 type="button"
@@ -357,7 +387,6 @@ function countOnDay(dateKey: string | null) {
         </ul>
       </section>
 
-      <!-- Timeline -->
       <section
         class="panel-glass min-h-0 flex-1 overflow-y-auto rounded-2xl p-3 shadow-xl shadow-black/20 sm:p-4"
       >
@@ -365,7 +394,11 @@ function countOnDay(dateKey: string | null) {
           <div>
             <h3 class="text-base font-semibold text-text-primary">Timeline</h3>
             <p class="text-xs text-text-muted">
-              Próximos compromissos e marcos do time
+              {{
+                timelineIsPastFallback
+                  ? 'Itens recentes (nenhum compromisso futuro)'
+                  : 'Próximos compromissos e marcos do time'
+              }}
             </p>
           </div>
           <button
@@ -416,16 +449,16 @@ function countOnDay(dateKey: string | null) {
                   <button
                     type="button"
                     class="min-w-0 flex-1 rounded-lg text-left"
-                    @click="openNotes(event)"
+                    @click="openEvent(event)"
                   >
                     <div class="flex flex-wrap items-center gap-2">
                       <span class="font-medium text-text-primary">{{ event.title }}</span>
                       <span
-                        v-if="event.eventTime"
+                        v-if="formatEventTime(event.eventTime)"
                         class="inline-flex items-center gap-1 rounded-lg bg-accent/15 px-2 py-0.5 text-[11px] text-accent"
                       >
                         <Clock :size="11" />
-                        {{ event.eventTime }}
+                        {{ formatEventTime(event.eventTime) }}
                       </span>
                     </div>
                     <p
@@ -434,7 +467,25 @@ function countOnDay(dateKey: string | null) {
                     >
                       {{ event.description }}
                     </p>
-                    <p v-else class="mt-1 text-[11px] text-text-muted">Adicionar ata</p>
+                    <div
+                      v-if="event.memberIds.length || event.attachments.length"
+                      class="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-text-muted"
+                    >
+                      <span
+                        v-if="event.memberIds.length"
+                        class="inline-flex items-center gap-1"
+                      >
+                        <Users :size="12" />
+                        {{ event.memberIds.length }}
+                      </span>
+                      <span
+                        v-if="event.attachments.length"
+                        class="inline-flex items-center gap-1"
+                      >
+                        <Paperclip :size="12" />
+                        {{ event.attachments.length }}
+                      </span>
+                    </div>
                   </button>
                   <button
                     type="button"
@@ -497,7 +548,7 @@ function countOnDay(dateKey: string | null) {
               v-model="draftDescription"
               rows="3"
               class="w-full resize-none rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent/40"
-              placeholder="Opcional"
+              placeholder="Opcional — imagens e membros no painel após criar"
             />
           </label>
           <div class="flex justify-end gap-2 pt-1">
@@ -522,57 +573,11 @@ function countOnDay(dateKey: string | null) {
     </Teleport>
 
     <Teleport to="body">
-      <div
-        v-if="openEvent"
-        class="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-3 sm:items-center"
-        @click.self="closeNotes"
-      >
-        <div
-          class="flex max-h-[min(88dvh,720px)] w-full max-w-lg flex-col rounded-2xl border border-white/10 bg-board shadow-xl"
-          role="dialog"
-          aria-modal="true"
-          :aria-label="`Ata de ${openEvent.title}`"
-          @keydown.esc="closeNotes"
-        >
-          <header class="border-b border-white/10 px-4 py-3">
-            <h3 class="text-base font-semibold text-text-primary">{{ openEvent.title }}</h3>
-            <p class="mt-1 inline-flex items-center gap-2 text-xs text-text-muted">
-              <span>{{ formatDayLabel(openEvent.eventDate) }}</span>
-              <span v-if="openEvent.eventTime" class="inline-flex items-center gap-1 text-accent">
-                <Clock :size="12" />
-                {{ openEvent.eventTime }}
-              </span>
-            </p>
-          </header>
-          <label class="flex min-h-0 flex-1 flex-col gap-1 px-4 py-3">
-            <span class="text-[11px] uppercase text-text-muted">Ata</span>
-            <textarea
-              v-model="noteDraft"
-              rows="10"
-              class="min-h-40 w-full flex-1 resize-y rounded-xl border border-white/10 bg-board-elevated px-3 py-2 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent/40"
-              placeholder="Registre o que foi decidido, os combinados e os próximos passos."
-            />
-          </label>
-          <div class="flex justify-end gap-2 border-t border-white/10 px-4 py-3">
-            <button
-              type="button"
-              class="rounded-xl border border-white/10 px-3 py-2 text-sm text-text-secondary"
-              :disabled="noteSaving"
-              @click="closeNotes"
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              class="rounded-xl bg-accent px-3 py-2 text-sm font-semibold text-board disabled:opacity-50"
-              :disabled="noteSaving"
-              @click="saveNotes"
-            >
-              {{ noteSaving ? 'Salvando…' : 'Salvar ata' }}
-            </button>
-          </div>
-        </div>
-      </div>
+      <AgendaEventPanel
+        v-if="openEventId"
+        :event-id="openEventId"
+        @close="openEventId = null"
+      />
     </Teleport>
   </div>
 </template>
