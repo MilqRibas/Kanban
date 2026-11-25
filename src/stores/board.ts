@@ -1016,7 +1016,15 @@ export const useBoardStore = defineStore('board', () => {
       })),
     }))
 
-    const card: Card = {
+    const comments: Comment[] = source.comments.map((comment) => ({
+      id: createId('cm'),
+      authorId: comment.authorId,
+      body: comment.body,
+      createdAt: comment.createdAt,
+      updatedAt: comment.updatedAt ?? null,
+    }))
+
+    cards.value.push({
       id: createId('card'),
       columnId: source.columnId,
       title: `${source.title} (cópia)`,
@@ -1026,16 +1034,15 @@ export const useBoardStore = defineStore('board', () => {
       startDate: source.startDate,
       dueDate: source.dueDate,
       checklists,
-      comments: [],
+      comments,
       attachments: [],
       completed: false,
       archivedAt: null,
       position: insertPosition,
       createdAt: now,
       updatedAt: now,
-    }
-
-    cards.value.push(card)
+    })
+    const card = cards.value[cards.value.length - 1]
     quietRealtime()
 
     if (toShift.length) {
@@ -1096,6 +1103,22 @@ export const useBoardStore = defineStore('board', () => {
       )
       if (membersError) {
         reportWriteError(membersError.message)
+      }
+    }
+
+    if (comments.length) {
+      const { error: commentsError } = await supabase.from('comments').insert(
+        comments.map((comment) => ({
+          id: comment.id,
+          card_id: card.id,
+          author_id: comment.authorId,
+          body: comment.body,
+          created_at: comment.createdAt,
+          updated_at: comment.updatedAt,
+        })),
+      )
+      if (commentsError) {
+        reportWriteError(commentsError.message)
       }
     }
 
