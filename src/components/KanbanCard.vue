@@ -4,6 +4,7 @@ import {
   Calendar,
   Check,
   CheckSquare,
+  Copy,
   MessageSquare,
   Paperclip,
 } from '@lucide/vue'
@@ -121,16 +122,34 @@ async function onToggleDone(event: Event) {
   event.preventDefault()
   await board.toggleCardDone(props.card.id)
 }
+
+async function onDuplicate(event: Event) {
+  event.stopPropagation()
+  event.preventDefault()
+  await board.duplicateCard(props.card.id)
+}
 </script>
 
 <template>
   <article
-    class="group cursor-pointer rounded-xl border border-white/10 bg-card p-3 shadow-md shadow-black/25 transition-colors hover:border-white/15 hover:bg-card-hover"
+    class="group relative cursor-pointer rounded-xl border border-white/10 bg-card p-3 shadow-md shadow-black/25 transition-colors hover:border-white/15 hover:bg-card-hover"
     role="button"
     tabindex="0"
     @click="board.openCard(card.id)"
     @keydown.enter="board.openCard(card.id)"
   >
+    <button
+      type="button"
+      title="Duplicar cartão"
+      aria-label="Duplicar cartão"
+      class="absolute right-2 top-2 z-10 rounded-md bg-card-hover/90 p-1 text-text-muted opacity-0 transition-opacity hover:text-text-primary focus-visible:opacity-100 group-hover:opacity-100"
+      @pointerdown.stop
+      @click="onDuplicate"
+      @keydown.enter.stop="onDuplicate"
+    >
+      <Copy :size="13" :stroke-width="2" />
+    </button>
+
     <div v-if="labels.length" class="mb-2 flex flex-wrap gap-1.5 pl-7">
       <span
         v-for="label in labels"
@@ -167,7 +186,7 @@ async function onToggleDone(event: Event) {
         <h3
           :class="[
             'text-[15px] font-semibold leading-snug',
-            isDone ? 'text-text-muted line-through' : 'text-text-primary',
+            isDone ? 'text-text-muted' : 'text-text-primary',
           ]"
         >
           {{ card.title }}

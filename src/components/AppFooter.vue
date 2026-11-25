@@ -36,7 +36,7 @@ const emit = defineEmits<{
 
 const auth = useAuthStore()
 
-const SX_PLAYER_URL = 'https://sxplayer.vercel.app/admin'
+const SX_PLAYER_URL = 'https://app.sxclubpkr.com/admin/campaigns'
 const TRAFFIC_REPORT_URL = 'https://dash-performance-trafego.vercel.app/'
 
 type ExternalId = 'sx-player' | 'trafego'

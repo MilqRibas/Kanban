@@ -737,9 +737,7 @@ function renderCommentBody(body: string) {
                   type="text"
                   :class="[
                     'w-full rounded-lg bg-transparent px-1 py-0.5 text-xl font-semibold outline-none focus:bg-surface',
-                    isCardDone
-                      ? 'text-text-muted line-through'
-                      : 'text-text-primary',
+                    isCardDone ? 'text-text-muted' : 'text-text-primary',
                   ]"
                   @blur="saveTitle"
                   @keydown.enter.prevent="

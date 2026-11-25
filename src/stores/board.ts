@@ -273,7 +273,7 @@ export const useBoardStore = defineStore('board', () => {
   }
 
   function getColumnDateSort(columnId: string) {
-    return dateSortByColumn.value[columnId] ?? 'manual'
+    return dateSortByColumn.value[columnId] ?? 'dueAsc'
   }
 
   function cycleColumnDateSort(columnId: string) {
