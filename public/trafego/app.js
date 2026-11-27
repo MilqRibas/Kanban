@@ -2217,6 +2217,13 @@
     const showArea = view === 'area';
     const showHistory = view === 'combo' || view === 'line' || view === 'area';
 
+    // Dual-series palette: cyan budget (one hue family) + soft mint history
+    const budgetFill = DS.accent;
+    const budgetPeak = DS.accentBright;
+    const historyStroke = '#7dcca0';
+    const historyMarker = '#9ee0b8';
+    const linearStroke = DS.muted;
+
     const W = 920;
     const H = 290;
     const pad = { top: 36, right: 72, bottom: 42, left: 72 };
@@ -2232,18 +2239,28 @@
     const barW = Math.min(44, colW * 0.58);
 
     let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Curva sazonal de investimento e rake">`;
+    svg += `<defs>
+      <linearGradient id="seaBarGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${budgetPeak}" stop-opacity="0.95"/>
+        <stop offset="100%" stop-color="${budgetFill}" stop-opacity="0.55"/>
+      </linearGradient>
+      <linearGradient id="seaBarPeakGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#9adcff" stop-opacity="1"/>
+        <stop offset="100%" stop-color="${budgetFill}" stop-opacity="0.7"/>
+      </linearGradient>
+    </defs>`;
 
     for (let i = 0; i <= 4; i++) {
       const bVal = (maxBudget / 4) * i;
       const rVal = (maxRake / 4) * i;
       const y = yBudget(bVal);
-      svg += `<line x1="${pad.left}" y1="${y}" x2="${W - pad.right}" y2="${y}" stroke="${DS.border}" stroke-dasharray="3 4" />`;
+      svg += `<line x1="${pad.left}" y1="${y}" x2="${W - pad.right}" y2="${y}" stroke="${DS.border}" stroke-opacity="0.55" stroke-dasharray="3 4" />`;
       svg += `<text x="${pad.left - 10}" y="${y + 4}" text-anchor="end" fill="${DS.muted}" font-size="10.5" font-family="Inter, ui-sans-serif, system-ui, sans-serif">${fmtCompactBRL(bVal)}</text>`;
-      svg += `<text x="${W - pad.right + 10}" y="${y + 4}" text-anchor="start" fill="${DS.gold}" fill-opacity="0.8" font-size="10" font-family="Inter, ui-sans-serif, system-ui, sans-serif">${fmtCompactBRL(rVal)}</text>`;
+      svg += `<text x="${W - pad.right + 10}" y="${y + 4}" text-anchor="start" fill="${historyStroke}" fill-opacity="0.9" font-size="10" font-family="Inter, ui-sans-serif, system-ui, sans-serif">${fmtCompactBRL(rVal)}</text>`;
     }
 
     const yLin = yBudget(sea.linearMonthly);
-    svg += `<line x1="${pad.left}" y1="${yLin}" x2="${W - pad.right}" y2="${yLin}" stroke="${DS.accentBright}" stroke-width="1.5" stroke-dasharray="6 4" stroke-opacity="0.75" />`;
+    svg += `<line x1="${pad.left}" y1="${yLin}" x2="${W - pad.right}" y2="${yLin}" stroke="${linearStroke}" stroke-width="1.4" stroke-dasharray="5 4" stroke-opacity="0.85" />`;
 
     const budgetPts = [];
     const rakePts = [];
@@ -2256,9 +2273,13 @@
       rakePts.push({ x: cx, y: yRake(m.rawRake), m });
 
       if (showBars) {
-        const fill = m.indexPct <= -10 ? DS.danger : m.indexPct >= 10 ? DS.accent : DS.accentBright;
-        svg += `<rect x="${x}" y="${yTop}" width="${barW}" height="${h}" rx="5" fill="${fill}" fill-opacity="0.82"><title>${m.name}: Orçamento ${fmtBRL(m.budget)} (${m.indexPct >= 0 ? '+' : ''}${fmtNum(m.indexPct, 1)}%) | Rake base: ${fmtBRL(m.rawRake, 2)}</title></rect>`;
-        svg += `<text x="${cx}" y="${Math.max(22, yTop - 7)}" text-anchor="middle" fill="${DS.text}" font-size="10" font-weight="700" font-family="Inter, ui-sans-serif, system-ui, sans-serif">${fmtCompactBRL(m.budget)}</text>`;
+        // Same hue family: quieter valleys, brighter peaks — no red/salmon
+        const isPeak = m.indexPct >= 10;
+        const isValley = m.indexPct <= -10;
+        const fill = isPeak ? 'url(#seaBarPeakGrad)' : 'url(#seaBarGrad)';
+        const opacity = isValley ? 0.42 : 0.92;
+        svg += `<rect x="${x}" y="${yTop}" width="${barW}" height="${h}" rx="5" fill="${fill}" fill-opacity="${opacity}"><title>${m.name}: Orçamento ${fmtBRL(m.budget)} (${m.indexPct >= 0 ? '+' : ''}${fmtNum(m.indexPct, 1)}%) | Rake base: ${fmtBRL(m.rawRake, 2)}</title></rect>`;
+        svg += `<text x="${cx}" y="${Math.max(22, yTop - 7)}" text-anchor="middle" fill="${DS.text}" fill-opacity="0.92" font-size="10" font-weight="700" font-family="Inter, ui-sans-serif, system-ui, sans-serif">${fmtCompactBRL(m.budget)}</text>`;
       }
 
       svg += `<text x="${cx}" y="${H - 14}" text-anchor="middle" fill="${DS.secondary}" font-size="11">${m.name}</text>`;
@@ -2267,14 +2288,14 @@
     if (showArea && budgetPts.length >= 2) {
       const lineStr = budgetPts.map((p) => `${p.x},${p.y}`).join(' ');
       const areaStr = `${budgetPts[0].x},${yBudget(0)} ${lineStr} ${budgetPts[budgetPts.length - 1].x},${yBudget(0)}`;
-      svg += `<polygon points="${areaStr}" fill="${DS.accent}" fill-opacity="0.18" />`;
+      svg += `<polygon points="${areaStr}" fill="${budgetFill}" fill-opacity="0.16" />`;
     }
 
     if (showBudgetLine && budgetPts.length >= 2) {
       const lineStr = budgetPts.map((p) => `${p.x},${p.y}`).join(' ');
-      svg += `<polyline points="${lineStr}" fill="none" stroke="${DS.accent}" stroke-width="2.8" />`;
+      svg += `<polyline points="${lineStr}" fill="none" stroke="${budgetFill}" stroke-width="2.6" />`;
       budgetPts.forEach((p) => {
-        svg += `<circle cx="${p.x}" cy="${p.y}" r="4" fill="${DS.accentBright}" stroke="${DS.board}" stroke-width="1.4"><title>${p.m.name}: ${fmtBRL(p.m.budget)}</title></circle>`;
+        svg += `<circle cx="${p.x}" cy="${p.y}" r="4" fill="${budgetPeak}" stroke="${DS.board}" stroke-width="1.4"><title>${p.m.name}: ${fmtBRL(p.m.budget)}</title></circle>`;
         if (!showBars) {
           svg += `<text x="${p.x}" y="${Math.max(22, p.y - 9)}" text-anchor="middle" fill="${DS.text}" font-size="10" font-weight="700" font-family="Inter, ui-sans-serif, system-ui, sans-serif">${fmtCompactBRL(p.m.budget)}</text>`;
         }
@@ -2283,24 +2304,25 @@
 
     if (showHistory) {
       const lineStr = rakePts.map((p) => `${p.x},${p.y}`).join(' ');
-      svg += `<polyline points="${lineStr}" fill="none" stroke="${DS.gold}" stroke-width="2.4" />`;
+      svg += `<polyline points="${lineStr}" fill="none" stroke="${historyStroke}" stroke-width="2.3" stroke-linejoin="round" stroke-linecap="round" />`;
       rakePts.forEach((p) => {
-        svg += `<rect x="${p.x - 3.5}" y="${p.y - 3.5}" width="7" height="7" rx="1.5" fill="${DS.gold}" stroke="${DS.board}" stroke-width="1.2"><title>${p.m.name} — Rake histórico: ${fmtBRL(p.m.rawRake, 2)}</title></rect>`;
+        svg += `<circle cx="${p.x}" cy="${p.y}" r="3.6" fill="${historyMarker}" stroke="${DS.board}" stroke-width="1.3"><title>${p.m.name} — Rake histórico: ${fmtBRL(p.m.rawRake, 2)}</title></circle>`;
       });
     }
 
     let legendX = pad.left;
     if (showBars || showBudgetLine || showArea) {
-      svg += `<rect x="${legendX}" y="8" width="10" height="10" rx="2" fill="${DS.accent}" />`;
+      svg += `<rect x="${legendX}" y="8" width="10" height="10" rx="2" fill="${budgetFill}" />`;
       svg += `<text x="${legendX + 15}" y="17" fill="${DS.secondary}" font-size="11">Orçamento Mensal Projetado</text>`;
       legendX += 210;
     }
     if (showHistory) {
-      svg += `<line x1="${legendX}" y1="13" x2="${legendX + 20}" y2="13" stroke="${DS.gold}" stroke-width="2.4" />`;
+      svg += `<line x1="${legendX}" y1="13" x2="${legendX + 20}" y2="13" stroke="${historyStroke}" stroke-width="2.3" />`;
+      svg += `<circle cx="${legendX + 10}" cy="13" r="2.8" fill="${historyMarker}" />`;
       svg += `<text x="${legendX + 26}" y="17" fill="${DS.secondary}" font-size="11">Curva Histórica de Rake</text>`;
       legendX += 190;
     }
-    svg += `<line x1="${legendX}" y1="13" x2="${legendX + 20}" y2="13" stroke="${DS.accentBright}" stroke-width="1.6" stroke-dasharray="5 3" />`;
+    svg += `<line x1="${legendX}" y1="13" x2="${legendX + 20}" y2="13" stroke="${linearStroke}" stroke-width="1.5" stroke-dasharray="5 3" />`;
     svg += `<text x="${legendX + 26}" y="17" fill="${DS.secondary}" font-size="11">Média linear (${fmtCompactBRL(sea.linearMonthly)})</text>`;
 
     svg += '</svg>';
@@ -2311,7 +2333,11 @@
     const tbody = document.querySelector('#tableSeasonality tbody');
     const tfoot = document.querySelector('#tableSeasonality tfoot');
 
-    if (tbody.children.length !== 12) {
+    const needsRebuild =
+      tbody.children.length !== 12 ||
+      !tbody.querySelector('input.money-input[data-sea-field="rake"]');
+
+    if (needsRebuild) {
       tbody.innerHTML = sea.months.map((m) => `
         <tr data-sea-row="${m.idx}">
           <td>
@@ -2321,7 +2347,7 @@
             </div>
           </td>
           <td><input type="text" class="note-input" data-sea-m="${m.idx}" data-sea-field="note" placeholder="Ex: Série..." /></td>
-          <td class="num"><input type="number" class="tracker-input" data-sea-m="${m.idx}" data-sea-field="rake" min="0" step="100" /></td>
+          <td class="num"><input type="text" inputmode="decimal" class="tracker-input money-input" data-sea-m="${m.idx}" data-sea-field="rake" autocomplete="off" /></td>
           <td class="num" data-sea-col="indexPct"></td>
           <td class="num" data-sea-col="share"></td>
           <td class="num budget-highlight" data-sea-col="budget"></td>
@@ -2333,13 +2359,16 @@
       `).join('');
 
       tbody.querySelectorAll('[data-sea-m]').forEach((inp) => {
-        inp.addEventListener('input', (e) => {
-          const idx = Number(e.target.getAttribute('data-sea-m'));
-          const field = e.target.getAttribute('data-sea-field');
+        const applySeaChange = (target, commitFormat) => {
+          const idx = Number(target.getAttribute('data-sea-m'));
+          const field = target.getAttribute('data-sea-field');
           if (field === 'rake') {
-            state.seasonality.months[idx].rake = Math.max(0, Number(e.target.value) || 0);
+            const parsed = parseMoneyInput(target.value);
+            const next = Number.isNaN(parsed) ? 0 : Math.max(0, parsed);
+            state.seasonality.months[idx].rake = next;
+            if (commitFormat) target.value = formatMoneyInput(next, 2);
           } else {
-            state.seasonality.months[idx].note = e.target.value;
+            state.seasonality.months[idx].note = target.value;
           }
           saveState();
           const currentRes = computeModel(state.params);
@@ -2347,7 +2376,12 @@
           if (state.seasonality.syncTracker) {
             renderTracker(currentRes);
           }
-        });
+        };
+
+        inp.addEventListener('input', (e) => applySeaChange(e.target, false));
+        if (inp.getAttribute('data-sea-field') === 'rake') {
+          inp.addEventListener('blur', (e) => applySeaChange(e.target, true));
+        }
       });
     }
 
@@ -2363,7 +2397,9 @@
       if (noteInp && document.activeElement !== noteInp) noteInp.value = m.note;
 
       const rakeInp = tr.querySelector('input[data-sea-field="rake"]');
-      if (rakeInp && document.activeElement !== rakeInp) rakeInp.value = Number(m.rawRake.toFixed(2));
+      if (rakeInp && document.activeElement !== rakeInp) {
+        rakeInp.value = formatMoneyInput(m.rawRake, 2);
+      }
 
       const idxSign = m.indexPct >= 0 ? '+' : '';
       const idxEl = tr.querySelector('[data-sea-col="indexPct"]');
@@ -2371,28 +2407,28 @@
       idxEl.className = `num ${m.indexPct >= 3 ? 'text-pos' : m.indexPct <= -3 ? 'text-neg' : 'text-muted'}`;
 
       tr.querySelector('[data-sea-col="share"]').textContent = `${fmtNum(m.share * 100, 1)}%`;
-      tr.querySelector('[data-sea-col="budget"]').textContent = fmtBRL(m.budget);
-      tr.querySelector('[data-sea-col="weeklyBudget"]').innerHTML = `${fmtBRL(m.weeklyBudget)}<span class="diff-sub">${m.numWeeks} sem</span>`;
-      tr.querySelector('[data-sea-col="dailyBudget"]').textContent = fmtBRL(m.dailyBudget);
-      tr.querySelector('[data-sea-col="expectedAdRev"]').textContent = fmtBRL(m.expectedAdRev);
+      tr.querySelector('[data-sea-col="budget"]').textContent = fmtBRL(m.budget, 2);
+      tr.querySelector('[data-sea-col="weeklyBudget"]').innerHTML = `${fmtBRL(m.weeklyBudget, 2)}<span class="diff-sub">${m.numWeeks} sem</span>`;
+      tr.querySelector('[data-sea-col="dailyBudget"]').textContent = fmtBRL(m.dailyBudget, 2);
+      tr.querySelector('[data-sea-col="expectedAdRev"]').textContent = fmtBRL(m.expectedAdRev, 2);
 
       const linSign = m.vsLinear >= 0 ? '+' : '';
       const linEl = tr.querySelector('[data-sea-col="vsLinear"]');
-      linEl.textContent = `${linSign}${fmtBRL(m.vsLinear)}`;
+      linEl.textContent = `${linSign}${fmtBRL(m.vsLinear, 2)}`;
       linEl.className = `num ${m.vsLinear >= 0 ? 'text-pos' : 'text-neg'}`;
     });
 
     tfoot.innerHTML = `
       <tr>
         <td colspan="2">Total Anual</td>
-        <td class="num">${fmtBRL(sea.sumRawRake)}</td>
+        <td class="num">${fmtBRL(sea.sumRawRake, 2)}</td>
         <td class="num text-muted">100%</td>
         <td class="num">100,0%</td>
-        <td class="num budget-highlight">${fmtBRL(sea.totalBudget)}</td>
-        <td class="num">${fmtBRL(sea.totalBudget / 52)}</td>
-        <td class="num">${fmtBRL(sea.avgDaily)}</td>
-        <td class="num">${fmtBRL(sea.totalAdRev)}</td>
-        <td class="num text-muted">R$ 0</td>
+        <td class="num budget-highlight">${fmtBRL(sea.totalBudget, 2)}</td>
+        <td class="num">${fmtBRL(sea.totalBudget / 52, 2)}</td>
+        <td class="num">${fmtBRL(sea.avgDaily, 2)}</td>
+        <td class="num">${fmtBRL(sea.totalAdRev, 2)}</td>
+        <td class="num text-muted">${fmtBRL(0, 2)}</td>
       </tr>
     `;
   }
