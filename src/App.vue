@@ -39,6 +39,7 @@ const NAV_TABS: readonly NavTab[] = [
   'community',
   'campaigns',
   'crm',
+  'trafego',
 ]
 
 function readStoredTab(): NavTab {
@@ -79,6 +80,10 @@ const CrmWorkspace = defineAsyncComponent({
   loader: () => import('./components/CrmWorkspace.vue'),
   ...asyncOpts,
 })
+const TrafegoView = defineAsyncComponent({
+  loader: () => import('./components/TrafegoView.vue'),
+  ...asyncOpts,
+})
 
 const tabViews: Record<NavTab, Component> = {
   board: markRaw(BoardView),
@@ -89,6 +94,7 @@ const tabViews: Record<NavTab, Component> = {
   community: markRaw(HubView),
   campaigns: markRaw(CampaignsView),
   crm: markRaw(CrmWorkspace),
+  trafego: markRaw(TrafegoView),
 }
 
 const auth = useAuthStore()
@@ -146,6 +152,7 @@ function prefetchTabChunks() {
   void import('./components/HubView.vue')
   void import('./components/CampaignsView.vue')
   void import('./components/CrmWorkspace.vue')
+  void import('./components/TrafegoView.vue')
 }
 
 async function ensureTabData(tab: NavTab) {

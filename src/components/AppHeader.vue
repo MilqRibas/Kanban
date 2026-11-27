@@ -21,6 +21,7 @@ const sectionTitle = computed(() => {
   if (activeTab.value === 'crm') return 'CRM'
   if (auth.isCampaignsOnly || activeTab.value === 'campaigns') return 'Campanhas'
   if (activeTab.value === 'agenda') return 'Agenda'
+  if (activeTab.value === 'trafego') return 'Tráfego'
   return board.title
 })
 const showBoardChrome = computed(

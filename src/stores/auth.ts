@@ -38,6 +38,7 @@ export const useAuthStore = defineStore('auth', () => {
           'community',
           'campaigns',
           'crm',
+          'trafego',
         ] as const),
   )
 

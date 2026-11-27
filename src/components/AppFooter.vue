@@ -25,6 +25,7 @@ export type NavTab =
   | 'community'
   | 'campaigns'
   | 'crm'
+  | 'trafego'
 
 const props = defineProps<{
   activeTab: NavTab
@@ -37,9 +38,8 @@ const emit = defineEmits<{
 const auth = useAuthStore()
 
 const SX_PLAYER_URL = 'https://app.sxclubpkr.com/admin/campaigns'
-const TRAFFIC_REPORT_URL = 'https://dash-performance-trafego.vercel.app/'
 
-type ExternalId = 'sx-player' | 'trafego'
+type ExternalId = 'sx-player'
 type FooterNavId = NavTab | ExternalId
 
 type TabItem = {
@@ -72,19 +72,13 @@ const ALL_ITEMS: FooterItem[] = [
   { kind: 'tab', id: 'notes', label: 'Notas', icon: NotebookPen },
   { kind: 'tab', id: 'board', label: 'Quadro', icon: Columns3 },
   { kind: 'tab', id: 'daily', label: 'Tarefas', icon: ListChecks },
+  { kind: 'tab', id: 'trafego', label: 'Tráfego', icon: BarChart3 },
   {
     kind: 'external',
     id: 'sx-player',
     label: 'SX Player',
     href: SX_PLAYER_URL,
     icon: Star,
-  },
-  {
-    kind: 'external',
-    id: 'trafego',
-    label: 'Tráfego',
-    href: TRAFFIC_REPORT_URL,
-    icon: BarChart3,
   },
   {
     kind: 'tab',

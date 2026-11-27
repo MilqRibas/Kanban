@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Projeção de Orçamento — Tráfego</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles.css?v=ds3" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top Header (aba Tráfego do Kanban) -->
+    <header class="topbar topbar-compact">
+      <div class="topbar-actions">
+        <nav class="tabs" role="tablist" aria-label="Seções do tráfego">
+          <button class="tab-btn active" data-tab="simulator" role="tab" aria-selected="true">
+            Simulador &amp; Projeção
+          </button>
+          <button class="tab-btn" data-tab="seasonality" role="tab" aria-selected="false">
+            Projeção de Investimento
+          </button>
+          <button class="tab-btn" data-tab="tracker" role="tab" aria-selected="false">
+            Acompanhamento Semanal
+          </button>
+        </nav>
+        <div class="cloud-controls">
+          <span id="cloudStatusBadge" class="cloud-pill cloud-local" title="Status de sincronização">Modo Local</span>
+          <button id="btnCloudRefresh" class="icon-btn" type="button" title="Sincronizar da nuvem" hidden>↻</button>
+          <button id="btnExportJson" class="icon-btn" type="button" title="Baixar backup (.json)">⤓</button>
+          <button id="btnImportJson" class="icon-btn" type="button" title="Importar backup (.json)">⤒</button>
+          <input type="file" id="inputImportJsonFile" accept=".json,application/json" hidden />
+        </div>
+        <button id="btnResetDefaults" class="btn btn-ghost" title="Restaurar valores originais">
+          Restaurar Base
+        </button>
+      </div>
+    </header>
+
+    <!-- ==================== TAB 1: SIMULATOR ==================== -->
+    <main id="tab-simulator" class="tab-panel active">
+      <!-- Customizable KPI Strip -->
+      <section class="kpi-section" aria-label="Indicadores principais">
+        <div class="kpi-bar-header">
+          <span class="kpi-bar-title">Indicadores <span class="kpi-bar-count" id="kpiCount-simulator"></span></span>
+          <div class="kpi-bar-actions">
+            <button type="button" class="btn btn-secondary btn-sm" data-kpi-add="simulator">+ Novo Card</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-kpi-manage="simulator">⚙ Gerenciar Cards</button>
+          </div>
+        </div>
+        <div class="kpi-grid" id="kpiGrid-simulator"></div>
+      </section>
+
+      <!-- Main Workspace Grid -->
+      <div class="workspace-grid">
+        <!-- Left Sidebar: Parameters -->
+        <aside class="panel controls-panel">
+          <div class="panel-header">
+            <h2>Parâmetros da Operação</h2>
+          </div>
+
+          <div class="form-section">
+            <h3>Dados do Ano Atual (Base)</h3>
+
+            <div class="field">
+              <label for="inputTotalRev">Faturamento Total Anual (Rake)</label>
+              <div class="input-prefix">
+                <span>R$</span>
+                <input
+                  type="text"
+                  inputmode="decimal"
+                  id="inputTotalRev"
+                  class="money-input"
+                  autocomplete="off"
+                  value="3.310.000,00"
+                />
+              </div>
+              <small>Faturamento total da operação no último ano</small>
+            </div>
+
+            <div class="field-row">
+              <div class="field">
+                <label for="inputAdSpend">Investimento Tráfego</label>
+                <div class="input-prefix">
+                  <span>R$</span>
+                  <input
+                    type="text"
+                    inputmode="decimal"
+                    id="inputAdSpend"
+                    class="money-input"
+                    autocomplete="off"
+                    value="42.831,00"
+                  />
+                </div>
+              </div>
+              <div class="field">
+                <label for="inputAdRev">Retorno (Rake) Tráfego</label>
+                <div class="input-prefix">
+                  <span>R$</span>
+                  <input
+                    type="text"
+                    inputmode="decimal"
+                    id="inputAdRev"
+                    class="money-input"
+                    autocomplete="off"
+                    value="166.730,00"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <hr class="divider" />
+
+          <div class="form-section">
+            <h3>Meta &amp; Premissas (Próximo Ano)</h3>
+
+            <div class="field">
+              <label for="inputTargetRev">Meta de Faturamento Total</label>
+              <div class="input-prefix">
+                <span>R$</span>
+                <input
+                  type="text"
+                  inputmode="decimal"
+                  id="inputTargetRev"
+                  class="money-input"
+                  autocomplete="off"
+                  value="3.500.000,00"
+                />
+              </div>
+            </div>
+
+            <div class="field">
+              <div class="label-between">
+                <label for="sliderDecay">Queda Anual da Base (Churn de Rake)</label>
+                <strong id="labelDecayVal">12,0%</strong>
+              </div>
+              <input type="range" id="sliderDecay" min="0" max="40" step="0.5" value="12" />
+              <div class="range-hints">
+                <span>0%</span>
+                <span>12% (atual)</span>
+                <span>40%</span>
+              </div>
+            </div>
+
+            <div class="field">
+              <div class="label-between">
+                <label for="sliderEfficiency">Eficiência do ROAS na Escala</label>
+                <strong id="labelEfficiencyVal">100% (3,89x)</strong>
+              </div>
+              <input type="range" id="sliderEfficiency" min="50" max="120" step="1" value="100" />
+              <div class="range-hints">
+                <span>50% (saturação alta)</span>
+                <span>100%</span>
+                <span>120%</span>
+              </div>
+              <small>Ao escalar o orçamento, o ROAS pode variar conforme a saturação de público.</small>
+            </div>
+          </div>
+
+          <hr class="divider" />
+
+          <div class="form-section">
+            <h3>Modelo de Cálculo da Queda</h3>
+            <div class="model-selector" role="radiogroup" aria-label="Modelo de cálculo">
+              <label class="model-option">
+                <input type="radio" name="calcModel" value="organic_decay" checked />
+                <div>
+                  <strong>Base orgânica cai 12% + Tráfego renovado</strong>
+                  <span>A base orgânica cai 12%; todo o rake de tráfego pago do Ano 2 vem do novo investimento.</span>
+                </div>
+              </label>
+
+              <label class="model-option">
+                <input type="radio" name="calcModel" value="total_decay" />
+                <div>
+                  <strong>Operação inteira cai 12% + Investimento extra</strong>
+                  <span>Os R$ 3,31M (já mantendo os R$ 42,8k) caem 12%; você investe a mais para cobrir o gap.</span>
+                </div>
+              </label>
+
+              <label class="model-option">
+                <input type="radio" name="calcModel" value="ltv_retention" />
+                <div>
+                  <strong>Com retenção (LTV) dos jogadores do Ano 1</strong>
+                  <span>Jogadores captados no Ano 1 continuam gerando rake (-12% churn) sem reinvestir os R$ 42,8k.</span>
+                </div>
+              </label>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Right Main Content: Customizable Widgets & Charts -->
+        <div class="visuals-column">
+          <!-- Widget Manager Toolbar -->
+          <div class="widgets-toolbar">
+            <div class="widgets-toolbar-left">
+              <span class="toolbar-title">Gráficos e Painéis</span>
+              <span class="toolbar-count" id="widgetCountLabel">—</span>
+            </div>
+            <div class="widgets-toolbar-actions">
+              <button id="btnAddCustomChart" class="btn btn-primary" type="button">
+                + Adicionar Gráfico
+              </button>
+              <button id="btnManageWidgets" class="btn btn-secondary" type="button">
+                ⚙ Gerenciar Painel
+              </button>
+            </div>
+          </div>
+
+          <!-- Dynamic Widgets Grid -->
+          <div id="widgetsGrid" class="widgets-grid"></div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ==================== TAB 2: SEASONAL INVESTMENT PROJECTION ==================== -->
+    <main id="tab-seasonality" class="tab-panel">
+      <!-- Customizable KPI Strip -->
+      <section class="kpi-section" aria-label="Indicadores sazonais">
+        <div class="kpi-bar-header">
+          <span class="kpi-bar-title">Indicadores <span class="kpi-bar-count" id="kpiCount-seasonality"></span></span>
+          <div class="kpi-bar-actions">
+            <button type="button" class="btn btn-secondary btn-sm" data-kpi-add="seasonality">+ Novo Card</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-kpi-manage="seasonality">⚙ Gerenciar Cards</button>
+          </div>
+        </div>
+        <div class="kpi-grid" id="kpiGrid-seasonality"></div>
+      </section>
+
+      <!-- Seasonal Controls Bar -->
+      <section class="panel seasonality-controls">
+        <div class="seasonality-controls-grid">
+          <div class="field" style="margin-bottom:0">
+            <div class="label-between">
+              <label for="sliderSeasonalityIntensity">Intensidade da Curva Sazonal (Séries)</label>
+              <strong id="labelSeasonalityIntensity">100% (Proporcional)</strong>
+            </div>
+            <input type="range" id="sliderSeasonalityIntensity" min="0" max="200" step="5" value="100" />
+            <div class="range-hints">
+              <span>0% (Linear igual)</span>
+              <span>100% (Segue a curva real)</span>
+              <span>200% (Agressivo em séries)</span>
+            </div>
+          </div>
+
+          <label class="sync-toggle-card">
+            <input type="checkbox" id="chkSyncSeasonalTracker" checked />
+            <div>
+              <strong>Sincronizar com Acompanhamento Semanal</strong>
+              <span>Aplica os pesos de cada mês diretamente nas metas semanais da aba de acompanhamento</span>
+            </div>
+          </label>
+
+          <div class="seasonality-btn-group">
+            <button id="btnExportSeasonalCsv" class="btn btn-secondary" type="button">Exportar Plano CSV</button>
+            <button id="btnResetSeasonality" class="btn btn-ghost" type="button">Restaurar Curva</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Seasonal Chart -->
+      <section class="panel mt-16">
+        <div class="panel-header">
+          <div>
+            <h2>Curva Sazonal: Investimento Projetado vs. Histórico de Rake</h2>
+            <p class="panel-desc">Nos meses de séries (pico de rake), o orçamento sobe; nos meses mais fracos, a verba reduz proporcionalmente</p>
+          </div>
+          <div class="panel-header-right chart-toolbar">
+            <div class="segmented" role="group" aria-label="Tipo de visualização da curva sazonal">
+              <button type="button" class="seg-btn active" data-sea-chart-view="combo" title="Barras + linha histórica">Combo</button>
+              <button type="button" class="seg-btn" data-sea-chart-view="bars" title="Somente barras">Barras</button>
+              <button type="button" class="seg-btn" data-sea-chart-view="line" title="Somente linhas">Linha</button>
+              <button type="button" class="seg-btn" data-sea-chart-view="area" title="Área preenchida">Área</button>
+            </div>
+            <span class="pill" id="pillSeasonalAmplitude">—</span>
+          </div>
+        </div>
+        <div id="chartSeasonality" class="chart-box"></div>
+      </section>
+
+      <!-- Editable Seasonal Breakdown Table -->
+      <section class="panel mt-16">
+        <div class="panel-header">
+          <div>
+            <h2>Alocação Mensal do Orçamento (Editável)</h2>
+            <p class="panel-desc">Curva pré-carregada com o histórico de Jan–Out (Nov/Dez na média) — edite qualquer mês ou anote as séries de poker</p>
+          </div>
+          <span class="badge" id="badgeSeasonalNote">Nov/Dez estimados pela média</span>
+        </div>
+
+        <div class="table-wrap">
+          <table class="data-table" id="tableSeasonality">
+            <thead>
+              <tr>
+                <th>Mês</th>
+                <th>Série / Nota</th>
+                <th class="num">Curva Rake Base (R$)</th>
+                <th class="num">Índice</th>
+                <th class="num">% Ano</th>
+                <th class="num">Orçamento Mês</th>
+                <th class="num">Verba / Sem</th>
+                <th class="num">Verba / Dia</th>
+                <th class="num">Rake Esperado</th>
+                <th class="num">vs. Linear</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+            <tfoot></tfoot>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <!-- ==================== TAB 3: WEEKLY / MONTHLY TRACKER ==================== -->
+    <main id="tab-tracker" class="tab-panel">
+      <section class="kpi-section" aria-label="Indicadores do acompanhamento">
+        <div class="kpi-bar-header">
+          <span class="kpi-bar-title">Indicadores <span class="kpi-bar-count" id="kpiCount-tracker"></span></span>
+          <div class="kpi-bar-actions">
+            <button type="button" class="btn btn-secondary btn-sm" data-kpi-add="tracker">+ Novo Card</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-kpi-manage="tracker">⚙ Gerenciar Cards</button>
+          </div>
+        </div>
+        <div class="kpi-grid" id="kpiGrid-tracker"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Evolução: Planejado vs. Realizado</h2>
+            <p class="panel-desc">Acompanhe o rake acumulado semana a semana ou mês a mês em relação à trajetória da meta</p>
+          </div>
+          <div class="tracker-actions">
+            <div class="segmented" role="group" aria-label="Granularidade do gráfico">
+              <button type="button" class="seg-btn active" data-chart-mode="weekly">Por Semana</button>
+              <button type="button" class="seg-btn" data-chart-mode="monthly">Por Mês</button>
+            </div>
+            <div class="segmented" role="group" aria-label="Tipo de visualização">
+              <button type="button" class="seg-btn active" data-tracker-chart-style="line">Linha</button>
+              <button type="button" class="seg-btn" data-tracker-chart-style="bars">Barras</button>
+              <button type="button" class="seg-btn" data-tracker-chart-style="area">Área</button>
+            </div>
+            <button id="btnPrefillDemo" class="btn btn-secondary">Simular 6 Semanas</button>
+            <button id="btnExportCsv" class="btn btn-secondary">Exportar CSV</button>
+            <button id="btnClearTracker" class="btn btn-ghost">Limpar Lançamentos</button>
+          </div>
+        </div>
+        <div id="chartMonthly" class="chart-box"></div>
+      </section>
+
+      <section class="panel mt-16">
+        <div class="panel-header">
+          <div>
+            <h2>Lançamento Semanal por Mês (<span id="labelTrackerYear">2027</span>)</h2>
+            <p class="panel-desc">Clique em qualquer mês para abrir as semanas (fechamento Seg–Dom) — o total do mês soma automaticamente</p>
+          </div>
+          <div class="tracker-actions">
+            <label class="year-picker">
+              <span>Ano:</span>
+              <select id="selectTrackerYear" class="select-input select-sm">
+                <option value="2026">2026</option>
+                <option value="2027" selected>2027</option>
+                <option value="2028">2028</option>
+                <option value="2029">2029</option>
+              </select>
+            </label>
+            <button id="btnExpandAllMonths" class="btn btn-ghost btn-sm" type="button">Expandir Todos</button>
+            <button id="btnCollapseAllMonths" class="btn btn-ghost btn-sm" type="button">Recolher Todos</button>
+            <span class="badge" id="badgeSaveStatus">Salvo automaticamente</span>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="data-table tracker-table" id="tableMonthly">
+            <thead>
+              <tr>
+                <th>Mês / Semana</th>
+                <th class="num">Meta Verba</th>
+                <th class="num">Meta Rake Total</th>
+                <th class="num">Verba Real (R$)</th>
+                <th class="num">Rake Tráfego Real (R$)</th>
+                <th class="num">Rake Base Orgânica (R$)</th>
+                <th class="num">Total Real</th>
+                <th class="num">ROAS</th>
+                <th class="num">Desvio Meta</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+            <tfoot></tfoot>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>Os cálculos, gráficos e personalizações do painel são salvos automaticamente no seu navegador.</span>
+    </footer>
+  </div>
+
+  <!-- ==================== MODAL: MANAGE WIDGETS ==================== -->
+  <div id="modalManage" class="modal-backdrop" hidden>
+    <div class="modal-card modal-md" role="dialog" aria-modal="true" aria-labelledby="modalManageTitle">
+      <div class="modal-header">
+        <div>
+          <h3 id="modalManageTitle">Gerenciar Gráficos e Blocos</h3>
+          <p class="panel-desc">Ative, oculte, reordene ou altere a largura de cada gráfico do painel</p>
+        </div>
+        <button type="button" class="icon-btn" data-close-modal="modalManage" aria-label="Fechar">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="manageWidgetsList" class="manage-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btnRestoreLayout" class="btn btn-ghost">Restaurar Layout Padrão</button>
+        <div class="modal-footer-right">
+          <button type="button" id="btnNewChartFromManage" class="btn btn-secondary">+ Novo Gráfico</button>
+          <button type="button" class="btn btn-primary" data-close-modal="modalManage">Concluir</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: CHART BUILDER / EDITOR ==================== -->
+  <div id="modalChartEditor" class="modal-backdrop" hidden>
+    <div class="modal-card modal-lg" role="dialog" aria-modal="true" aria-labelledby="modalEditorTitle">
+      <div class="modal-header">
+        <div>
+          <h3 id="modalEditorTitle">Novo Gráfico Personalizado</h3>
+          <p class="panel-desc" id="modalEditorSubtitle">Configure o tipo de visualização, títulos e dados do gráfico</p>
+        </div>
+        <button type="button" class="icon-btn" data-close-modal="modalChartEditor" aria-label="Fechar">✕</button>
+      </div>
+      <div class="modal-body">
+        <!-- Quick templates (shown when creating custom chart) -->
+        <div id="editorTemplatesBar" class="templates-bar">
+          <span>Modelos prontos:</span>
+          <button type="button" class="chip-btn" data-template="invest_return">Investimento vs Retorno</button>
+          <button type="button" class="chip-btn" data-template="quarterly">Metas Trimestrais</button>
+          <button type="button" class="chip-btn" data-template="channels">Canais de Captação</button>
+          <button type="button" class="chip-btn" data-template="multi_year">Projeção 3 Anos</button>
+        </div>
+
+        <div class="editor-grid">
+          <div class="field">
+            <label for="edTitle">Título do Gráfico</label>
+            <input type="text" id="edTitle" class="text-input" placeholder="Ex: Metas Trimestrais de Rake" />
+          </div>
+          <div class="field">
+            <label for="edWidth">Largura no Painel</label>
+            <select id="edWidth" class="select-input">
+              <option value="full">Largura total (100%)</option>
+              <option value="half">Meia largura (50%)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="edSubtitle">Subtítulo / Descrição</label>
+          <input type="text" id="edSubtitle" class="text-input" placeholder="Ex: Comparativo de faturamento estimado por período" />
+        </div>
+
+        <!-- Custom Chart Options -->
+        <div id="edCustomSection">
+          <div class="editor-grid-3">
+            <div class="field">
+              <label for="edChartType">Tipo de Gráfico</label>
+              <select id="edChartType" class="select-input">
+                <option value="bar">Barras Verticais</option>
+                <option value="hbar">Barras Horizontais</option>
+                <option value="line">Linha / Evolução</option>
+                <option value="area">Área</option>
+                <option value="donut">Rosca (Participação %)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="edFormat">Formato dos Valores</label>
+              <select id="edFormat" class="select-input">
+                <option value="brl">R$ (Reais)</option>
+                <option value="pct">% (Porcentagem)</option>
+                <option value="x">x (ROAS / Múltiplo)</option>
+                <option value="num">Número simples</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Cor Principal</label>
+              <div class="color-swatches" id="edColorSwatches">
+                <button type="button" class="swatch active" data-color="#39bcff" style="background:#39bcff" title="Azul SX"></button>
+                <button type="button" class="swatch" data-color="#6bd0ff" style="background:#6bd0ff" title="Azul claro"></button>
+                <button type="button" class="swatch" data-color="#5ce68f" style="background:#5ce68f" title="Sucesso"></button>
+                <button type="button" class="swatch" data-color="#f59e0b" style="background:#f59e0b" title="Dourado"></button>
+                <button type="button" class="swatch" data-color="#fb8585" style="background:#fb8585" title="Alerta"></button>
+              </div>
+            </div>
+          </div>
+
+          <div class="data-editor-section">
+            <div class="label-between">
+              <label>Itens / Pontos de Dados</label>
+              <button type="button" id="btnAddDataRow" class="btn btn-secondary btn-sm">+ Adicionar Item</button>
+            </div>
+            <div id="edDataRows" class="data-rows-list"></div>
+          </div>
+        </div>
+
+        <!-- Built-in Sensitivity Special Config -->
+        <div id="edSensitivitySection" hidden>
+          <div class="field">
+            <label for="edSensitivityLevels">Cenários de eficiência do ROAS (separados por vírgula, em %)</label>
+            <input type="text" id="edSensitivityLevels" class="text-input" placeholder="70, 80, 90, 100, 110, 120" />
+            <small>100 = ROAS atual mantido. Ex: 75 = queda de 25% no ROAS; 115 = aumento de 15%.</small>
+          </div>
+        </div>
+
+        <!-- Live Preview -->
+        <div id="edPreviewSection" class="preview-box">
+          <div class="preview-label">Pré-visualização</div>
+          <div id="edPreviewChart" class="chart-box chart-box-preview"></div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" id="btnDeleteWidgetInModal" class="btn btn-danger-ghost" hidden>Excluir Gráfico</button>
+        <div class="modal-footer-right">
+          <button type="button" class="btn btn-ghost" data-close-modal="modalChartEditor">Cancelar</button>
+          <button type="button" id="btnSaveChartEditor" class="btn btn-primary">Salvar Gráfico</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: MANAGE KPI CARDS ==================== -->
+  <div id="modalManageKpis" class="modal-backdrop" hidden>
+    <div class="modal-card modal-md" role="dialog" aria-modal="true" aria-labelledby="modalManageKpisTitle">
+      <div class="modal-header">
+        <div>
+          <h3 id="modalManageKpisTitle">Gerenciar Cards de Indicadores</h3>
+          <p class="panel-desc">Ative, oculte, reordene, edite ou adicione novos cards nesta aba</p>
+        </div>
+        <button type="button" class="icon-btn" data-close-modal="modalManageKpis" aria-label="Fechar">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="manageKpisList" class="manage-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btnRestoreKpis" class="btn btn-ghost">Restaurar Cards Padrão</button>
+        <div class="modal-footer-right">
+          <button type="button" id="btnNewKpiFromManage" class="btn btn-secondary">+ Novo Card</button>
+          <button type="button" class="btn btn-primary" data-close-modal="modalManageKpis">Concluir</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: KPI CARD EDITOR ==================== -->
+  <div id="modalKpiEditor" class="modal-backdrop" hidden>
+    <div class="modal-card modal-md" role="dialog" aria-modal="true" aria-labelledby="modalKpiEditorTitle">
+      <div class="modal-header">
+        <div>
+          <h3 id="modalKpiEditorTitle">Editar Card</h3>
+          <p class="panel-desc">Use uma métrica automática calculada ao vivo ou crie um card manual livre</p>
+        </div>
+        <button type="button" class="icon-btn" data-close-modal="modalKpiEditor" aria-label="Fechar">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>Tipo do Card</label>
+          <div class="segmented" style="width:100%">
+            <button type="button" class="seg-btn active" data-kpi-mode="metric" style="flex:1">Métrica Automática (Ao Vivo)</button>
+            <button type="button" class="seg-btn" data-kpi-mode="manual" style="flex:1">Valor Manual (Livre)</button>
+          </div>
+        </div>
+
+        <div id="kpiEditorMetricSection">
+          <div class="field">
+            <label for="kpiEdMetric">Métrica Calculada</label>
+            <select id="kpiEdMetric" class="select-input"></select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="kpiEdLabel">Título do Card</label>
+          <input type="text" id="kpiEdLabel" class="text-input" placeholder="Ex: Investimento Mensal" />
+        </div>
+
+        <div id="kpiEditorManualSection" hidden>
+          <div class="field">
+            <label for="kpiEdValue">Valor Principal</label>
+            <input type="text" id="kpiEdValue" class="text-input" placeholder="Ex: R$ 25.000 ou 350 jogadores" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="kpiEdSub">Subtítulo / Detalhe <span id="kpiEdSubHint" class="text-muted" style="font-weight:400">(deixe vazio para usar o automático)</span></label>
+          <input type="text" id="kpiEdSub" class="text-input" placeholder="Ex: Meta revisada pela diretoria" />
+        </div>
+
+        <div class="field">
+          <label>Estilo / Cor de Destaque</label>
+          <div class="kpi-accent-picker" id="kpiEdAccentPicker">
+            <button type="button" class="accent-opt active" data-accent="default">Padrão</button>
+            <button type="button" class="accent-opt accent-emerald" data-accent="emerald">Destaque SX</button>
+            <button type="button" class="accent-opt accent-blue" data-accent="blue">Azul</button>
+            <button type="button" class="accent-opt accent-gold" data-accent="gold">Dourado</button>
+            <button type="button" class="accent-opt accent-rose" data-accent="rose">Rosa</button>
+          </div>
+        </div>
+
+        <div class="preview-box mt-12">
+          <div class="preview-label">Pré-visualização do Card</div>
+          <div id="kpiEdPreview"></div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" id="btnDeleteKpiInModal" class="btn btn-danger-ghost" hidden>Excluir Card</button>
+        <div class="modal-footer-right">
+          <button type="button" class="btn btn-ghost" data-close-modal="modalKpiEditor">Cancelar</button>
+          <button type="button" id="btnSaveKpiEditor" class="btn btn-primary">Salvar Card</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: PASSWORD GATE (OPTIONAL CLOUD AUTH) ==================== -->
+  <div id="modalAuthGate" class="modal-backdrop auth-backdrop" hidden>
+    <div class="modal-card modal-sm" role="dialog" aria-modal="true" aria-labelledby="modalAuthTitle">
+      <div class="modal-header">
+        <div>
+          <h3 id="modalAuthTitle">Acesso ao Painel</h3>
+          <p class="panel-desc">Digite a senha de acesso para sincronizar e visualizar os dados na nuvem</p>
+        </div>
+      </div>
+      <form id="formAuthGate">
+        <div class="modal-body">
+          <div class="field">
+            <label for="inputAuthPassword">Senha</label>
+            <input type="password" id="inputAuthPassword" class="text-input" autocomplete="current-password" placeholder="Digite a senha do painel" required />
+            <small id="authErrorMsg" class="text-neg" hidden>Senha incorreta. Tente novamente.</small>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <div class="modal-footer-right">
+            <button type="submit" class="btn btn-primary">Entrar</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
